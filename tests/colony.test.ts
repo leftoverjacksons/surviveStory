@@ -19,7 +19,8 @@ describe('colony', () => {
   });
 
   it('keeps everyone alive through a quiet week at home', () => {
-    expect(alive(col.community).length).toBe(5);
+    expect(col.community.survivors.filter((s) => !s.alive).length).toBe(0);
+    expect(alive(col.community).length).toBeGreaterThanOrEqual(5);
   });
 
   it('fells trees and hauls the wood home', () => {

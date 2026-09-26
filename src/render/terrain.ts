@@ -3,20 +3,33 @@ import { fbm } from '../sim/noise';
 import { Ground, heightAt, idx, type World } from '../sim/world';
 import { enhance, makeRand } from './util';
 
-/** Explored-tile texture shared by every fog-aware material. */
+/**
+ * Map-sized RG texture shared by fog-aware materials:
+ * R = explored (fog of war), G = home zone.
+ */
 export class FogTexture {
   texture: THREE.DataTexture;
+  private data: Uint8Array;
   private version = -1;
+  private zoneVersion = -1;
   constructor(private world: World) {
-    this.texture = new THREE.DataTexture(world.explored, world.w, world.h, THREE.RedFormat, THREE.UnsignedByteType);
+    this.data = new Uint8Array(world.w * world.h * 2);
+    this.texture = new THREE.DataTexture(this.data, world.w, world.h, THREE.RGFormat, THREE.UnsignedByteType);
     this.texture.magFilter = THREE.LinearFilter;
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.wrapS = this.texture.wrapT = THREE.ClampToEdgeWrapping;
     this.sync();
   }
   sync() {
-    if (this.version === this.world.fogVersion) return;
-    this.version = this.world.fogVersion;
+    const w = this.world;
+    if (this.version === w.fogVersion && this.zoneVersion === w.zoneVersion) return;
+    this.version = w.fogVersion;
+    this.zoneVersion = w.zoneVersion;
+    const d = this.data;
+    for (let i = 0, n = w.explored.length; i < n; i++) {
+      d[i * 2] = w.explored[i];
+      d[i * 2 + 1] = w.zone[i] ? 255 : 0;
+    }
     this.texture.needsUpdate = true;
   }
 }
@@ -126,13 +139,13 @@ export function buildTerrain(w: World): THREE.Group {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const ground = new THREE.Mesh(geo, enhance(new THREE.MeshLambertMaterial({ vertexColors: true })));
+  const ground = new THREE.Mesh(geo, enhance(new THREE.MeshLambertMaterial({ vertexColors: true }), { zone: true }));
   ground.receiveShadow = true;
   group.add(ground);
 
   // --- paved overlays ---
-  const asphalt = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(99, '#3b3e3a', 0.85) }));
-  const concrete = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(42, '#77756b', 0.6) }));
+  const asphalt = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(99, '#3b3e3a', 0.85) }), { zone: true });
+  const concrete = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(42, '#77756b', 0.6) }), { zone: true });
   group.add(tileOverlay(w, Ground.Asphalt, 0.03, asphalt));
   group.add(tileOverlay(w, Ground.Concrete, 0.04, concrete));
 

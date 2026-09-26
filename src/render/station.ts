@@ -34,7 +34,9 @@ function boxSurface(center: THREE.Vector3, size: THREE.Vector3, faces: ('px' | '
   };
 }
 
-export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; edges: VineEdge[] } {
+export interface StoreParts { fallen: THREE.Mesh; door: THREE.Mesh; glow: THREE.Mesh[] }
+
+export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; edges: VineEdge[]; store: StoreParts } {
   const g = new THREE.Group();
   const surfaces: VineSurface[] = [];
   const edges: VineEdge[] = [];
@@ -65,10 +67,18 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
   g.add(fallen);
   // Windows and door on the front face.
   const front = STORE.z + STORE.d / 2 + 0.01;
+  const glow: THREE.Mesh[] = [];
+  const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffc27a').multiplyScalar(1.6), toneMapped: false });
   for (const wx of [-3.4, -1.4, 2.8]) {
     const win = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.3, 0.08), glass);
     win.position.set(STORE.x + wx, 1.7, front);
     g.add(win);
+    // Lamplight behind the glass once people live inside.
+    const lamp = new THREE.Mesh(new THREE.PlaneGeometry(1.45, 1.15), glowMat);
+    lamp.position.set(STORE.x + wx, 1.7, front + 0.05);
+    lamp.visible = false;
+    g.add(lamp);
+    glow.push(lamp);
   }
   const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.2, 0.08), lambert('#141816'));
   door.position.set(STORE.x + 0.7, 1.1, front);
@@ -178,7 +188,7 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
     g.add(barrel);
   }
 
-  return { group: shadowed(g), surfaces, edges };
+  return { group: shadowed(g), surfaces, edges, store: { fallen, door, glow } };
 }
 
 /** Leaves on walls, the canopy roof, and strands hanging from the rim. */

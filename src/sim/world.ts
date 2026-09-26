@@ -39,6 +39,9 @@ export interface Bush {
 }
 
 export interface Rock { tx: number; tz: number; size: number }
+
+/** Salvage: a wrecked car or a heap of debris that yields scrap. */
+export interface Heap { id: number; tx: number; tz: number; kind: 'car' | 'pile'; scrap: number; max: number; rot: number; reserved: number }
 export interface WallBlock { tx: number; tz: number; h: number }
 
 export type PoiKind = 'ruin' | 'ring' | 'pond';
@@ -63,7 +66,11 @@ export interface World {
   bushes: Bush[];
   bushAt: Int32Array;
   rocks: Rock[];
+  heaps: Heap[];
   walls: WallBlock[];
+  /** Home zone: 1 where the community may build. */
+  zone: Uint8Array;
+  zoneVersion: number;
   pois: Poi[];
   home: Point;
   campfire: Point;
@@ -127,6 +134,28 @@ export function reveal(w: World, x: number, z: number, radius: number): boolean 
     }
   }
   if (changed) w.fogVersion++;
+  return changed;
+}
+
+export function inZone(w: World, tx: number, tz: number): boolean {
+  return inBounds(w, tx, tz) && w.zone[idx(w, tx, tz)] === 1;
+}
+
+/** Paint or erase the home zone in a disc. Only explored, dry land can be zoned. */
+export function paintZone(w: World, x: number, z: number, radius: number, on: boolean): boolean {
+  const cx = toTileX(w, x), cz = toTileZ(w, z);
+  const r = Math.ceil(radius);
+  let changed = false;
+  for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    const tx = cx + dx, tz = cz + dz;
+    if (!inBounds(w, tx, tz) || Math.hypot(dx, dz) > radius) continue;
+    const i = idx(w, tx, tz);
+    const v = on && w.explored[i] > 128 && w.ground[i] !== Ground.Water ? 1 : 0;
+    if (!on && w.zone[i] === 0) continue;
+    if (on && v === 0) continue;
+    if (w.zone[i] !== v) { w.zone[i] = v; changed = true; }
+  }
+  if (changed) w.zoneVersion++;
   return changed;
 }
 

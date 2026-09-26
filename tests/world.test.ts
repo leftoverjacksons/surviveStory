@@ -37,6 +37,7 @@ describe('world generation', () => {
 
   it('never places trees on roads, water, or blocked tiles', () => {
     for (const t of world.trees) {
+      if (t.felled) continue;
       const i = idx(world, t.tx, t.tz);
       expect(world.ground[i]).not.toBe(Ground.Water);
       expect(world.ground[i]).not.toBe(Ground.Asphalt);

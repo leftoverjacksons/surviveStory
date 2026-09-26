@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { createColony, hourOf, syncAgents, tick } from './sim/colony';
+import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
 import { createCommunity, killSurvivor, recruit, setRole } from './sim/community';
 import { CAMP } from './sim/layout';
 import { generateWorld } from './sim/worldgen';
-import { heightAt } from './sim/world';
+import { heightAt, paintZone } from './sim/world';
 import { IsoCamera, Sky, createComposer, createRenderer } from './render/stage';
 import { FogTexture, buildTerrain } from './render/terrain';
 import { buildStation, buildVines } from './render/station';
@@ -12,6 +12,7 @@ import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
 import { People } from './render/people';
 import { Camp } from './render/camp';
+import { HeapsView, VillageView } from './render/village';
 import { worldUniforms } from './render/util';
 import { Hud } from './ui/hud';
 
@@ -70,13 +71,19 @@ scene.add(orb.group);
 
 const camp = new Camp(world);
 scene.add(camp.group);
+const villageView = new VillageView(world, colony.village, station.store);
+scene.add(villageView.group);
+const heaps = new HeapsView(world);
+scene.add(heaps.group);
 const people = new People(world);
 scene.add(people.group);
 
 function syncScene() {
   syncAgents(colony);
   people.sync(community.survivors, colony.agents);
-  camp.sync(community, colony.items);
+  camp.sync(community, colony.items, colony.beds);
+  villageView.sync();
+  heaps.sync();
 }
 syncScene();
 
@@ -112,7 +119,24 @@ const hud = new Hud(colony, {
   onSpeed(level) { setSpeed(level); },
   onSelect(id) { select(id); },
   onFollow() { setFollow(!following); },
+  onZoneTool(mode) { setZoneTool(mode); },
 });
+
+let zoneTool: 'add' | 'del' | null = null;
+function setZoneTool(mode: 'add' | 'del' | null) {
+  zoneTool = mode;
+  hud.setZoneMode(mode);
+  worldUniforms.uZone.value = mode ? 1 : 0.18;
+}
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const hitPoint = new THREE.Vector3();
+function paintAt(clientX: number, clientY: number) {
+  if (!zoneTool) return;
+  const r = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, iso.camera);
+  if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) paintZone(world, hitPoint.x, hitPoint.z, 2.5, zoneTool === 'add');
+}
 
 function setSpeed(level: number) {
   speed = level;
@@ -139,6 +163,7 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, sx: e.clientX, sy: e.clientY });
+  if (zoneTool && e.button === 0 && pointers.size === 1) paintAt(e.clientX, e.clientY);
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -154,6 +179,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (pointers.size === 1) {
     const worldPerPx = (iso.camera.top - iso.camera.bottom) / canvas.clientHeight;
     if (p.button === 2 || e.ctrlKey || e.altKey) iso.rotateBy(-dx * 0.008);
+    else if (zoneTool && p.button === 0) paintAt(e.clientX, e.clientY);
     else {
       if (Math.hypot(p.x - p.sx, p.y - p.sy) > 6) setFollow(false);
       iso.pan(-dx * worldPerPx, (dy * worldPerPx) / Math.sin(Math.atan(1 / Math.SQRT2)));
@@ -174,6 +200,7 @@ canvas.addEventListener('pointerup', (e) => {
   const p = pointers.get(e.pointerId);
   pointers.delete(e.pointerId);
   pinchDist = 0;
+  if (zoneTool && p?.button === 0) { replan(colony); return; }
   if (!p || p.button !== 0 || Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 6) return;
   // A click: try to select a survivor.
   const r = canvas.getBoundingClientRect();
@@ -203,7 +230,9 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (speed === 0) setSpeed(lastSpeed); else { lastSpeed = speed; setSpeed(0); }
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
-  else if (k === 'escape') select(0);
+  else if (k === 'z') setZoneTool(zoneTool === 'add' ? null : 'add');
+  else if (k === 'x') setZoneTool(zoneTool === 'del' ? null : 'del');
+  else if (k === 'escape') { select(0); setZoneTool(null); }
   else keys.add(k);
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -284,6 +313,9 @@ function frame() {
   bushes.update(dt);
   people.update(t, dt, colony.agents);
   camp.update(t, community.resources.wood > 0);
+  const occupied = new Set<number>();
+  for (const a of colony.agents) if (a.indoors) { const b = colony.beds.get(a.id); if (b !== undefined) occupied.add(b); }
+  villageView.update(sky.night, occupied, t);
   mushroomGlow.color.setRGB(0.5, 1.2, 1.0).multiplyScalar(0.4 + sky.night * 1.6);
   bloom.strength = 0.45 + sky.night * 0.5;
 
@@ -293,7 +325,9 @@ function frame() {
   if (uiTimer > 0.25) {
     uiTimer = 0;
     people.sync(community.survivors, colony.agents);
-    camp.sync(community, colony.items);
+    camp.sync(community, colony.items, colony.beds);
+    villageView.sync();
+    heaps.sync();
     hud.render();
   }
   hud.updateClock(iso.headingDeg);
@@ -316,4 +350,4 @@ requestAnimationFrame(() => {
 });
 
 // Exposed for automated checks and debugging.
-Object.assign(window, { __game: { colony, iso, setSpeed, select, tick: (m: number) => tick(colony, m) } });
+Object.assign(window, { __game: { colony, iso, setSpeed, select, setZoneTool, tick: (m: number) => tick(colony, m), refresh: () => { syncScene(); hud.render(); } } });

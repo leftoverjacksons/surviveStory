@@ -78,6 +78,8 @@ export const worldUniforms = {
   uWind: { value: 1 },
   uFogTex: { value: null as THREE.Texture | null },
   uFogSize: { value: 256 },
+  /** Home-zone overlay strength: faint normally, strong while painting. */
+  uZone: { value: 0.18 },
 };
 /** Back-compat alias used by older call sites. */
 export const windUniforms = worldUniforms;
@@ -87,6 +89,8 @@ export interface EnhanceOptions {
   wind?: number;
   /** Darken unexplored parts of the map (fog of war). Default true. */
   fog?: boolean;
+  /** Tint the home zone and outline its edge (ground materials only). */
+  zone?: boolean;
 }
 
 /**
@@ -96,6 +100,7 @@ export interface EnhanceOptions {
 export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions = {}): T {
   const wind = opts.wind ?? 0;
   const fog = opts.fog ?? true;
+  const zone = opts.zone ?? false;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, worldUniforms);
     let vs = shader.vertexShader.replace(
@@ -136,14 +141,21 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
         .replace(
           '#include <common>',
           `#include <common>
-          uniform sampler2D uFogTex; uniform float uFogSize; uniform float uTime;
+          uniform sampler2D uFogTex; uniform float uFogSize; uniform float uTime; uniform float uZone;
           varying vec2 vFowXZ;`,
         )
         .replace(
           '#include <fog_fragment>',
           `{
             vec2 fuv = (vFowXZ + uFogSize * 0.5) / uFogSize;
-            float seen = texture2D(uFogTex, fuv).r;
+            vec2 fz = texture2D(uFogTex, fuv).rg;
+            float seen = fz.r;
+            ${zone ? `
+            float zn = fz.g;
+            float edge = 1.0 - smoothstep(0.0, 0.22, abs(zn - 0.5));
+            vec3 zoneCol = vec3(1.0, 0.86, 0.55);
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 1.08 + zoneCol * 0.03, zn * uZone);
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, zoneCol, edge * 0.55 * uZone);` : ''}
             float drift = sin(vFowXZ.x * 0.21 + uTime * 0.15) * sin(vFowXZ.y * 0.17 - uTime * 0.11) * 0.08;
             float k = smoothstep(0.25, 0.75, seen + drift);
             float lum = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
@@ -154,7 +166,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
         );
     }
   };
-  mat.customProgramCacheKey = () => `enh-${wind}-${fog}`;
+  mat.customProgramCacheKey = () => `enh-${wind}-${fog}-${zone}`;
   return mat;
 }
 

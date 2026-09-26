@@ -1,7 +1,7 @@
 import { Rng } from './rng';
 import { fbm, smoothstep } from './noise';
 import {
-  APRON, CAMP, HIGHWAY_Z, STATION_BLOCKERS, STOCKPILE,
+  APRON, CAMP, CAR, HIGHWAY_Z, STATION_BLOCKERS, STOCKPILE,
 } from './layout';
 import {
   Ground, idx, inBounds, reveal, tileX, tileZ, toTileX, toTileZ,
@@ -30,7 +30,8 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
     fogVersion: 0,
     trees: [], treeAt: new Int32Array(n).fill(-1),
     bushes: [], bushAt: new Int32Array(n).fill(-1),
-    rocks: [], walls: [], pois: [],
+    rocks: [], heaps: [], walls: [], pois: [],
+    zone: new Uint8Array(n), zoneVersion: 0,
     home: { x: 0, z: 0 },
     campfire: { ...CAMP },
     stockpile: { ...STOCKPILE },
@@ -234,6 +235,48 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
     pondPois++;
   }
 
+  // --- salvage: wrecks along the highway, debris in the ruins, the station's own car ---
+  const addHeap = (x: number, z: number, kind: 'car' | 'pile', scrap: number, rot: number) => {
+    const tx = toTileX(w, x), tz = toTileZ(w, z);
+    if (!inBounds(w, tx, tz)) return;
+    const i = idx(w, tx, tz);
+    if (w.blocked[i] && kind !== 'car') return;
+    if (w.treeAt[i] >= 0) { w.trees[w.treeAt[i]].felled = true; w.treeAt[i] = -1; }
+    w.heaps.push({ id: w.heaps.length, tx, tz, kind, scrap, max: scrap, rot, reserved: 0 });
+    w.blocked[i] = 1;
+    if (kind === 'car') {
+      // A car is about three tiles long: block along its axis.
+      for (const k of [-1.4, 1.4]) {
+        const bx = toTileX(w, x + Math.cos(rot) * k), bz = toTileZ(w, z - Math.sin(rot) * k);
+        if (inBounds(w, bx, bz)) {
+          const j = idx(w, bx, bz);
+          if (w.treeAt[j] >= 0) { w.trees[w.treeAt[j]].felled = true; w.treeAt[j] = -1; }
+          w.blocked[j] = 1;
+        }
+      }
+    }
+  };
+  addHeap(CAR.x, CAR.z, 'car', 12, CAR.rot);
+  for (let x = -size / 2 + 10; x < size / 2 - 10; x += rng.range(16, 30)) {
+    if (Math.abs(x) < 16 || !rng.chance(0.55)) continue;
+    const side = rng.chance(0.5) ? 1 : -1;
+    addHeap(x, highwayZ(x) + side * rng.range(1, 2.5), 'car', rng.int(10, 16), rng.range(-0.4, 0.4) + (rng.chance(0.5) ? Math.PI : 0));
+  }
+  for (const site of sites) {
+    for (let k = 0; k < 3; k++) addHeap(site.x + rng.range(-12, 12), site.z + rng.range(-10, 10), 'pile', rng.int(6, 10), rng.range(0, 6));
+  }
+  addHeap(-3.5, -14, 'pile', 8, 0.4);  // junk behind the store
+  addHeap(13, -6, 'pile', 6, 1.1);
+  // Wrecks that never made it past the station, just up the road each way.
+  addHeap(-19, highwayZ(-19) - 1.6, 'car', 12, 0.1);
+  addHeap(21, highwayZ(21) + 1.6, 'car', 12, Math.PI - 0.15);
+  addHeap(-12, 17.5, 'pile', 6, 2.0);
+
   reveal(w, 0, 0, 24);
+  // The starting home zone: the clearing they can already see, minus roads and water.
+  for (let tz = 0; tz < size; tz++) for (let tx = 0; tx < size; tx++) {
+    const i = idx(w, tx, tz);
+    if (Math.hypot(tileX(w, tx), tileZ(w, tz)) <= 20 && w.ground[i] !== Ground.Water) w.zone[i] = 1;
+  }
   return w;
 }

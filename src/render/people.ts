@@ -18,6 +18,7 @@ interface Rig {
   axe: THREE.Object3D;
   log: THREE.Object3D;
   basket: THREE.Object3D;
+  sheet: THREE.Object3D;
   ring: THREE.Mesh;
   phase: number;
   fade: number;           // >0 while fading out after death
@@ -85,6 +86,12 @@ export class People {
     basket.position.set(0, 0.98, 0.3);
     body.add(basket);
 
+    // A sheet of salvaged tin carried on the shoulder.
+    const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.6), lambert('#7d8a8c'));
+    sheet.position.set(0.1, 1.55, -0.05);
+    sheet.rotation.set(0.3, 0, 0.5);
+    body.add(sheet);
+
     body.add(hipL, hipR, torso, head, armL, armR);
     body.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
 
@@ -97,7 +104,7 @@ export class People {
     root.add(ring);
     root.userData.survivorId = s.id;
     body.userData.survivorId = s.id;
-    return { root, body, torso, head, hipL, hipR, armL, armR, axe, log, basket, ring, phase: s.id * 1.7, fade: 0 };
+    return { root, body, torso, head, hipL, hipR, armL, armR, axe, log, basket, sheet, ring, phase: s.id * 1.7, fade: 0 };
   }
 
   sync(survivors: Survivor[], agents: Agent[]) {
@@ -118,7 +125,7 @@ export class People {
 
   headPosition(id: number, out: THREE.Vector3): boolean {
     const r = this.rigs.get(id);
-    if (!r || r.fade > 0) return false;
+    if (!r || r.fade > 0 || !r.root.visible) return false;
     r.head.getWorldPosition(out);
     out.y += 0.35;
     return true;
@@ -136,6 +143,10 @@ export class People {
       const r = this.rigs.get(a.id);
       if (!r) continue;
       const root = r.root;
+      root.visible = !a.indoors;
+      if (a.indoors) { root.position.set(a.x, heightAt(this.world, a.x, a.z), a.z); continue; }
+      // Snap after long jumps (e.g. stepping out of a doorway).
+      if (Math.hypot(a.x - root.position.x, a.z - root.position.z) > 3) root.position.set(a.x, 0, a.z);
       // Smooth toward the simulated position so fast-forward still reads as motion.
       const k = 1 - Math.exp(-dt * 14);
       root.position.x += (a.x - root.position.x) * k;
@@ -169,7 +180,8 @@ export class People {
     r.torso.scale.y = 1 + Math.sin(ph * 1.6) * 0.02;
     r.axe.visible = false;
     r.log.visible = a.carry?.kind === 'wood';
-    r.basket.visible = a.carry?.kind === 'food' || a.anim === 'forage';
+    r.basket.visible = a.carry?.kind === 'food' || a.carry?.kind === 'glimmer' || a.anim === 'forage';
+    r.sheet.visible = a.carry?.kind === 'scrap';
 
     const moving = a.pathI < a.path.length;
     switch (a.anim) {
@@ -179,7 +191,7 @@ export class People {
         const s = Math.sin(ph * 9);
         r.hipL.rotation.x = s * 0.55; r.hipR.rotation.x = -s * 0.55;
         r.body.position.y = Math.abs(Math.cos(ph * 9)) * 0.05;
-        if (a.carry?.kind === 'wood') {
+        if (a.carry?.kind === 'wood' || a.carry?.kind === 'scrap') {
           r.armL.rotation.set(-2.6, 0, 0.3); r.armR.rotation.set(-2.6, 0, -0.3);
         } else if (a.carry?.kind === 'food') {
           r.armL.rotation.x = -1.1; r.armR.rotation.x = -1.1;
@@ -196,6 +208,16 @@ export class People {
         r.armL.rotation.x = swing * 0.8;
         r.body.rotation.x = cyc > 0.6 ? 0.15 : -0.05;
         r.hipL.rotation.x = 0.15; r.hipR.rotation.x = -0.2;
+        break;
+      }
+      case 'build': {
+        // Hammering: quick, short strokes.
+        r.axe.visible = true;
+        const cyc = (ph * 2.6) % 1;
+        r.armR.rotation.x = cyc < 0.5 ? -1.9 * (cyc / 0.5) - 0.3 : -2.2 + 2.0 * ((cyc - 0.5) / 0.5);
+        r.armL.rotation.x = -0.9;
+        r.body.rotation.x = 0.12;
+        r.hipL.rotation.x = 0.1; r.hipR.rotation.x = -0.15;
         break;
       }
       case 'forage': {

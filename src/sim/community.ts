@@ -187,7 +187,7 @@ export function createCommunity(seed: number, size = 5): Community {
     nextId: 1,
     survivors: [],
     bonds: [],
-    resources: { food: 24, wood: 10, scrap: 4, medicine: 2, glimmer: 0 },
+    resources: { food: 24, wood: 16, scrap: 4, medicine: 2, glimmer: 0 },
     log: [],
   };
   for (let i = 0; i < size; i++) c.survivors.push(createSurvivor(c, rng));

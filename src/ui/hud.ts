@@ -3,6 +3,7 @@ import { dayOf, hourOf } from '../sim/colony';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { exploredFraction } from '../sim/world';
+import { bedsTotal, outstanding, type Project } from '../sim/buildings';
 
 export interface HudActions {
   onKill(id: number): void;
@@ -12,6 +13,7 @@ export interface HudActions {
   onSpeed(level: number): void;
   onSelect(id: number): void;
   onFollow(): void;
+  onZoneTool(mode: 'add' | 'del' | null): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -25,6 +27,7 @@ export class Hud {
   private selected = 0;
   private lastLog = -1;
   private rosterKey = '';
+  private zoneMode: 'add' | 'del' | null = null;
 
   constructor(private col: Colony, act: HudActions) {
     $('rot-l').addEventListener('click', () => act.onRotate(-1));
@@ -32,6 +35,8 @@ export class Hud {
     $('recruit-btn').addEventListener('click', () => act.onRecruit());
     $('labels-btn').addEventListener('click', () => this.toggleLabels());
     $('follow-btn').addEventListener('click', () => act.onFollow());
+    $('zone-add').addEventListener('click', () => { this.setZoneMode(this.zoneMode === 'add' ? null : 'add'); act.onZoneTool(this.zoneMode); });
+    $('zone-del').addEventListener('click', () => { this.setZoneMode(this.zoneMode === 'del' ? null : 'del'); act.onZoneTool(this.zoneMode); });
     for (let i = 0; i < 4; i++) $(`spd-${i}`).addEventListener('click', () => act.onSpeed(i));
     $('toggle-roster').addEventListener('click', () => {
       const r = $('roster');
@@ -72,6 +77,13 @@ export class Hud {
 
   setSpeed(level: number) {
     for (let i = 0; i < 4; i++) $(`spd-${i}`).setAttribute('aria-pressed', String(i === level));
+  }
+
+  setZoneMode(mode: 'add' | 'del' | null) {
+    this.zoneMode = mode;
+    $('zone-add').setAttribute('aria-pressed', String(mode === 'add'));
+    $('zone-del').setAttribute('aria-pressed', String(mode === 'del'));
+    document.body.classList.toggle('painting', mode !== null);
   }
 
   setFollowing(on: boolean) {
@@ -131,6 +143,7 @@ export class Hud {
     const res: [string, string, string][] = [
       ['Food', Math.floor(r.food).toString(), ''],
       ['Wood', Math.floor(r.wood).toString(), ''],
+      ['Scrap', Math.floor(r.scrap).toString(), ''],
       ['Glimmer', r.glimmer.toFixed(1), 'glimmer'],
       ['Morale', morale.toFixed(0), morale < 40 ? 'morale low' : 'morale'],
       ['Explored', `${(exploredFraction(this.col.world) * 100).toFixed(1)}%`, ''],
@@ -166,6 +179,8 @@ export class Hud {
       this.setBar(card, 'social', a.needs.social, 100);
     }
 
+    this.renderVillage();
+
     if (c.log.length !== this.lastLog) {
       this.lastLog = c.log.length;
       const fallen = c.survivors.filter((s) => !s.alive);
@@ -175,6 +190,37 @@ export class Hud {
       log.innerHTML = lines.join('');
       log.scrollTop = log.scrollHeight;
     }
+  }
+
+  private renderVillage() {
+    const v = this.col.village;
+    const pop = this.col.agents.length;
+    const beds = bedsTotal(v);
+    const bedsTxt = `beds ${beds}/${pop}`;
+    if ($('beds').textContent !== bedsTxt) $('beds').textContent = bedsTxt;
+    const active = v.projects.filter((p) => !p.done);
+    const tier = `<span class="tier t${v.tier}">${v.tier === 0 ? 'Salvage era' : 'Timber era'}</span>`;
+    const built = v.buildings.filter((b) => b.kind !== 'store').length;
+    const html = (active.length
+      ? active.map((p) => {
+        const pct = Math.min(100, (p.work / p.workNeeded) * 100);
+        return `<div class="proj"><div class="n">${esc(p.name)}</div><div class="st">${esc(this.status(p))}</div>
+          <div class="bar"><i style="width:${pct.toFixed(0)}%"></i></div></div>`;
+      }).join('')
+      : `<div class="empty">Nothing planned. They'll think of something when the village needs it.</div>`)
+      + `<div class="st" style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink-dim)">${tier}<span>${built} built</span></div>`;
+    if ($('projects').innerHTML !== html) $('projects').innerHTML = html;
+  }
+
+  private status(p: Project): string {
+    const trees = p.clearTrees.filter((id) => !this.col.world.trees[id].felled).length;
+    if (trees) return `Clearing ${trees} tree${trees > 1 ? 's' : ''} from the site`;
+    const missing = (['wood', 'scrap', 'glimmer'] as const)
+      .filter((m) => p.delivered[m] < p.cost[m])
+      .map((m) => `${m} ${p.delivered[m]}/${p.cost[m]}${outstanding(p, m) > 0 && this.col.community.resources[m] < 1 ? ' (none in store)' : ''}`);
+    if (missing.length) return `Gathering materials: ${missing.join(' · ')}`;
+    if (p.work <= 0) return 'Ready to build';
+    return `Building · ${Math.round((p.work / p.workNeeded) * 100)}%`;
   }
 
   private setBar(card: HTMLElement, key: string, v: number, max: number, text?: string) {

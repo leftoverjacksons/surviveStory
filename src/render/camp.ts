@@ -86,10 +86,11 @@ export class Camp {
     }
   }
 
-  sync(c: Community, items: Item[]) {
-    // Bedrolls for the living.
+  sync(c: Community, items: Item[], indoorBeds: Map<number, number>) {
+    // Bedrolls by the fire for anyone without a bed indoors.
     for (const s of c.survivors) {
-      if (s.alive && !this.beds.has(s.id)) {
+      const outdoors = s.alive && !indoorBeds.has(s.id);
+      if (outdoors && !this.beds.has(s.id)) {
         const g = new THREE.Group();
         const roll = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 1.8), lambert(CLOTH[s.hue % CLOTH.length]));
         roll.position.y = 0.04;
@@ -102,7 +103,7 @@ export class Camp {
         this.beds.set(s.id, g);
         this.group.add(g);
       }
-      if (!s.alive && this.beds.has(s.id)) {
+      if (!outdoors && this.beds.has(s.id)) {
         this.group.remove(this.beds.get(s.id)!);
         this.beds.delete(s.id);
       }
