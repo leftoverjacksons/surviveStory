@@ -3,7 +3,7 @@ import { createCommunity } from '../src/sim/community';
 import { createColony, tick, type Colony } from '../src/sim/colony';
 import { bedsTotal, footTiles, store } from '../src/sim/buildings';
 import { generateWorld } from '../src/sim/worldgen';
-import { idx, inZone, paintZone, toTileX, toTileZ } from '../src/sim/world';
+import { Zone, idx, inZone, paintZone, toTileX, toTileZ } from '../src/sim/world';
 
 function runDays(col: Colony, days: number) {
   for (let m = 0; m < days * 1440; m += 10) tick(col, 10);
@@ -18,7 +18,7 @@ describe('village', () => {
 
   it('only zones explored land', () => {
     const w = generateWorld(5);
-    paintZone(w, 90, 90, 3, true);
+    paintZone(w, 90, 90, 3, Zone.Home);
     expect(inZone(w, toTileX(w, 90), toTileZ(w, 90))).toBe(false);
   });
 

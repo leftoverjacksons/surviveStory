@@ -16,6 +16,17 @@ export type GroundId = (typeof Ground)[keyof typeof Ground];
 
 export type TreeKind = 'oak' | 'pine' | 'birch';
 
+/** Zones the player paints. One per tile. */
+export const Zone = { None: 0, Home: 1, Woodlot: 2, Field: 3, Sacred: 4 } as const;
+export type ZoneKind = (typeof Zone)[keyof typeof Zone];
+
+/** Field crop states. */
+export const Crop = { Untilled: 0, Tilled: 1, Growing: 2, Ripe: 3 } as const;
+
+/** Footfall thresholds: worn grass becomes a path, then a lane. */
+export const PATH_WEAR = 25;
+export const LANE_WEAR = 90;
+
 export interface Tree {
   id: number;
   tx: number;
@@ -26,6 +37,10 @@ export interface Tree {
   chop: number;      // minutes of work done
   reserved: number;  // survivor id or 0
   protected: boolean;
+  /** 0..1; saplings grow to 1 before they can be felled. */
+  growth: number;
+  /** Planted by the village (woodlot) rather than wild. */
+  planted: boolean;
 }
 
 export interface Bush {
@@ -68,9 +83,16 @@ export interface World {
   rocks: Rock[];
   heaps: Heap[];
   walls: WallBlock[];
-  /** Home zone: 1 where the community may build. */
+  /** Painted zones (see Zone). Home is where the community may build. */
   zone: Uint8Array;
   zoneVersion: number;
+  /** Footfall per tile; decays daily. High wear becomes paths and lanes. */
+  wear: Float32Array;
+  wearVersion: number;
+  /** Field tiles: crop state (see Crop) and growth 0..1. */
+  cropState: Uint8Array;
+  cropGrowth: Float32Array;
+  cropVersion: number;
   pois: Poi[];
   home: Point;
   campfire: Point;
@@ -99,6 +121,8 @@ export function tileCost(w: World, tx: number, tz: number): number {
   if (g === Ground.Asphalt || g === Ground.Concrete) c = 0.8;
   else if (g === Ground.Forest) c = 1.25;
   if (w.treeAt[i] >= 0) c += 0.9; // squeezing between trunks
+  const wear = w.wear[i];
+  if (wear >= LANE_WEAR) c *= 0.8; else if (wear >= PATH_WEAR) c *= 0.9;
   return c;
 }
 
@@ -137,12 +161,24 @@ export function reveal(w: World, x: number, z: number, radius: number): boolean 
   return changed;
 }
 
-export function inZone(w: World, tx: number, tz: number): boolean {
-  return inBounds(w, tx, tz) && w.zone[idx(w, tx, tz)] === 1;
+export const zoneAt = (w: World, tx: number, tz: number): number => (inBounds(w, tx, tz) ? w.zone[idx(w, tx, tz)] : Zone.None);
+/** Home zone: where the community may build. */
+export const inZone = (w: World, tx: number, tz: number) => zoneAt(w, tx, tz) === Zone.Home;
+
+/** Whether a tile may take a zone kind. Only explored land can be zoned. */
+export function zoneAllowed(w: World, tx: number, tz: number, kind: ZoneKind): boolean {
+  if (!inBounds(w, tx, tz)) return false;
+  const i = idx(w, tx, tz);
+  if (w.explored[i] <= 128 || w.ground[i] === Ground.Water) return false;
+  if (kind === Zone.Field || kind === Zone.Woodlot) {
+    const g = w.ground[i];
+    if (g === Ground.Asphalt || g === Ground.Concrete || w.blocked[i]) return false;
+  }
+  return true;
 }
 
-/** Paint or erase the home zone in a disc. Only explored, dry land can be zoned. */
-export function paintZone(w: World, x: number, z: number, radius: number, on: boolean): boolean {
+/** Paint a zone kind in a disc, or erase (kind = Zone.None). */
+export function paintZone(w: World, x: number, z: number, radius: number, kind: ZoneKind): boolean {
   const cx = toTileX(w, x), cz = toTileZ(w, z);
   const r = Math.ceil(radius);
   let changed = false;
@@ -150,10 +186,11 @@ export function paintZone(w: World, x: number, z: number, radius: number, on: bo
     const tx = cx + dx, tz = cz + dz;
     if (!inBounds(w, tx, tz) || Math.hypot(dx, dz) > radius) continue;
     const i = idx(w, tx, tz);
-    const v = on && w.explored[i] > 128 && w.ground[i] !== Ground.Water ? 1 : 0;
-    if (!on && w.zone[i] === 0) continue;
-    if (on && v === 0) continue;
-    if (w.zone[i] !== v) { w.zone[i] = v; changed = true; }
+    if (kind !== Zone.None && !zoneAllowed(w, tx, tz, kind)) continue;
+    if (w.zone[i] === kind) continue;
+    if (w.zone[i] === Zone.Field) { w.cropState[i] = Crop.Untilled; w.cropGrowth[i] = 0; w.cropVersion++; }
+    w.zone[i] = kind;
+    changed = true;
   }
   if (changed) w.zoneVersion++;
   return changed;

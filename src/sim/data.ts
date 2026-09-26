@@ -18,7 +18,7 @@ export interface TraitDef {
 export const TRAITS: Record<TraitId, TraitDef> = {
   stoic:       { id: 'stoic', name: 'Stoic', blurb: 'Grief lands softer, but so does joy.', griefMult: 0.5, bondRate: 0.7 },
   tender:      { id: 'tender', name: 'Tender', blurb: 'Loves quickly. Mourns hard.', griefMult: 1.6, bondRate: 1.5 },
-  green_thumb: { id: 'green_thumb', name: 'Green Thumb', blurb: 'The overgrowth yields to them.', roleBonus: { forager: 0.5 } },
+  green_thumb: { id: 'green_thumb', name: 'Green Thumb', blurb: 'The overgrowth yields to them.', roleBonus: { forager: 0.5, farmer: 0.5 } },
   tinkerer:    { id: 'tinkerer', name: 'Tinkerer', blurb: 'Sees parts where others see junk.', roleBonus: { builder: 0.5 } },
   orb_touched: { id: 'orb_touched', name: 'Orb-Touched', blurb: 'Something followed them home once.', attunement: 3, bondRate: 0.6, roleBonus: { attune: 0.5 } },
   night_owl:   { id: 'night_owl', name: 'Night Owl', blurb: 'Most awake when the wisps are.', roleBonus: { scout: 0.4 } },
@@ -40,10 +40,11 @@ export const PSI: Record<PsiId, PsiDef> = {
   echo:     { id: 'echo', name: 'Echo', blurb: 'Reads the last memory left in an object.' },
 };
 
-export type RoleId = 'builder' | 'forager' | 'scout' | 'tender' | 'attune' | 'rest';
+export type RoleId = 'builder' | 'farmer' | 'forager' | 'scout' | 'tender' | 'attune' | 'rest';
 
 export const ROLES: Record<RoleId, { name: string; blurb: string }> = {
   builder: { name: 'Builder', blurb: 'Fells trees and hauls what the village needs.' },
+  farmer:  { name: 'Farmer', blurb: 'Tills, sows, tends and harvests the fields you mark.' },
   forager: { name: 'Forager', blurb: 'Gathers berries and greens from the overgrowth.' },
   scout:   { name: 'Scout', blurb: 'Walks the edge of the known map and pushes it back.' },
   tender:  { name: 'Tender', blurb: 'Keeps the fire and keeps people company.' },

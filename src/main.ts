@@ -135,7 +135,7 @@ function paintAt(clientX: number, clientY: number) {
   const r = canvas.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, iso.camera);
-  if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) paintZone(world, hitPoint.x, hitPoint.z, 2.5, zoneTool === 'add');
+  if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) paintZone(world, hitPoint.x, hitPoint.z, 2.5, zoneTool === 'add' ? 1 : 0);
 }
 
 function setSpeed(level: number) {

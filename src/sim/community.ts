@@ -28,6 +28,8 @@ export interface Survivor {
   role: RoleId;
   alive: boolean;
   diedOnDay: number | null;
+  /** Left the village (alive, elsewhere) rather than died. */
+  departed?: boolean;
   causeOfDeath: string | null;
   griefDays: number; // >0 while actively mourning
   memories: Memory[];
@@ -187,7 +189,7 @@ export function createCommunity(seed: number, size = 5): Community {
     nextId: 1,
     survivors: [],
     bonds: [],
-    resources: { food: 24, wood: 16, scrap: 4, medicine: 2, glimmer: 0 },
+    resources: { food: 40, wood: 16, scrap: 4, medicine: 2, glimmer: 0 },
     log: [],
   };
   for (let i = 0; i < size; i++) c.survivors.push(createSurvivor(c, rng));
@@ -203,7 +205,7 @@ export function createCommunity(seed: number, size = 5): Community {
   }
 
   // Sensible default roles.
-  const roles: RoleId[] = ['builder', 'forager', 'scout', 'attune', 'builder', 'tender'];
+  const roles: RoleId[] = ['builder', 'farmer', 'forager', 'builder', 'attune', 'scout', 'tender'];
   c.survivors.forEach((s, i) => { s.role = roles[i % roles.length]; });
 
   c.rngState = rng.state;

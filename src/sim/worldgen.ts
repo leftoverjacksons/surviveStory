@@ -4,7 +4,7 @@ import {
   APRON, CAMP, CAR, HIGHWAY_Z, STATION_BLOCKERS, STOCKPILE,
 } from './layout';
 import {
-  Ground, idx, inBounds, reveal, tileX, tileZ, toTileX, toTileZ,
+  Ground, Zone, idx, inBounds, reveal, tileX, tileZ, toTileX, toTileZ,
   type Bush, type Rect, type Tree, type TreeKind, type World,
 } from './world';
 
@@ -32,6 +32,8 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
     bushes: [], bushAt: new Int32Array(n).fill(-1),
     rocks: [], heaps: [], walls: [], pois: [],
     zone: new Uint8Array(n), zoneVersion: 0,
+    wear: new Float32Array(n), wearVersion: 0,
+    cropState: new Uint8Array(n), cropGrowth: new Float32Array(n), cropVersion: 0,
     home: { x: 0, z: 0 },
     campfire: { ...CAMP },
     stockpile: { ...STOCKPILE },
@@ -178,7 +180,7 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
     return k > 0.62 ? 'pine' : k < 0.36 ? 'birch' : 'oak';
   };
   const addTree = (tx: number, tz: number, kind: TreeKind, size: number, prot = false) => {
-    const t: Tree = { id: w.trees.length, tx, tz, kind, size, felled: false, chop: 0, reserved: 0, protected: prot };
+    const t: Tree = { id: w.trees.length, tx, tz, kind, size, felled: false, chop: 0, reserved: 0, protected: prot, growth: 1, planted: false };
     w.trees.push(t);
     w.treeAt[idx(w, tx, tz)] = t.id;
   };
@@ -276,7 +278,7 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
   // The starting home zone: the clearing they can already see, minus roads and water.
   for (let tz = 0; tz < size; tz++) for (let tx = 0; tx < size; tx++) {
     const i = idx(w, tx, tz);
-    if (Math.hypot(tileX(w, tx), tileZ(w, tz)) <= 20 && w.ground[i] !== Ground.Water) w.zone[i] = 1;
+    if (Math.hypot(tileX(w, tx), tileZ(w, tz)) <= 20 && w.ground[i] !== Ground.Water) w.zone[i] = Zone.Home;
   }
   return w;
 }

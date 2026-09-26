@@ -7,12 +7,12 @@ import { alive, log, type Community } from './community';
 import { ANNEX, CAMP, KITCHEN, STORE, STORE_DOOR, STORE_INSIDE } from './layout';
 import type { Rng } from './rng';
 import {
-  Ground, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
+  Ground, LANE_WEAR, PATH_WEAR, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
   type Point, type World,
 } from './world';
 
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern';
-export type ProjectKind = 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'upgrade';
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar';
+export type ProjectKind = 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'upgrade';
 export type Tier = 0 | 1;
 
 export interface Cost { wood: number; scrap: number; glimmer: number }
@@ -75,10 +75,11 @@ export const DEFS: Record<Exclude<ProjectKind, 'upgrade' | 'clear_store' | 'patc
   garden:   { name: ['Tire garden', 'Fenced garden'], w: 4, d: 3, cost: [c(6, 4), c(18, 0)], work: [300, 420] },
   workshop: { name: ['Scrap workbench', 'Timber workshop'], w: 3, d: 3, cost: [c(10, 6), c(30, 4)], work: [420, 660] },
   kitchen:  { name: ['Canopy kitchen', 'Canopy kitchen'], w: 4, d: 2, cost: [c(12, 6), c(12, 6)], work: [480, 480] },
+  cellar:   { name: ['Root cellar', 'Stone-lined cellar'], w: 3, d: 3, cost: [c(10, 4), c(20, 0)], work: [360, 480] },
   lantern:  { name: ['Wisp lantern', 'Wisp lantern'], w: 1, d: 1, cost: [c(2, 2, 6), c(2, 2, 6)], work: [120, 120] },
 };
 
-export const GARDEN_YIELD: [number, number] = [3, 5]; // food per tended day
+export const GARDEN_YIELD: [number, number] = [2, 3]; // food per tended day: kitchen plots, not staples
 export const TIER1_XP = 6;
 export const TIER1_DAY = 8;
 export const MAX_ACTIVE = 2;
@@ -159,7 +160,31 @@ function footprintFree(w: World, v: Village, f: Footprint, margin: number): { ok
   return { ok: true, trees };
 }
 
-type SiteKind = 'hut' | 'garden' | 'workshop' | 'lantern';
+/** Footfall along each side of a footprint, just outside it: [+z, +x, -z, -x]. */
+function sideWear(w: World, f: Footprint): number[] {
+  const at = (tx: number, tz: number) => (inBounds(w, tx, tz) ? w.wear[idx(w, tx, tz)] : 0);
+  const out = [0, 0, 0, 0];
+  for (let dx = 0; dx < f.w; dx++) { out[0] += at(f.tx + dx, f.tz + f.d); out[2] += at(f.tx + dx, f.tz - 1); }
+  for (let dz = 0; dz < f.d; dz++) { out[1] += at(f.tx + f.w, f.tz + dz); out[3] += at(f.tx - 1, f.tz + dz); }
+  return out;
+}
+
+/** Firewood a building burns per winter day when people sleep in it. */
+export function heatNeed(b: Building): number {
+  switch (b.kind) {
+    case 'store': return b.level >= 2 ? 2 : 3;
+    case 'annex': return 1;
+    case 'hut': return b.tier === 0 ? 2 : 1;
+    default: return 0;
+  }
+}
+
+/** Food that keeps; anything above this slowly spoils. */
+export function storageCapacity(v: Village): number {
+  return 40 + v.buildings.filter((b) => b.kind === 'cellar').reduce((n, b) => n + (b.tier === 0 ? 100 : 160), 0);
+}
+
+type SiteKind = 'hut' | 'garden' | 'workshop' | 'lantern' | 'cellar';
 
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
@@ -175,12 +200,19 @@ export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot
       const foot = { tx: cxT + dx, tz: czT + dz, w: fw, d: fd };
       const cen = footCenter(w, foot);
       const dist = Math.hypot(cen.x - CAMP.x, cen.z - CAMP.z);
-      const ideal = kind === 'lantern' ? 7 : kind === 'garden' ? 13 : kind === 'workshop' ? 10 : 9;
+      const ideal = kind === 'lantern' ? 7 : kind === 'garden' ? 13 : kind === 'workshop' || kind === 'cellar' ? 10 : 9;
       let score = Math.abs(dist - ideal) * 1.2;
-      if (score > bestScore) continue;
+      if (score - 7 > bestScore) continue; // 7 = the most frontage can win back
       const free = footprintFree(w, v, foot, kind === 'lantern' ? 0 : 1);
       if (!free.ok) continue;
       score += free.trees.length * 2.5;
+      // Don't build over the lanes people walk; do build facing them.
+      const side = sideWear(w, foot);
+      let onLane = 0;
+      for (const [tx, tz] of footTiles(foot)) if (w.wear[idx(w, tx, tz)] >= LANE_WEAR) onLane++;
+      score += onLane * 3;
+      const bestSide = side.indexOf(Math.max(...side));
+      const frontage = kind === 'lantern' ? 0 : Math.min(7, side[bestSide] / (PATH_WEAR * 1.5));
       if (kind === 'garden') {
         let meadow = 0;
         for (const [tx, tz] of footTiles(foot)) if (w.ground[idx(w, tx, tz)] === Ground.Meadow) meadow++;
@@ -196,11 +228,12 @@ export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot
         const d = Math.hypot(bc.x - cen.x, bc.z - cen.z);
         if (d < 12) score -= 0.4;
       }
+      score -= frontage;
       score += rng.next() * 1.5; // a little personality
       if (score < bestScore) {
-        // Door faces the fire.
+        // Door faces the busiest path alongside, else the fire.
         const ax = CAMP.x - cen.x, az = CAMP.z - cen.z;
-        const facing = Math.abs(ax) > Math.abs(az) ? (ax > 0 ? 1 : 3) : (az > 0 ? 0 : 2);
+        const facing = frontage >= 1 ? bestSide : Math.abs(ax) > Math.abs(az) ? (ax > 0 ? 1 : 3) : (az > 0 ? 0 : 2);
         bestScore = score;
         best = { foot, facing, trees: free.trees };
       }
@@ -231,7 +264,7 @@ const activeProjects = (v: Village) => v.projects.filter((p) => !p.done);
  * Decide what the community wants next. Called each morning and whenever a
  * project finishes. Returns the project started, if any.
  */
-export function plan(w: World, v: Village, com: Community, rng: Rng, lead: string): Project | null {
+export function plan(w: World, v: Village, com: Community, rng: Rng, lead: string, seasonIdx = 0): Project | null {
   const active = activeProjects(v);
   if (active.length >= MAX_ACTIVE) return null;
   const pop = alive(com).length;
@@ -290,18 +323,26 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
       cost: { ...DEFS.kitchen.cost[0] }, workNeeded: DEFS.kitchen.work[0], target: 0, clearTrees: [],
     }) : null);
   const garden = () => (!hasBuilt(v, 'garden') && !has('garden') ? site('garden') : null);
+  const cellar = () => (!hasBuilt(v, 'cellar') && !has('cellar') ? site('cellar') : null);
+  // With winter coming, a cellar jumps the queue.
+  if (seasonIdx >= 1 && seasonIdx <= 2) wants.push(cellar);
+  // Stores filling up before winter: dig another cellar.
+  const cellars = v.buildings.filter((b) => b.kind === 'cellar').length;
+  if (seasonIdx >= 1 && seasonIdx <= 2 && cellars > 0 && cellars < 3 && com.resources.food > storageCapacity(v) * 0.85 && !has('cellar')) {
+    wants.push(() => site('cellar'));
+  }
   const workshop = () => (!hasBuilt(v, 'workshop') && !has('workshop') ? site('workshop') : null);
   // Personalities reorder priorities.
-  const mid = [kitchen, garden, workshop];
+  const mid = [kitchen, garden, workshop, cellar];
   if (traits.has('green_thumb')) mid.unshift(garden);
   if (traits.has('tinkerer')) mid.unshift(workshop);
   wants.push(...mid);
   if (beds < pop + 2) wants.push(shelter); // a little room for newcomers
   if (v.tier === 1 && !has('upgrade')) {
     wants.push(() => {
-      const old = v.buildings.find((b) => b.tier === 0 && (b.kind === 'hut' || b.kind === 'garden' || b.kind === 'workshop'));
+      const old = v.buildings.find((b) => b.tier === 0 && (b.kind === 'hut' || b.kind === 'garden' || b.kind === 'workshop' || b.kind === 'cellar'));
       if (!old) return null;
-      const def = DEFS[old.kind as 'hut' | 'garden' | 'workshop'];
+      const def = DEFS[old.kind as 'hut' | 'garden' | 'workshop' | 'cellar'];
       log(com, `${lead} wants to rebuild ${old.name.toLowerCase()} properly, in timber.`, 'good');
       return newProject(v, {
         kind: 'upgrade', tier: 1, name: `Rebuild as ${def.name[1].toLowerCase()}`, foot: old.foot, facing: old.facing,
@@ -313,7 +354,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   if (com.resources.glimmer >= 8 && lanterns < Math.min(4, Math.floor(com.day / 4)) && !has('lantern')) {
     wants.push(() => site('lantern'));
   }
-  if (v.buildings.filter((b) => b.kind === 'garden').length < Math.ceil(pop / 5) && !has('garden')) {
+  if (v.buildings.filter((b) => b.kind === 'garden').length < Math.min(2, Math.ceil(pop / 6)) && !has('garden')) {
     wants.push(() => site('garden'));
   }
 
@@ -360,7 +401,7 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
       const b = v.buildings.find((x) => x.id === p.target);
       if (b) {
         b.tier = 1;
-        const def = DEFS[b.kind as 'hut' | 'garden' | 'workshop'];
+        const def = DEFS[b.kind as 'hut' | 'garden' | 'workshop' | 'cellar'];
         b.name = def.name[1];
         if (def.beds) b.beds = def.beds[1];
         log(com, `The ${def.name[0].toLowerCase()} is gone; a ${def.name[1].toLowerCase()} stands in its place.`, 'good');
