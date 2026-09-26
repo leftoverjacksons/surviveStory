@@ -14,7 +14,8 @@ import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
 import { People } from './render/people';
 import { Camp } from './render/camp';
-import { HeapsView, VillageView } from './render/village';
+import { HeapsView, VillageView, bedSlot } from './render/village';
+import { RoofControl } from './render/roofs';
 import { PhenomenaView, ResonanceTexture } from './render/veil';
 import { nudgeCalm, nudgeOmen, resolveCouncil } from './sim/council';
 import { worldUniforms } from './render/util';
@@ -37,7 +38,9 @@ const scene = new THREE.Scene();
 const iso = new IsoCamera(view.clientWidth / view.clientHeight);
 iso.bounds = world.w / 2 - 8;
 const sky = new Sky(scene);
-const { composer, bloom } = createComposer(renderer, scene, iso.camera, view.clientWidth, view.clientHeight);
+const { composer, bloom, syncXray } = createComposer(renderer, scene, iso.camera, view.clientWidth, view.clientHeight);
+renderer.localClippingEnabled = true;
+const roofs = new RoofControl();
 
 const fog = new FogTexture(world);
 worldUniforms.uFogTex.value = fog.texture;
@@ -50,7 +53,12 @@ worldUniforms.uFogSize.value = world.w;
 scene.add(buildTerrain(world));
 const station = buildStation();
 scene.add(station.group);
-scene.add(buildVines(station.surfaces, station.edges));
+const vines = buildVines(station.surfaces, station.edges);
+scene.add(vines.walls, vines.roofs);
+for (const r of station.roofs) if (r !== station.store.fallen) roofs.addRoof(r); // the fallen slab is managed with the store's repairs
+roofs.addRoof(vines.roofs);
+for (const m of station.cutMaterials) roofs.addCutMaterial(m);
+roofs.addCutMaterial(vines.walls.material as THREE.Material);
 const trees = new TreeField(world);
 scene.add(trees.group);
 const bushes = new Bushes(world);
@@ -79,7 +87,7 @@ scene.add(orb.group);
 
 const camp = new Camp(world);
 scene.add(camp.group);
-const villageView = new VillageView(world, colony.village, station.store);
+const villageView = new VillageView(world, colony.village, station.store, roofs);
 scene.add(villageView.group);
 const heaps = new HeapsView(world);
 scene.add(heaps.group);
@@ -149,6 +157,25 @@ const hud = new Hud(colony, {
   },
   onOmen() { setZoneTool(null); setOmen(!omenMode); },
 });
+
+const roofBtn = document.getElementById('roof-btn')!;
+function cycleRoofs() {
+  const m = roofs.next();
+  villageView.sync();
+  roofBtn.textContent = `Roofs: ${m === 'cutaway' ? 'cut away' : m}`;
+  roofBtn.setAttribute('aria-pressed', String(m !== 'shown'));
+}
+roofBtn.addEventListener('click', cycleRoofs);
+
+/** Which bed an indoor sleeper is in: their rank among the building's assigned sleepers. */
+function bedOf(a: { id: number }) {
+  const bid = colony.beds.get(a.id);
+  if (bid === undefined) return null;
+  const b = colony.village.buildings.find((x) => x.id === bid);
+  if (!b) return null;
+  const mates = [...colony.beds.entries()].filter(([, v]) => v === bid).map(([k]) => k).sort((x, y) => x - y);
+  return bedSlot(world, b, mates.indexOf(a.id));
+}
 
 function setOmen(on: boolean) {
   omenMode = on;
@@ -273,6 +300,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (speed === 0) setSpeed(lastSpeed); else { lastSpeed = speed; setSpeed(0); }
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
+  else if (k === 'r') cycleRoofs();
   else if (k === 'v') { veilView = !veilView; hud.setVeilView(veilView); hud.render(); }
   else if (k === 'escape') { select(0); setZoneTool(null); setOmen(false); }
   else keys.add(k);
@@ -371,7 +399,7 @@ function frame() {
   herds.update(dt, colony.agents);
   trees.update(dt);
   bushes.update(dt);
-  people.update(t, dt, colony.agents);
+  people.update(t, dt, colony.agents, bedOf, roofs.mode !== 'shown');
   camp.update(t, community.resources.wood > 0);
   const occupied = new Set<number>();
   for (const a of colony.agents) if (a.indoors) { const b = colony.beds.get(a.id); if (b !== undefined) occupied.add(b); }
@@ -379,6 +407,7 @@ function frame() {
   mushroomGlow.color.setRGB(0.5, 1.2, 1.0).multiplyScalar(0.4 + sky.night * 1.6);
   bloom.strength = 0.45 + sky.night * 0.5;
 
+  syncXray();
   composer.render();
 
   uiTimer += dt;

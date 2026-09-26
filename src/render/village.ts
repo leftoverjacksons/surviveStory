@@ -3,15 +3,17 @@ import {
   footCenter, type Footprint, type Project, type Village,
 } from '../sim/buildings';
 import { CAR, KITCHEN, STORE } from '../sim/layout';
+import type { Building } from '../sim/buildings';
 import { heightAt, tileX, tileZ, type Heap, type World } from '../sim/world';
 import type { StoreParts } from './station';
+import type { RoofControl } from './roofs';
 import { enhance, glowTexture, makeRand } from './util';
 
 // ---------- shared materials ----------
 
 const matCache = new Map<string, THREE.Material>();
-function mat(color: string, fog = true): THREE.MeshLambertMaterial {
-  const key = `${color}${fog}`;
+function mat(color: string, fog = true, tag = ''): THREE.MeshLambertMaterial {
+  const key = `${color}${fog}${tag}`;
   let m = matCache.get(key) as THREE.MeshLambertMaterial | undefined;
   if (!m) {
     m = new THREE.MeshLambertMaterial({ color, flatShading: true });
@@ -281,7 +283,7 @@ function kitchen(p: number): THREE.Group {
 
 function lantern(p: number): THREE.Group {
   const g = new THREE.Group();
-  const wood = mat('#5b4330');
+  const wood = mat('#5b4330', true, 'lantern');
   const h = 2.5 * smooth(0, 0.6, p);
   if (h > 0.05) g.add(box(0.12, h, 0.12, wood, 0, h / 2, 0));
   if (p > 0.6) g.add(box(0.7, 0.08, 0.08, wood, 0.28, 2.4, 0));
@@ -289,7 +291,7 @@ function lantern(p: number): THREE.Group {
     const orb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), WISP);
     orb.position.set(0.55, 2.05, 0);
     g.add(orb);
-    g.add(box(0.02, 0.28, 0.02, mat('#3a3a38'), 0.55, 2.28, 0));
+    g.add(box(0.02, 0.28, 0.02, mat('#3a3a38', true, 'lantern'), 0.55, 2.28, 0));
     glowTex ??= glowTexture();
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#9ff2e0', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 }));
     halo.position.copy(orb.position);
@@ -410,6 +412,43 @@ function materialPile(p: Project, f: Footprint, world: World): THREE.Group {
   return g;
 }
 
+// ---------- beds ----------
+
+interface Slot { x: number; z: number; yaw: number }
+
+/** Where the beds are inside a building, in its local frame (door toward +z). */
+function localBeds(kind: string, tier: number): { x: number; z: number }[] {
+  if (kind === 'annex') return [{ x: 0.1, z: -1.2 }, { x: 0.1, z: 1.0 }];
+  if (kind === 'hut') return tier === 0 ? [{ x: -0.6, z: -0.1 }, { x: 0.6, z: -0.1 }] : [{ x: -0.8, z: -0.1 }, { x: 0, z: -0.1 }, { x: 0.8, z: -0.1 }];
+  return [];
+}
+
+const STORE_BEDS: { x: number; z: number }[] = [
+  { x: -4, z: -1.3 }, { x: -2.6, z: -1.3 }, { x: -1.2, z: -1.3 },
+  { x: -4, z: 1.1 }, { x: -2.6, z: 1.1 }, { x: -1.2, z: 1.1 },
+];
+
+/** World position and heading of bed `index` in a building. */
+export function bedSlot(world: World, b: Building, index: number): Slot | null {
+  if (b.kind === 'store') {
+    const p = STORE_BEDS[index];
+    return p ? { x: STORE.x + p.x, z: STORE.z + p.z, yaw: 0 } : null;
+  }
+  const p = localBeds(b.kind, b.tier)[index];
+  if (!p) return null;
+  const c = footCenter(world, b.foot);
+  const yaw = FACING_YAW[b.facing];
+  return { x: c.x + p.x * Math.cos(yaw) + p.z * Math.sin(yaw), z: c.z - p.x * Math.sin(yaw) + p.z * Math.cos(yaw), yaw };
+}
+
+function bedroll(color: string): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.72, 0.12, 1.7, mat(color), 0, 0.14, 0));
+  g.add(box(0.5, 0.1, 0.3, mat('#cfc6a8'), 0, 0.24, -0.66));
+  g.add(box(0.8, 0.08, 1.8, mat('#5b4632'), 0, 0.04, 0)); // pallet frame
+  return g;
+}
+
 // ---------- the view ----------
 
 interface Entry { key: string; group: THREE.Group; glow: THREE.Mesh[] }
@@ -419,7 +458,10 @@ export class VillageView {
   private entries = new Map<string, Entry>();
   private roofDone: THREE.Group | null = null;
 
-  constructor(private world: World, private village: Village, private store: StoreParts) {}
+  private storeInterior: THREE.Group | null = null;
+  private storeInteriorKey = '';
+
+  constructor(private world: World, private village: Village, private store: StoreParts, private roofs: RoofControl) {}
 
   private place(g: THREE.Group, f: Footprint, facing: number) {
     const c = footCenter(this.world, f);
@@ -443,6 +485,15 @@ export class VillageView {
       }
       default: g = new THREE.Group();
     }
+    if (kind !== 'lantern') g.userData.building = true;
+    if (p >= 1 && (kind === 'hut' || kind === 'annex')) {
+      const colors = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45'];
+      localBeds(kind, tier).forEach((b, i) => {
+        const bed = bedroll(colors[(seed + i) % colors.length]);
+        bed.position.set(b.x, 0.08, b.z);
+        g.add(bed);
+      });
+    }
     this.place(g, f, facing);
     return g;
   }
@@ -453,11 +504,28 @@ export class VillageView {
     if (e) this.dispose(e.group);
     const glow: THREE.Mesh[] = [];
     const group = build(glow);
+    this.register(group);
     this.group.add(group);
     this.entries.set(id, { key, group, glow });
   }
 
+  /** Hand roofs and building materials to the roof control. */
+  private register(root: THREE.Object3D) {
+    root.traverse((o) => {
+      if (o.userData.roofGroup) { this.roofs.addRoof(o); return; }
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mm = m.material as THREE.Material;
+      let inBuilding = false;
+      for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.building) { inBuilding = true; break; }
+      if (inBuilding && mm !== GHOST && mm.blending !== THREE.AdditiveBlending) this.roofs.addCutMaterial(mm);
+      // Anything above wall height on a building is roof.
+      if (o.parent?.userData.building && o.position.y > 2.25) this.roofs.addRoof(o);
+    });
+  }
+
   private dispose(g: THREE.Group) {
+    g.traverse((o) => this.roofs.removeRoof(o));
     this.group.remove(g);
     g.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
   }
@@ -468,10 +536,41 @@ export class VillageView {
     const live = new Set<string>();
     const st = v.buildings.find((b) => b.kind === 'store')!;
     this.store.door.material = mat(st.level >= 1 ? '#6b4f33' : '#141816', false);
-    this.store.fallen.visible = st.level < 2;
+    this.store.fallen.visible = st.level < 2 && this.roofs.mode === 'shown';
     if (st.level >= 2 && !this.roofDone) {
       this.roofDone = roofPatch(1);
+      this.roofDone.userData.roofGroup = true;
+      this.register(this.roofDone);
       this.group.add(this.roofDone);
+    }
+    // Inside the store: junk before it's cleared, cots after.
+    const ikey = `${st.level}:${st.beds}`;
+    if (ikey !== this.storeInteriorKey) {
+      this.storeInteriorKey = ikey;
+      if (this.storeInterior) this.group.remove(this.storeInterior);
+      const gi = new THREE.Group();
+      if (st.level === 0) {
+        const rand = makeRand(8);
+        for (let i = 0; i < 14; i++) {
+          const b = box(0.3 + rand() * 0.7, 0.2 + rand() * 0.5, 0.3 + rand() * 0.6, mat(PANELS[i % PANELS.length], false),
+            STORE.x - 4 + rand() * 6, 0.2, STORE.z - 2 + rand() * 4);
+          b.rotation.set(rand() * 0.5, rand() * 3, rand() * 0.5);
+          gi.add(b);
+        }
+      } else {
+        const colors = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a'];
+        for (let i = 0; i < st.beds && i < STORE_BEDS.length; i++) {
+          const bed = bedroll(colors[i]);
+          bed.position.set(STORE.x + STORE_BEDS[i].x, 0.08, STORE.z + STORE_BEDS[i].z);
+          gi.add(bed);
+        }
+        // A lamp on an upturned crate.
+        gi.add(box(0.5, 0.5, 0.5, mat('#7b6243', false), STORE.x - 0.2, 0.25, STORE.z - 0.2));
+      }
+      gi.userData.building = true;
+      this.register(gi);
+      this.storeInterior = gi;
+      this.group.add(gi);
     }
 
     for (const b of v.buildings) {
@@ -491,7 +590,12 @@ export class VillageView {
       this.upsert(id, key, (glow) => {
         const g = new THREE.Group();
         if (p.kind === 'clear_store') { g.add(junkPile(1 - prog)); return g; }
-        if (p.kind === 'patch_roof') { g.add(roofPatch(prog)); return g; }
+        if (p.kind === 'patch_roof') {
+          const rp = roofPatch(prog);
+          rp.userData.roofGroup = true;
+          g.add(rp);
+          return g;
+        }
         if (p.kind === 'upgrade') {
           // Scaffold stakes and materials beside the building being rebuilt.
           g.add(blueprint(p.foot, this.world));
@@ -556,16 +660,16 @@ export class HeapsView {
   private car(h: Heap) {
     const rand = makeRand(h.id * 31 + 7);
     const g = new THREE.Group();
-    const body = mat(['#6d4a36', '#5a6068', '#7a5a3a', '#4e5f55'][h.id % 4]);
+    const body = mat(['#6d4a36', '#5a6068', '#7a5a3a', '#4e5f55'][h.id % 4], true, 'heap');
     const parts: THREE.Object3D[] = [];
     g.add(box(4.0, 0.7, 1.75, body, 0, 0.5, 0));
     const cabin = new THREE.Group();
     cabin.add(box(2.1, 0.65, 1.55, body, -0.3, 1.15, 0));
-    cabin.add(box(1.9, 0.45, 1.57, mat('#1d2527'), -0.3, 1.18, 0));
+    cabin.add(box(1.9, 0.45, 1.57, mat('#1d2527', true, 'heap'), -0.3, 1.18, 0));
     g.add(cabin);
     for (const [x, z] of [[-1.3, 0.85], [1.3, 0.85], [-1.3, -0.85], [1.3, -0.85]]) {
       if (rand() < 0.4) continue;
-      const w = cyl(0.3, 0.2, mat('#2a2826'), x, 0.2, z, 8);
+      const w = cyl(0.3, 0.2, mat('#2a2826', true, 'heap'), x, 0.2, z, 8);
       w.rotation.x = Math.PI / 2;
       g.add(w);
       parts.push(w);
@@ -585,7 +689,7 @@ export class HeapsView {
     const g = new THREE.Group();
     const parts: THREE.Object3D[] = [];
     for (let i = 0; i < 8; i++) {
-      const m = mat(PANELS[Math.floor(rand() * PANELS.length)]);
+      const m = mat(PANELS[Math.floor(rand() * PANELS.length)], true, 'heap');
       const b = rand() < 0.3
         ? cyl(0.25, 0.7, m, (rand() - 0.5) * 1.2, 0.3, (rand() - 0.5) * 1.2)
         : box(0.3 + rand() * 0.8, 0.08 + rand() * 0.3, 0.3 + rand() * 0.7, m, (rand() - 0.5) * 1.3, 0.1 + rand() * 0.4, (rand() - 0.5) * 1.3);

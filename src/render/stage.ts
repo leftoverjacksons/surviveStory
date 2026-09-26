@@ -198,11 +198,40 @@ export function createRenderer(container: HTMLElement) {
   return renderer;
 }
 
+/**
+ * A render pass that draws over the previous one. A colour background makes
+ * three.js clear the frame on every render, so it is lifted for this pass.
+ */
+class XrayPass extends RenderPass {
+  render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget, deltaTime: number, maskActive: boolean) {
+    const bg = this.scene.background;
+    this.scene.background = null;
+    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+    this.scene.background = bg;
+  }
+}
+
 export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, w: number, h: number) {
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
+  // X-ray: people hidden behind roofs, walls or trees show as faint silhouettes.
+  // They live on layer 1 too; this pass draws only where they are occluded.
+  const xrayCam = (camera as THREE.OrthographicCamera).clone();
+  const xrayMat = new THREE.MeshBasicMaterial({
+    color: '#9ff2e0', transparent: true, opacity: 0.32, depthWrite: false, depthFunc: THREE.GreaterDepth, fog: false,
+    // Pull the silhouette toward the camera so a person never x-rays through themselves.
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -16,
+  });
+  const xray = new XrayPass(scene, xrayCam, xrayMat);
+  xray.clear = false;
+  xray.clearDepth = false;
+  composer.addPass(xray);
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.7, 0.55, 1.05);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
-  return { composer, bloom };
+  const syncXray = () => {
+    xrayCam.copy(camera as THREE.OrthographicCamera);
+    xrayCam.layers.set(1);
+  };
+  return { composer, bloom, syncXray };
 }

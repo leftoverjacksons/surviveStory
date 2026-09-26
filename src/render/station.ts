@@ -7,6 +7,8 @@ export interface VineSurface {
   /** Returns a random point on the surface plus its outward normal. */
   sample(rand: () => number): { p: THREE.Vector3; n: THREE.Vector3 };
   weight: number;
+  /** Ivy on a roof: lifted off with the roofs. */
+  roof?: boolean;
 }
 
 export interface VineEdge { a: THREE.Vector3; b: THREE.Vector3 } // hanging-vine anchor lines
@@ -36,7 +38,18 @@ function boxSurface(center: THREE.Vector3, size: THREE.Vector3, faces: ('px' | '
 
 export interface StoreParts { fallen: THREE.Mesh; door: THREE.Mesh; glow: THREE.Mesh[] }
 
-export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; edges: VineEdge[]; store: StoreParts } {
+export interface StationBuild {
+  group: THREE.Group;
+  surfaces: VineSurface[];
+  edges: VineEdge[];
+  store: StoreParts;
+  /** Lifted off when roofs are hidden. */
+  roofs: THREE.Object3D[];
+  /** Sliced at knee height in cutaway view. */
+  cutMaterials: THREE.Material[];
+}
+
+export function buildStation(): StationBuild {
   const g = new THREE.Group();
   const surfaces: VineSurface[] = [];
   const edges: VineEdge[] = [];
@@ -49,26 +62,60 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
   const fasciaTeal = lambert('#4f7f7a');
   const glass = new THREE.MeshLambertMaterial({ color: '#1a2226', transparent: true, opacity: 0.85 });
 
-  // --- store building ---
+  const roofs: THREE.Object3D[] = [];
+  const storeWall = lambert('#a39e90');
+  const cutMaterials: THREE.Material[] = [storeWall, glass];
+
+  // --- store building: hollow, so its interior can be seen with the roof off ---
   const storeC = new THREE.Vector3(STORE.x, STORE.h / 2, STORE.z);
   const storeS = new THREE.Vector3(STORE.w, STORE.h, STORE.d);
-  const store = new THREE.Mesh(new THREE.BoxGeometry(storeS.x, storeS.y, storeS.z), concrete);
-  store.position.copy(storeC);
-  g.add(store);
+  const T = 0.28; // wall thickness
+  const x0s = STORE.x - STORE.w / 2, x1s = STORE.x + STORE.w / 2;
+  const z0s = STORE.z - STORE.d / 2, z1s = STORE.z + STORE.d / 2;
+  const wallBox = (w: number, h: number, d: number, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), storeWall);
+    m.position.set(x, y, z);
+    g.add(m);
+  };
+  wallBox(STORE.w, STORE.h, T, STORE.x, STORE.h / 2, z0s + T / 2);                    // back
+  wallBox(T, STORE.h, STORE.d, x0s + T / 2, STORE.h / 2, STORE.z);                    // west
+  wallBox(T, STORE.h, STORE.d, x1s - T / 2, STORE.h / 2, STORE.z);                    // east
+  const doorX = STORE.x + 0.7, doorHalf = 0.6;
+  wallBox(doorX - doorHalf - x0s, STORE.h, T, (x0s + doorX - doorHalf) / 2, STORE.h / 2, z1s - T / 2);
+  wallBox(x1s - doorX - doorHalf, STORE.h, T, (x1s + doorX + doorHalf) / 2, STORE.h / 2, z1s - T / 2);
+  wallBox(doorHalf * 2, STORE.h - 2.3, T, doorX, 2.3 + (STORE.h - 2.3) / 2, z1s - T / 2); // lintel
+  const floorMat = lambert('#5e5a52');
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(STORE.w - T * 2, 0.08, STORE.d - T * 2), floorMat);
+  floor.position.set(STORE.x, 0.04, STORE.z);
+  g.add(floor);
+  // Fittings left from before: a counter and empty shelving.
+  const fit = lambert('#7a6a55');
+  cutMaterials.push(fit);
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.0, 0.7), fit);
+  counter.position.set(STORE.x + 3.1, 0.5, STORE.z + 1.2);
+  g.add(counter);
+  for (const sx of [1.6, 3.2]) {
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.0, 0.45), fit);
+    shelf.position.set(STORE.x + sx, 1.0, z0s + T + 0.25);
+    g.add(shelf);
+  }
   surfaces.push(boxSurface(storeC, storeS, ['px', 'nx', 'pz', 'nz'], 3));
   // Roof slab, partly collapsed at one end.
   const roof = new THREE.Mesh(new THREE.BoxGeometry(STORE.w * 0.62, 0.3, STORE.d + 0.6), concreteDark);
   roof.position.set(STORE.x - STORE.w * 0.19, STORE.h + 0.15, STORE.z);
   g.add(roof);
-  surfaces.push(boxSurface(roof.position.clone(), new THREE.Vector3(STORE.w * 0.62, 0.3, STORE.d + 0.6), ['py'], 2));
+  roofs.push(roof);
+  surfaces.push({ ...boxSurface(roof.position.clone(), new THREE.Vector3(STORE.w * 0.62, 0.3, STORE.d + 0.6), ['py'], 2), roof: true });
   const fallen = new THREE.Mesh(new THREE.BoxGeometry(STORE.w * 0.4, 0.3, STORE.d + 0.4), concreteDark);
   fallen.position.set(STORE.x + STORE.w * 0.3, STORE.h - 0.9, STORE.z + 0.2);
   fallen.rotation.z = -0.42;
   g.add(fallen);
+  roofs.push(fallen);
   // Windows and door on the front face.
   const front = STORE.z + STORE.d / 2 + 0.01;
   const glow: THREE.Mesh[] = [];
   const glowMat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffc27a').multiplyScalar(1.6), toneMapped: false });
+  cutMaterials.push(glowMat);
   for (const wx of [-3.4, -1.4, 2.8]) {
     const win = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.3, 0.08), glass);
     win.position.set(STORE.x + wx, 1.7, front);
@@ -80,7 +127,9 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
     g.add(lamp);
     glow.push(lamp);
   }
-  const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.2, 0.08), lambert('#141816'));
+  const doorMat = lambert('#141816');
+  cutMaterials.push(doorMat);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.2, 0.08), doorMat);
   door.position.set(STORE.x + 0.7, 1.1, front);
   g.add(door);
 
@@ -89,7 +138,8 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(CANOPY.w, 0.5, CANOPY.d), concreteDark);
   canopy.position.set(CANOPY.x, cy, CANOPY.z);
   g.add(canopy);
-  surfaces.push(boxSurface(canopy.position.clone(), new THREE.Vector3(CANOPY.w, 0.5, CANOPY.d), ['py'], 4));
+  roofs.push(canopy);
+  surfaces.push({ ...boxSurface(canopy.position.clone(), new THREE.Vector3(CANOPY.w, 0.5, CANOPY.d), ['py'], 4), roof: true });
   // Two-tone fascia band (unbranded).
   const band = (w: number, d: number, x: number, z: number) => {
     const b1 = new THREE.Mesh(new THREE.BoxGeometry(w, 0.32, d), fasciaCream);
@@ -97,6 +147,7 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
     const b2 = new THREE.Mesh(new THREE.BoxGeometry(w + 0.01, 0.14, d + 0.01), fasciaTeal);
     b2.position.set(x, cy - 0.12, z);
     g.add(b1, b2);
+    roofs.push(b1, b2);
   };
   band(CANOPY.w + 0.1, 0.1, CANOPY.x, CANOPY.z + CANOPY.d / 2);
   band(CANOPY.w + 0.1, 0.1, CANOPY.x, CANOPY.z - CANOPY.d / 2);
@@ -116,6 +167,7 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
   for (const px of [-3.6, 3.6]) {
     for (const pz of [CANOPY.z - 1.6, CANOPY.z + 1.6]) {
       const pil = new THREE.Mesh(new THREE.BoxGeometry(0.4, cy, 0.4), concrete);
+      if (!cutMaterials.includes(concrete)) cutMaterials.push(concrete);
       pil.position.set(px, cy / 2, pz);
       g.add(pil);
       surfaces.push(boxSurface(pil.position.clone(), new THREE.Vector3(0.4, cy, 0.4), ['px', 'nx', 'pz', 'nz'], 0.5));
@@ -193,12 +245,19 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
     const m = (o as THREE.Mesh).material as THREE.Material | undefined;
     if (m && (m as THREE.MeshLambertMaterial).isMeshLambertMaterial && !enhanced.has(m)) enhance(m, { fog: false });
   });
-  return { group: shadowed(g), surfaces, edges, store: { fallen, door, glow } };
+  return { group: shadowed(g), surfaces, edges, store: { fallen, door, glow }, roofs, cutMaterials };
 }
 
-/** Leaves on walls, the canopy roof, and strands hanging from the rim. */
-export function buildVines(surfaces: VineSurface[], edges: VineEdge[]): THREE.InstancedMesh {
-  const rand = makeRand(11);
+/** Ivy split into what grows on the roofs (and hangs from them) and what climbs the walls. */
+export function buildVines(surfaces: VineSurface[], edges: VineEdge[]): { walls: THREE.InstancedMesh; roofs: THREE.InstancedMesh } {
+  return {
+    walls: buildVineMesh(surfaces.filter((s) => !s.roof), [], 7000, 11),
+    roofs: buildVineMesh(surfaces.filter((s) => s.roof), edges, 9000, 12),
+  };
+}
+
+function buildVineMesh(surfaces: VineSurface[], edges: VineEdge[], total: number, seed: number): THREE.InstancedMesh {
+  const rand = makeRand(seed);
   const leaf = new THREE.BufferGeometry();
   leaf.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
     0, 0, 0, 0.09, 0.1, 0, 0, 0.24, 0, -0.09, 0.1, 0,
@@ -228,7 +287,7 @@ export function buildVines(surfaces: VineSurface[], edges: VineEdge[]): THREE.In
 
   const totalW = surfaces.reduce((a, sf) => a + sf.weight, 0);
   for (const sf of surfaces) {
-    const count = Math.floor((sf.weight / totalW) * 9000);
+    const count = Math.floor((sf.weight / totalW) * total);
     for (let i = 0; i < count; i++) {
       const { p, n: nrm } = sf.sample(rand);
       // Clump: skip some samples to leave bare patches.

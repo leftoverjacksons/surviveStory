@@ -93,7 +93,7 @@ export class People {
     body.add(sheet);
 
     body.add(hipL, hipR, torso, head, armL, armR);
-    body.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+    body.traverse((o) => { o.castShadow = true; o.receiveShadow = true; o.layers.enable(1); });
 
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.42, 0.52, 28).rotateX(-Math.PI / 2),
@@ -138,13 +138,27 @@ export class People {
     return true;
   }
 
-  update(t: number, dt: number, agents: Agent[]) {
+  /**
+   * `bed` gives the bed an indoor agent sleeps in; when `showIndoors` is set
+   * (roofs off), sleepers are drawn lying there instead of hidden.
+   */
+  update(t: number, dt: number, agents: Agent[], bed?: (a: Agent) => { x: number; z: number; yaw: number } | null, showIndoors = false) {
     for (const a of agents) {
       const r = this.rigs.get(a.id);
       if (!r) continue;
       const root = r.root;
-      root.visible = !a.indoors;
-      if (a.indoors) { root.position.set(a.x, heightAt(this.world, a.x, a.z), a.z); continue; }
+      if (a.indoors) {
+        const slot = showIndoors && bed ? bed(a) : null;
+        root.visible = !!slot;
+        if (slot) {
+          root.position.set(slot.x, heightAt(this.world, slot.x, slot.z) + 0.1, slot.z);
+          root.rotation.y = slot.yaw;
+          r.ring.visible = a.id === this.selected;
+          this.pose(r, a, t);
+        } else root.position.set(a.x, heightAt(this.world, a.x, a.z), a.z);
+        continue;
+      }
+      root.visible = true;
       // Snap after long jumps (e.g. stepping out of a doorway).
       if (Math.hypot(a.x - root.position.x, a.z - root.position.z) > 3) root.position.set(a.x, 0, a.z);
       // Smooth toward the simulated position so fast-forward still reads as motion.
@@ -239,7 +253,7 @@ export class People {
       }
       case 'sleep': {
         r.body.rotation.x = -Math.PI / 2;
-        r.body.position.set(0, 0.18, 0.85);
+        r.body.position.set(0, 0.3, 0.85);
         r.torso.scale.y = 1 + Math.sin(ph * 0.8) * 0.03;
         break;
       }
