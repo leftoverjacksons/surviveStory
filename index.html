@@ -25,6 +25,7 @@
     --f-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
   }
   html, body { height: 100%; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body); overflow: hidden; }
   #view { position: fixed; inset: 0; }
   #view canvas { display: block; touch-action: none; }
@@ -131,6 +132,40 @@
   #season { color: var(--ink); }
   body.painting #view canvas { cursor: crosshair; }
 
+  /* the Veil */
+  #veil { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+  #veil .h { font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: 0.09em; color: var(--glimmer); }
+  #veil .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  #veil button { font-size: 12px; padding: 3px 8px; }
+  #veil button[aria-pressed="true"] { background: var(--glimmer); color: #0b1210; border-color: var(--glimmer); font-weight: 700; }
+  #veil button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .ready.veil .bar i { background: var(--glimmer); }
+  .res.influence b { color: var(--glimmer); }
+  .bar.sight i { background: var(--glimmer); }
+  .label.spirit { color: #e6dcff; font-style: italic; text-shadow: 0 0 8px #7a5ad0, 0 1px 3px #000; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0; transition: opacity 600ms;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(110, 70, 190, 0.45) 100%); }
+  @media (prefers-reduced-motion: reduce) { #vignette { transition: none; } }
+
+  /* the council */
+  #council-bar { top: calc(env(safe-area-inset-top, 0px) + 84px); left: 50%; transform: translateX(-50%); z-index: 4; }
+  #council-bar button { background: rgba(28, 20, 44, 0.9); border-color: rgba(201, 184, 255, 0.55); color: #e6dcff; padding: 7px 14px; font-size: 13px; box-shadow: 0 0 18px rgba(160, 120, 255, 0.25); }
+  #council { top: calc(env(safe-area-inset-top, 0px) + 12px); left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 32px)); max-height: calc(100% - 140px); overflow-y: auto; padding: 14px 16px; display: grid; gap: 10px; z-index: 4; border-color: rgba(201, 184, 255, 0.35); }
+  #council h2 { margin: 0; font: 400 20px var(--f-display); letter-spacing: 0.02em; }
+  #council .sub { font-size: 12px; color: var(--ink-dim); }
+  .prop { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,0.03); }
+  .prop .t { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .prop .t b { font-size: 14px; }
+  .prop .cost { font: 11px var(--f-mono); color: var(--ember); white-space: nowrap; }
+  .prop q { font-style: italic; color: var(--ink); }
+  .prop .who { font-size: 12px; color: var(--ink-dim); }
+  .prop .who em { font-style: normal; color: var(--ink); }
+  .prop button { justify-self: start; margin-top: 4px; }
+  #council .top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  #council .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--ink-dim); }
+  #council label { display: inline-flex; gap: 6px; align-items: center; color: var(--glimmer); }
+  body.omen #view canvas { cursor: crosshair; }
+
   #boot { position: fixed; inset: 0; display: grid; place-items: center; z-index: 5; background: var(--bg); font: 22px var(--f-display); color: var(--ink-dim); transition: opacity 600ms; }
 
   @media (max-width: 760px) {
@@ -148,6 +183,9 @@
 
 <div id="view"></div>
 <div id="labels"></div>
+<div id="vignette"></div>
+<div id="council-bar" class="hud" hidden><button id="council-open" type="button">The council is meeting · hear them</button></div>
+<section id="council" class="hud panel" hidden aria-live="polite"></section>
 <div id="boot">The Quiet After…</div>
 
 <div id="top" class="hud">
@@ -163,6 +201,7 @@
   <h2>Village plans <span id="beds">beds 0/0</span></h2>
   <div id="projects"></div>
   <div id="winter"></div>
+  <div id="veil"></div>
 </section>
 
 <aside id="roster" class="hud panel collapsed">

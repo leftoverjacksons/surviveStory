@@ -86,6 +86,9 @@ export const worldUniforms = {
   uAutumn: { value: 0 },
   uBare: { value: 0 },
   uBlossom: { value: 0 },
+  /** The Veil: resonance texture and how strongly to show it (0 = hidden). */
+  uResTex: { value: null as THREE.Texture | null },
+  uVeil: { value: 0 },
 };
 /** Back-compat alias used by older call sites. */
 export const windUniforms = worldUniforms;
@@ -124,7 +127,7 @@ const SEASON_GLSL: Record<SeasonStyle, string> = {
       vec3 aut = vHash < 0.2 ? vec3(0.62, 0.16, 0.08) : mix(vec3(0.85, 0.38, 0.1), vec3(0.95, 0.72, 0.18), vHash);
       diffuseColor.rgb = mix(diffuseColor.rgb, aut, uAutumn * 0.85);
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.4, 0.34, 0.29), uBare * 0.85);
-      if (vHash > 0.62) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.98, 0.8, 0.86), uBlossom * 0.8);
+      if (vHash > 0.74) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.7, 0.8), uBlossom * 0.6);
     }`,
 };
 
@@ -190,7 +193,8 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
     let fs = shader.fragmentShader.replace(
       '#include <common>',
       `#include <common>
-      uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform float uFogSize; uniform float uTime; uniform float uZone;
+      uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform float uVeil;
+      uniform float uFogSize; uniform float uTime; uniform float uZone;
       uniform float uSnow; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
       varying vec2 vFowXZ; varying float vUp; varying float vHash;`,
     );
@@ -223,6 +227,16 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
           float zl = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
           gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 1.06 + zoneCol * 0.035 * zl, min(zk, 1.0) * uZone);
           gl_FragColor.rgb = mix(gl_FragColor.rgb, zoneCol * (zl * 1.7 + 0.02), edge * 0.6 * uZone);` : ''}
+          ${zone ? `
+          if (uVeil > 0.001) {
+            // The Veil view: where it is thin, the land glows violet; where it is worn, grey.
+            float rv = texture2D(uResTex, fuv).r;
+            float vl = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
+            vec3 thin = vec3(0.62, 0.45, 1.0) * (0.35 + vl * 1.2) + vec3(0.1, 0.25, 0.3) * sin(uTime * 0.6 + vFowXZ.x * 0.15) * 0.15;
+            vec3 worn = vec3(vl * 0.9, vl * 0.85, vl * 0.8);
+            vec3 veilCol = mix(worn, thin, smoothstep(0.25, 0.8, rv));
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, veilCol, uVeil * 0.6);
+          }` : ''}
           float drift = sin(vFowXZ.x * 0.21 + uTime * 0.15) * sin(vFowXZ.y * 0.17 - uTime * 0.11) * 0.08;
           float k = smoothstep(0.25, 0.75, seen + drift);
           float lum = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));

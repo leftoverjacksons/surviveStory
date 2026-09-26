@@ -216,11 +216,20 @@ export function maybeConvene(col: Colony, rng: Rng) {
     if (kinds.has(key) || speakers.has(p.proposer)) continue;
     kinds.add(key);
     speakers.add(p.proposer);
-    const support = [p.proposer, ...living.filter((s) => s.id !== p.proposer
-      && bondValue(c, s.id, p.proposer) / 100 + affinity(col, s, p) + rng.range(-0.2, 0.2) > 0.15).map((s) => s.id)];
-    picked.push({ ...p, id: council.nextId++, support });
+    picked.push({ ...p, id: council.nextId++, support: [] });
   }
   if (picked.length < 2) { council.nextDay = c.day + 1; return; }
+  // Everyone lines up behind one voice: their own, or the one they like best.
+  for (const s of living) {
+    const own = picked.find((p) => p.proposer === s.id);
+    if (own) { own.support.push(s.id); continue; }
+    let best = picked[0], bestScore = -Infinity;
+    for (const p of picked) {
+      const sc = bondValue(c, s.id, p.proposer) / 100 + affinity(col, s, p) + rng.range(-0.25, 0.25);
+      if (sc > bestScore) { best = p; bestScore = sc; }
+    }
+    best.support.push(s.id);
+  }
   council.active = { proposals: picked, deadline: col.minute + 1440 };
   const names = picked.map((p) => first(c.survivors.find((s) => s.id === p.proposer)!));
   log(c, `The council met by the fire. ${names.join(', ')} each spoke for something.`, 'info');

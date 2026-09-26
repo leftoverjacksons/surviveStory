@@ -15,6 +15,8 @@ import { Fireflies, Orb, Wisps } from './render/mystic';
 import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView } from './render/village';
+import { PhenomenaView, ResonanceTexture } from './render/veil';
+import { nudgeCalm, nudgeOmen, resolveCouncil } from './sim/council';
 import { worldUniforms } from './render/util';
 import { Hud, type ZoneTool } from './ui/hud';
 
@@ -41,6 +43,8 @@ const fog = new FogTexture(world);
 worldUniforms.uFogTex.value = fog.texture;
 const wear = new WearTexture(world);
 worldUniforms.uWearTex.value = wear.texture;
+const resonance = new ResonanceTexture(colony);
+worldUniforms.uResTex.value = resonance.texture;
 worldUniforms.uFogSize.value = world.w;
 
 scene.add(buildTerrain(world));
@@ -83,6 +87,10 @@ const fields = new FieldsView(world);
 scene.add(fields.group);
 const precip = new Precipitation();
 scene.add(precip.group);
+const phenomena = new PhenomenaView(colony, document.getElementById('labels')!);
+scene.add(phenomena.group);
+let veilView = false;
+let omenMode = false;
 const people = new People(world);
 scene.add(people.group);
 
@@ -129,8 +137,24 @@ const hud = new Hud(colony, {
   onSpeed(level) { setSpeed(level); },
   onSelect(id) { select(id); },
   onFollow() { setFollow(!following); },
-  onZoneTool(mode) { setZoneTool(mode); },
+  onZoneTool(mode) { setOmen(false); setZoneTool(mode); },
+  onCouncil(id, dream) {
+    resolveCouncil(colony, id, dream);
+    hud.render();
+  },
+  onVeilView() { veilView = !veilView; hud.setVeilView(veilView); hud.render(); },
+  onCalm() {
+    if (people.selected) nudgeCalm(colony, people.selected);
+    hud.render();
+  },
+  onOmen() { setZoneTool(null); setOmen(!omenMode); },
 });
+
+function setOmen(on: boolean) {
+  omenMode = on;
+  hud.setOmenMode(on);
+  hud.render();
+}
 
 let zoneTool: ZoneTool | null = null;
 const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, erase: Zone.None };
@@ -212,6 +236,14 @@ canvas.addEventListener('pointerup', (e) => {
   pointers.delete(e.pointerId);
   pinchDist = 0;
   if (zoneTool && p?.button === 0) { replan(colony); return; }
+  if (omenMode && p?.button === 0 && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) <= 6) {
+    const r = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, iso.camera);
+    if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) nudgeOmen(colony, hitPoint.x, hitPoint.z);
+    setOmen(false);
+    return;
+  }
   if (!p || p.button !== 0 || Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 6) return;
   // A click: try to select a survivor.
   const r = canvas.getBoundingClientRect();
@@ -241,7 +273,8 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (speed === 0) setSpeed(lastSpeed); else { lastSpeed = speed; setSpeed(0); }
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
-  else if (k === 'escape') { select(0); setZoneTool(null); }
+  else if (k === 'v') { veilView = !veilView; hud.setVeilView(veilView); hud.render(); }
+  else if (k === 'escape') { select(0); setZoneTool(null); setOmen(false); }
   else keys.add(k);
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -255,6 +288,7 @@ window.addEventListener('resize', () => {
 });
 
 // ---------- loop ----------
+const vignette = document.getElementById('vignette')!;
 const clock = new THREE.Clock();
 const headPos = new THREE.Vector3();
 const followPos = new THREE.Vector3();
@@ -320,6 +354,13 @@ function frame() {
   sky.follow(iso.target);
   sky.setHour(hour, daylightHours(dayFrac), gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, look.snow);
   precip.update(dt, t, iso.target, weather === 'rain' ? 'rain' : weather === 'snow' ? 'snow' : null);
+  // Seeing through their eyes: a selected survivor's Sight tints the world and reveals the Veil.
+  const viewer = people.selected ? community.survivors.find((s) => s.id === people.selected) : undefined;
+  const sightK = viewer ? viewer.sight / 100 : 0;
+  worldUniforms.uVeil.value += ((veilView ? 1 : sightK * 0.6) - worldUniforms.uVeil.value) * Math.min(1, dt * 3);
+  vignette.style.opacity = viewer ? (0.1 + sightK * 0.75).toFixed(2) : '0';
+  resonance.sync(t);
+  phenomena.update(t, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   wear.sync(t);
   fog.sync();
   worldUniforms.uTime.value = t;

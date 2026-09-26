@@ -41,7 +41,7 @@ Look: *Tiny Glade*.
 
 ## 2. The player
 
-**The player is a presence the community half-senses.** [planned]
+**The player is a presence the community half-senses.** **[built: C2]**
 
 - The player exists on the far side of the Veil. The community does not know
   what the player is: a spirit, the Orb, the land itself, their own better
@@ -73,7 +73,7 @@ Time runs continuously (pause, 1×, 3×, 8×). **[built]**
 
 ## 4. The Veil (Sight, Resonance, Glimmer)
 
-The game's signature system. **[planned: milestone C2]**
+The game's signature system. **[built: C2]**
 
 | Quantity | Scope | What it is | Rises with | Falls with |
 |---|---|---|---|---|
@@ -181,7 +181,7 @@ Buildings should frame lanes and shared spaces.
 
 ---
 
-## 8. Council proposals [planned: C2]
+## 8. Council proposals **[built: C2]**
 
 - Every few days the council brings two or three proposals, each voiced by a
   named survivor who wants it: "Quill wants a smokehouse before winter." /
@@ -301,10 +301,45 @@ camera.
 | A: Living world | Procedural region, autonomous survivors, needs, roles, fog of war | **[built]** |
 | B: Village | Home zone, store-first, planner, construction, salvage → timber, newcomers | **[built]** |
 | C1: The Living Year | Calendar and seasons (48-day year), weather, seasonal visuals, woodlots with replanting, fields, sacred ground, winter needs (firewood, stores, warmth), desire paths → lanes, lane-aware siting | **[built]** |
-| **C2: The Veil** | Resonance field, Sight, phenomena on the perception gradient, see-through-their-eyes, council proposals, Influence and nudges | **[next]** |
-| C3: Art pass | Lighting (GTAO, grading, fog, depth of field), procedural building parts, flowers and moss, character-model trial | [planned] |
+| C2: The Veil | Resonance field, Sight, phenomena on the perception gradient, see-through-their-eyes, council proposals, Influence and nudges | **[built]** |
+| **C3: Art pass** | Lighting (GTAO, grading, fog, depth of field), procedural building parts, flowers and moss, character-model trial | **[next]** |
 | D: Expeditions | Parties, ruins, blueprints, entity encounters, tactical hook | [planned] |
 | E: Generations | Skills by doing, aging, families, children, mentorship, personal arcs | [planned] |
+
+### C2 as built
+
+- **Resonance** is a 64×64 field (4 tiles per cell). Baseline: forest 0.72,
+  water 0.66, meadow 0.6, grass 0.5, concrete 0.25, asphalt 0.22, plus a
+  bonus falling off around the Ring. It drifts 5%/day toward baseline plus
+  sacred ground (+0.3), shrines (+0.22, radius 3 cells) and lanterns.
+  Thinned by felling (0.012 in woodlots, 0.03 elsewhere, doubled within 14
+  tiles of the Ring), salvage (0.015), quarrels, cold nights, rationing and
+  deaths (0.2 over the home area). Restored by planting, good company,
+  festivals and offerings.
+- **Sight** starts from attunement ×7, Orb-Touched +15, psi +10, plus
+  chance. Grows while attuning at the Ring, dreaming, and living in rich
+  places; exhaustion and grief dim it. Shown on each survivor's card.
+- **Phenomena**: the Choir (Ring), the White Stag, shades (after a death),
+  the Lantern Man (points toward an undiscovered place, asks for glimmer),
+  the Moth Woman (asks for her grove to be kept), the Orb (rare; raises
+  Sight and Influence), and Hollows when home resonance falls below 0.3.
+  Reading = Sight + resonance×40 (+10 Orb-Touched) − depth: < −10 nothing,
+  < 10 a chill, < 35 luminous, else coherent. Things appear at the edge of
+  where people are, mostly from dusk. Up to two individual accounts per
+  event; the rest become testimony.
+- **Influence** grows with collective Sight. Nudges: Calm (10), Omen (12),
+  Dream at council (15).
+- **Council** every four days: proposals from builds (cellar, house, shrine,
+  lantern, workbench), seasonal festivals, rest day, letting the Ring grow
+  wild, opening/closing the gates, and entity requests. Each survivor backs
+  one voice (bond + temperament). Backers gain, passed-over proposers lose
+  a little morale unless you send a dream. Silence: majority decides in a day.
+- **Seeing through their eyes**: selecting a survivor renders phenomena as
+  that survivor perceives them, tints the view by their Sight, and fades in
+  the Veil view (V toggles it fully).
+
+Year probe with C2: no deaths or departures in either scenario, ~9 councils
+a year, mean Sight ~40 by year's end, home resonance ~0.5 under normal play.
 
 ### C1 results
 

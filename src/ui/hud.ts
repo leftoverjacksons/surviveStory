@@ -7,6 +7,8 @@ import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../s
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { exploredFraction } from '../sim/world';
 import { bedsTotal, outstanding, type Project } from '../sim/buildings';
+import { communitySight, homeResonance } from '../sim/veil';
+import { CALM_COST, DREAM_COST, OMEN_COST, resolvable } from '../sim/council';
 
 export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'erase';
 
@@ -19,6 +21,10 @@ export interface HudActions {
   onSelect(id: number): void;
   onFollow(): void;
   onZoneTool(mode: ZoneTool | null): void;
+  onCouncil(id: number, dream: boolean): void;
+  onVeilView(): void;
+  onCalm(): void;
+  onOmen(): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -33,6 +39,11 @@ export class Hud {
   private lastLog = -1;
   private rosterKey = '';
   private zoneMode: ZoneTool | null = null;
+
+  private veilView = false;
+  private omenMode = false;
+  private councilKey = '';
+  private councilOpen = false;
 
   constructor(private col: Colony, act: HudActions) {
     $('rot-l').addEventListener('click', () => act.onRotate(-1));
@@ -64,6 +75,21 @@ export class Hud {
       this.killArmed = false;
       killBtn.textContent = 'Lose survivor';
       act.onKill(id);
+    });
+    $('veil').addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+      if (!b || b.disabled) return;
+      if (b.dataset.v === 'view') act.onVeilView();
+      if (b.dataset.v === 'calm') act.onCalm();
+      if (b.dataset.v === 'omen') act.onOmen();
+    });
+    $('council-open').addEventListener('click', () => { this.councilOpen = true; this.councilKey = ''; this.renderCouncil(); });
+    $('council').addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('#council-later')) { this.councilOpen = false; this.councilKey = ''; this.renderCouncil(); return; }
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-prop]');
+      if (!b || b.disabled) return;
+      const dream = $<HTMLInputElement>('dream')?.checked ?? false;
+      act.onCouncil(Number(b.dataset.prop), dream);
     });
     const crew = $('crew');
     crew.addEventListener('change', (e) => {
@@ -157,6 +183,7 @@ export class Hud {
       ['Scrap', Math.floor(r.scrap).toString(), ''],
       ['Glimmer', r.glimmer.toFixed(1), 'glimmer'],
       ['Morale', morale.toFixed(0), morale < 40 ? 'morale low' : 'morale'],
+      ['Influence', Math.floor(this.col.veil.influence).toString(), 'influence'],
       ['Explored', `${(exploredFraction(this.col.world) * 100).toFixed(1)}%`, ''],
     ];
     const resHtml = res.map(([k, v, cls]) => `<div class="res ${cls}"><b>${v}</b><span>${k}</span></div>`).join('');
@@ -185,6 +212,7 @@ export class Hud {
       }
       this.setBar(card, 'mor', s.morale, 100, `${Math.round(s.morale)}`);
       this.setBar(card, 'hp', s.hp, s.maxHp, `${Math.max(0, Math.round(s.hp))}/${s.maxHp}`);
+      this.setBar(card, 'sight', s.sight, 100, `${Math.round(s.sight)}`);
       this.setBar(card, 'food', a.needs.food, 100);
       this.setBar(card, 'rest', a.needs.rest, 100);
       this.setBar(card, 'social', a.needs.social, 100);
@@ -222,6 +250,75 @@ export class Hud {
       + `<div class="st" style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink-dim)">${tier}<span>${built} built</span></div>`;
     if ($('projects').innerHTML !== html) $('projects').innerHTML = html;
     this.renderWinter();
+    this.renderVeil();
+    this.renderCouncil();
+  }
+
+  setVeilView(on: boolean) { this.veilView = on; }
+  setOmenMode(on: boolean) { this.omenMode = on; document.body.classList.toggle('omen', on); }
+
+  private renderVeil() {
+    const col = this.col;
+    const inf = col.veil.influence;
+    const hr = homeResonance(col);
+    const sel = this.selected;
+    const pct = (hr * 100).toFixed(0);
+    const html = `<div class="h">The Veil</div>
+      <div class="ready veil"><span>Resonance</span><div class="bar"><i style="width:${pct}%"></i></div><span>${pct}%</span></div>
+      <div class="ready veil"><span>Sight</span><div class="bar"><i style="width:${communitySight(col).toFixed(0)}%"></i></div><span>${communitySight(col).toFixed(0)}</span></div>
+      <div class="row">
+        <button type="button" data-v="view" aria-pressed="${this.veilView}" title="Show Resonance on the land (V)">Veil view</button>
+        <button type="button" data-v="calm" ${sel && inf >= CALM_COST ? '' : 'disabled'} title="${sel ? 'Quiet the selected survivor\'s troubles' : 'Select a survivor first'}">Calm · ${CALM_COST}</button>
+        <button type="button" data-v="omen" aria-pressed="${this.omenMode}" ${inf >= OMEN_COST ? '' : 'disabled'} title="Click the map: light a way through the mist for the scouts">Omen · ${OMEN_COST}</button>
+      </div>`;
+    if ($('veil').innerHTML !== html) $('veil').innerHTML = html;
+  }
+
+  private renderCouncil() {
+    const col = this.col;
+    const active = col.council.active;
+    const el = $('council');
+    const bar = $('council-bar');
+    if (!active) {
+      if (!el.hidden) el.hidden = true;
+      if (!bar.hidden) bar.hidden = true;
+      this.councilKey = '';
+      this.councilOpen = false;
+      return;
+    }
+    if (!this.councilOpen) {
+      el.hidden = true;
+      if (bar.hidden) {
+        bar.hidden = false;
+        $('council-open').textContent = `The council is meeting · ${active.proposals.length} voices · hear them`;
+      }
+      return;
+    }
+    bar.hidden = true;
+    const key = active.proposals.map((p) => `${p.id}:${resolvable(col, p)}`).join(',') + `:${col.veil.influence >= DREAM_COST}`;
+    if (key === this.councilKey && !el.hidden) return;
+    this.councilKey = key;
+    const c = col.community;
+    const name = (id: number) => c.survivors.find((s) => s.id === id)?.name.split(' ')[0] ?? '?';
+    const living = c.survivors.filter((s) => s.alive).length;
+    const cost = (p: typeof active.proposals[number]) => [
+      p.cost.food ? `${p.cost.food} food` : '', p.cost.wood ? `${p.cost.wood} wood` : '', p.cost.glimmer ? `${p.cost.glimmer} glimmer` : '',
+    ].filter(Boolean).join(' · ');
+    const dreamOk = col.veil.influence >= DREAM_COST;
+    const wasChecked = ($('dream') as HTMLInputElement | null)?.checked ?? false;
+    el.innerHTML = `<div class="top"><h2>The council meets</h2><button type="button" id="council-later">Later</button></div>
+      <div class="sub">Each of them wants something. Back one; the others will feel passed over.</div>
+      ${active.proposals.map((p) => `<div class="prop">
+        <div class="t"><b>${esc(p.title)}</b><span class="cost">${esc(cost(p))}</span></div>
+        <div><q>${esc(p.pitch)}</q> <span class="who">${esc(name(p.proposer))}</span></div>
+        <div class="who">Backed by <em>${p.support.length} of ${living}</em>: ${esc(p.support.map(name).join(', '))}</div>
+        <button type="button" class="primary" data-prop="${p.id}" ${resolvable(col, p) ? '' : 'disabled title="Not enough in the stores"'}>Back ${esc(name(p.proposer))}</button>
+      </div>`).join('')}
+      <div class="foot">
+        <label><input id="dream" type="checkbox" ${dreamOk ? '' : 'disabled'} ${wasChecked && dreamOk ? 'checked' : ''}> Send a dream so nobody feels passed over (${DREAM_COST} Influence)</label>
+        <span>Stay silent and they'll settle it themselves by tomorrow.</span>
+      </div>`;
+    el.hidden = false;
   }
 
   /** The yearly test, made visible: stores against what winter will take. */
@@ -294,6 +391,7 @@ export class Hud {
       <div class="bars">
         <span>MOR</span>${bar('mor', '')}<span data-val="mor"></span>
         <span>HP</span>${bar('hp', 'hp')}<span data-val="hp"></span>
+        <span>SIGHT</span>${bar('sight', 'sight')}<span data-val="sight"></span>
       </div>
       <div class="needs">
         <div>FOOD${bar('food', 'need')}</div><div>REST${bar('rest', 'need')}</div><div>COMPANY${bar('social', 'need')}</div>

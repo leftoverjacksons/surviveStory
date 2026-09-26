@@ -23,6 +23,7 @@ npm run build:single  # one self-contained HTML file in dist-single/
 - Drag: pan · Right-drag / Ctrl-drag / Q,E: rotate · Wheel / pinch: zoom
 - WASD / arrows: pan · Space: pause · 1/2/3: speed · L: toggle names
 - Zones (bottom bar): Home, Field, Woodlot, Sacred, Erase. Click and drag to paint; Esc to stop
+- V: Veil view (Resonance on the land) · Calm and Omen in the Veil panel · the council banner opens proposals
 
 ## How the colony works
 
@@ -62,6 +63,16 @@ stored. The Village panel shows winter readiness (food, firewood, beds).
 Paths wear into the grass where people walk and become lanes; new buildings
 face them. Woodlots are cut and replanted; sacred ground is never touched.
 
+## The Veil
+
+A layer of reality only some can perceive. **Resonance** (how thin the Veil
+is) lives in the land: nature raises it, felling and suffering lower it.
+**Sight** lives in each survivor. Phenomena (the White Stag, the Lantern Man,
+the Moth Woman, the Orb, shades, Hollows) are read differently by each
+witness: a chill, a figure of light, or an entity that speaks. You are a
+presence they half-sense; your **Influence** grows with their Sight and pays
+for nudges. Every few days **the council** meets; back one voice.
+
 See `DESIGN.md` for the full design and roadmap.
 
 ## Layout
@@ -74,6 +85,7 @@ See `DESIGN.md` for the full design and roadmap.
   - `community.ts` survivors, traits, psi, bonds, morale, permadeath grief.
   - `buildings.ts` buildings, projects, the planner and site selection.
   - `calendar.ts` seasons, daylight, weather, seasonal look.
+  - `veil.ts` Resonance, Sight, phenomena, Influence. `council.ts` proposals and nudges.
 - `src/render/` — Three.js: terrain + fog-of-war shader, chunked trees and
   grass, station and vines, ruins, deer, wisps, the Orb, animated people,
   camp/stockpile/memorials, buildings in stages and salvage heaps
