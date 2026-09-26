@@ -579,7 +579,11 @@ export class VillageView {
       const id = `b${b.id}`;
       live.add(id);
       const key = `${b.kind}${b.tier}:${Math.round(b.growth * 5)}`;
-      this.upsert(id, key, (glow) => this.meshFor(b.kind, b.tier, b.foot, b.facing, 1, b.growth, b.id, glow));
+      this.upsert(id, key, (glow) => {
+        const g = this.meshFor(b.kind, b.tier, b.foot, b.facing, 1, b.growth, b.id, glow);
+        g.userData.buildingId = b.id;
+        return g;
+      });
     }
     for (const p of v.projects) {
       if (p.done) continue;
@@ -589,6 +593,7 @@ export class VillageView {
       const key = `${Math.floor(prog * 12)}:${p.delivered.wood}:${p.delivered.scrap}`;
       this.upsert(id, key, (glow) => {
         const g = new THREE.Group();
+        g.userData.projectId = p.id;
         if (p.kind === 'clear_store') { g.add(junkPile(1 - prog)); return g; }
         if (p.kind === 'patch_roof') {
           const rp = roofPatch(prog);

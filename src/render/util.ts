@@ -79,8 +79,9 @@ export const worldUniforms = {
   uFogTex: { value: null as THREE.Texture | null },
   uWearTex: { value: null as THREE.Texture | null },
   uFogSize: { value: 256 },
-  /** Zone overlay strength: faint normally, strong while painting. */
-  uZone: { value: 0.18 },
+  /** Zones: crisp per-tile colours; uZone is 0 normally (outlines only), 1 while painting (shaded). */
+  uZoneTex: { value: null as THREE.Texture | null },
+  uZone: { value: 0 },
   /** Season look, 0..1 each. */
   uSnow: { value: 0 },
   uAutumn: { value: 0 },
@@ -193,7 +194,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
     let fs = shader.fragmentShader.replace(
       '#include <common>',
       `#include <common>
-      uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform float uVeil;
+      uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform sampler2D uZoneTex; uniform float uVeil;
       uniform float uFogSize; uniform float uTime; uniform float uZone;
       uniform float uSnow; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
       varying vec2 vFowXZ; varying float vUp; varying float vHash;`,
@@ -217,16 +218,21 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
           vec4 fz = texture2D(uFogTex, fuv);
           float seen = fz.r;
           ${zone ? `
-          // G = home, B = woodlot, A = sacred ground.
-          vec3 zc = vec3(0.0); float zk = 0.0; float edge = 0.0;
-          zc += vec3(1.0, 0.86, 0.55) * fz.g; zk += fz.g; edge = max(edge, 1.0 - smoothstep(0.0, 0.22, abs(fz.g - 0.5)));
-          zc += vec3(0.55, 0.85, 0.45) * fz.b; zk += fz.b; edge = max(edge, 1.0 - smoothstep(0.0, 0.22, abs(fz.b - 0.5)));
-          zc += vec3(0.78, 0.6, 1.0) * fz.a; zk += fz.a; edge = max(edge, 1.0 - smoothstep(0.0, 0.22, abs(fz.a - 0.5)));
-          vec3 zoneCol = zk > 0.001 ? zc / zk : vec3(1.0);
-          // Scale the tint by scene brightness so zone lines never glow in the dark.
+          // Zones: tile-aligned colours. Outlines always; shaded while painting.
+          vec4 zc = texture2D(uZoneTex, fuv);
+          float px = 1.0 / uFogSize;
+          float edge = 0.0;
+          for (int k = 0; k < 4; k++) {
+            vec2 o = k == 0 ? vec2(0.13, 0.0) : k == 1 ? vec2(-0.13, 0.0) : k == 2 ? vec2(0.0, 0.13) : vec2(0.0, -0.13);
+            vec4 zn = texture2D(uZoneTex, fuv + o * px);
+            if (distance(zn, zc) > 0.02 && max(zn.a, zc.a) > 0.5) edge = 1.0;
+          }
           float zl = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * 1.06 + zoneCol * 0.035 * zl, min(zk, 1.0) * uZone);
-          gl_FragColor.rgb = mix(gl_FragColor.rgb, zoneCol * (zl * 1.7 + 0.02), edge * 0.6 * uZone);` : ''}
+          vec3 lineCol = (zc.a > 0.5 ? zc.rgb : vec3(1.0)) * (zl * 1.8 + 0.03);
+          float hatch = step(0.5, fract((vFowXZ.x + vFowXZ.y) * 0.35));
+          vec3 tinted = gl_FragColor.rgb * (0.45 + zc.rgb * 1.1) + zc.rgb * 0.07;
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, tinted, zc.a * uZone * (0.55 + hatch * 0.3));
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, lineCol, edge * (0.35 + uZone * 0.5));` : ''}
           ${zone ? `
           if (uVeil > 0.001) {
             // The Veil view: where it is thin, the land glows violet; where it is worn, grey.

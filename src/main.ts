@@ -5,8 +5,8 @@ import { CAMP } from './sim/layout';
 import { generateWorld } from './sim/worldgen';
 import { Zone, heightAt, paintZone } from './sim/world';
 import { daylightHours, seasonLook } from './sim/calendar';
-import { IsoCamera, Sky, createComposer, createRenderer } from './render/stage';
-import { FogTexture, WearTexture, buildTerrain } from './render/terrain';
+import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
+import { FogTexture, WearTexture, ZoneTexture, buildTerrain } from './render/terrain';
 import { FieldsView, Precipitation } from './render/land';
 import { buildStation, buildVines } from './render/station';
 import { TreeField } from './render/trees';
@@ -44,6 +44,8 @@ const roofs = new RoofControl();
 
 const fog = new FogTexture(world);
 worldUniforms.uFogTex.value = fog.texture;
+const zoneTex = new ZoneTexture(world);
+worldUniforms.uZoneTex.value = zoneTex.texture;
 const wear = new WearTexture(world);
 worldUniforms.uWearTex.value = wear.texture;
 const resonance = new ResonanceTexture(colony);
@@ -110,6 +112,7 @@ function syncScene() {
   heaps.sync();
   fields.sync();
   trees.syncPlanted();
+  lightPeopleLayer(scene);
 }
 syncScene();
 
@@ -188,7 +191,7 @@ const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, 
 function setZoneTool(mode: ZoneTool | null) {
   zoneTool = mode;
   hud.setZoneMode(mode);
-  worldUniforms.uZone.value = mode ? 1 : 0.18;
+  worldUniforms.uZone.value = mode ? 1 : 0;
 }
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const hitPoint = new THREE.Vector3();
@@ -220,6 +223,7 @@ const canvas = renderer.domElement;
 const pointers = new Map<number, { x: number; y: number; button: number; sx: number; sy: number }>();
 let pinchDist = 0, pinchAngle = 0;
 const raycaster = new THREE.Raycaster();
+raycaster.layers.enableAll();
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('pointerdown', (e) => {
@@ -279,7 +283,23 @@ canvas.addEventListener('pointerup', (e) => {
   const hit = raycaster.intersectObjects(people.pickables(), true)[0];
   let o: THREE.Object3D | null = hit?.object ?? null;
   while (o && o.userData.survivorId === undefined) o = o.parent;
-  select(o ? (o.userData.survivorId as number) : 0);
+  if (o) { select(o.userData.survivorId as number); return; }
+  select(0);
+  // Not a person: a building?
+  const bh = raycaster.intersectObjects([villageView.group, station.group], true)[0];
+  let q: THREE.Object3D | null = bh?.object ?? null;
+  while (q && q.userData.buildingId === undefined && q.userData.projectId === undefined) q = q.parent;
+  if (q) { hud.inspect(q.userData.buildingId !== undefined ? { building: q.userData.buildingId } : { project: q.userData.projectId }); return; }
+  if (bh) {
+    // The station itself: the store, or the kitchen under the canopy.
+    const p = bh.point;
+    const st = colony.village.buildings.find((b) => b.kind === 'store')!;
+    const kitchen = colony.village.buildings.find((b) => b.kind === 'kitchen');
+    const inStore = Math.abs(p.x - (-1)) < 5.2 && Math.abs(p.z - (-9)) < 3;
+    if (inStore) { hud.inspect({ building: st.id }); return; }
+    if (kitchen && Math.abs(p.x) < 5.6 && Math.abs(p.z - 1.5) < 3.6) { hud.inspect({ building: kitchen.id }); return; }
+  }
+  hud.inspect(null);
 });
 canvas.addEventListener('pointercancel', (e) => { pointers.delete(e.pointerId); pinchDist = 0; });
 canvas.addEventListener('wheel', (e) => {
@@ -302,7 +322,7 @@ window.addEventListener('keydown', (e) => {
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
   else if (k === 'r') cycleRoofs();
   else if (k === 'v') { veilView = !veilView; hud.setVeilView(veilView); hud.render(); }
-  else if (k === 'escape') { select(0); setZoneTool(null); setOmen(false); }
+  else if (k === 'escape') { select(0); setZoneTool(null); setOmen(false); hud.inspect(null); }
   else keys.add(k);
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -391,6 +411,7 @@ function frame() {
   phenomena.update(t, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   wear.sync(t);
   fog.sync();
+  zoneTex.sync();
   worldUniforms.uTime.value = t;
   const pointScale = renderer.getPixelRatio() * iso.zoom;
   wisps.update(t, dt, sky.night, pointScale);
@@ -419,6 +440,7 @@ function frame() {
     heaps.sync();
     fields.sync(t);
     trees.syncPlanted();
+    lightPeopleLayer(scene);
     hud.render();
   }
   hud.updateClock(iso.headingDeg);

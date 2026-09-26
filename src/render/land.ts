@@ -34,7 +34,7 @@ export class FieldsView {
   group = new THREE.Group();
   private soil: THREE.InstancedMesh | null = null;
   private crops: THREE.InstancedMesh | null = null;
-  private soilMat = enhance(new THREE.MeshLambertMaterial({ map: furrowTexture(), transparent: true }), { season: 'solid' });
+  private soilMat = enhance(new THREE.MeshLambertMaterial({ map: furrowTexture(), transparent: true }), { season: 'solid', zone: true });
   private cropMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.25, season: 'solid' });
   private cropGeo = new THREE.ConeGeometry(0.17, 0.7, 5).translate(0, 0.35, 0);
   private soilGeo = new THREE.PlaneGeometry(0.98, 0.98).rotateX(-Math.PI / 2);

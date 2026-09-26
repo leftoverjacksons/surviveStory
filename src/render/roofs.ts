@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 export type RoofMode = 'shown' | 'hidden' | 'cutaway';
-export const ROOF_MODES: RoofMode[] = ['shown', 'hidden', 'cutaway'];
+export const ROOF_MODES: RoofMode[] = ['shown', 'cutaway'];
 
 /** Everything above this height is sliced away in cutaway view. */
 export const CUT_HEIGHT = 1.15;

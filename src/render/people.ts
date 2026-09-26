@@ -93,7 +93,7 @@ export class People {
     body.add(sheet);
 
     body.add(hipL, hipR, torso, head, armL, armR);
-    body.traverse((o) => { o.castShadow = true; o.receiveShadow = true; o.layers.enable(1); });
+    body.traverse((o) => { o.castShadow = true; o.receiveShadow = true; o.layers.set(1); });
 
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.42, 0.52, 28).rotateX(-Math.PI / 2),

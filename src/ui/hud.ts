@@ -6,9 +6,22 @@ import {
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { exploredFraction } from '../sim/world';
-import { bedsTotal, outstanding, type Project } from '../sim/buildings';
+import { bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project } from '../sim/buildings';
 import { communitySight, homeResonance } from '../sim/veil';
 import { CALM_COST, DREAM_COST, OMEN_COST, resolvable } from '../sim/council';
+
+/** What each kind of building is for, in plain words. */
+const BUILDING_INFO: Record<string, string> = {
+  store: 'The gas station\'s old shop. Their first shelter: clearing it gives 4 beds, patching the roof 6.',
+  annex: 'A lean-to built against the store. 2 more beds.',
+  hut: 'A home. A scrap shack sleeps 2; a timber cabin sleeps 3. Homes burn firewood for heat in winter.',
+  garden: 'A kitchen garden. Tended daily, it adds a little food in summer and autumn.',
+  workshop: 'The workbench. With it, and some practice, they learn to work timber.',
+  kitchen: 'The canopy kitchen. Hot meals lift everyone\'s morale.',
+  lantern: 'A wisp lantern. Lights the dark between houses (a little morale each) and thins the Veil nearby.',
+  cellar: 'A root cellar. Keeps food from spoiling: more room in the stores.',
+  shrine: 'A shrine. Raises Resonance around it; a place to leave things for the unseen.',
+};
 
 export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'erase';
 
@@ -29,6 +42,7 @@ export interface HudActions {
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
 export class Hud {
@@ -44,6 +58,7 @@ export class Hud {
   private omenMode = false;
   private councilKey = '';
   private councilOpen = false;
+  private inspecting: { building?: number; project?: number } | null = null;
 
   constructor(private col: Colony, act: HudActions) {
     $('rot-l').addEventListener('click', () => act.onRotate(-1));
@@ -82,6 +97,9 @@ export class Hud {
       if (b.dataset.v === 'view') act.onVeilView();
       if (b.dataset.v === 'calm') act.onCalm();
       if (b.dataset.v === 'omen') act.onOmen();
+    });
+    $('inspect').addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('#inspect-close')) this.inspect(null);
     });
     $('council-open').addEventListener('click', () => { this.councilOpen = true; this.councilKey = ''; this.renderCouncil(); });
     $('council').addEventListener('click', (e) => {
@@ -250,11 +268,50 @@ export class Hud {
       + `<div class="st" style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink-dim)">${tier}<span>${built} built</span></div>`;
     if ($('projects').innerHTML !== html) $('projects').innerHTML = html;
     this.renderWinter();
+    this.renderInspect();
     this.renderVeil();
     this.renderCouncil();
   }
 
   setVeilView(on: boolean) { this.veilView = on; }
+
+  inspect(target: { building?: number; project?: number } | null) {
+    this.inspecting = target;
+    this.renderInspect();
+  }
+
+  private renderInspect() {
+    const el = $('inspect');
+    const t = this.inspecting;
+    const col = this.col;
+    if (!t) { el.hidden = true; return; }
+    let html = '';
+    const name = (id: number) => col.community.survivors.find((s) => s.id === id)?.name.split(' ')[0] ?? '?';
+    if (t.building !== undefined) {
+      const b = col.village.buildings.find((x) => x.id === t.building);
+      if (!b) { this.inspecting = null; el.hidden = true; return; }
+      const sleepers = [...col.beds.entries()].filter(([, v]) => v === b.id).map(([k]) => name(k));
+      const facts: [string, string][] = [];
+      if (b.beds) facts.push(['Beds', `${sleepers.length} of ${b.beds} used${sleepers.length ? `: ${sleepers.join(', ')}` : ''}`]);
+      if (heatNeed(b)) facts.push(['Winter firewood', `${heatNeed(b)} a day when occupied`]);
+      if (b.kind === 'cellar') facts.push(['Stores keep', `${Math.floor(storageCapacity(col.village))} food in all`]);
+      if (b.kind === 'garden') facts.push(['Tended today', b.tended >= 60 ? 'Yes' : 'Not yet']);
+      if (b.kind === 'store') facts.push(['State', ['Derelict', 'Cleared', 'Roof patched'][b.level] ?? '']);
+      const build = (b as Building).tier === 1 ? 'Timber' : 'Salvage';
+      if (b.kind !== 'store' && b.kind !== 'kitchen' && b.kind !== 'lantern') facts.push(['Built from', build]);
+      html = `<h3>${esc(cap(b.name))}<button type="button" id="inspect-close">Close</button></h3>
+        <div class="what">${esc(BUILDING_INFO[b.kind] ?? '')}</div>
+        <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>`;
+    } else if (t.project !== undefined) {
+      const p = col.village.projects.find((x) => x.id === t.project);
+      if (!p || p.done) { this.inspecting = null; el.hidden = true; return; }
+      html = `<h3>${esc(p.name)}<button type="button" id="inspect-close">Close</button></h3>
+        <div class="what">Under construction. ${esc(BUILDING_INFO[p.kind] ?? '')}</div>
+        <div class="facts"><span>Status</span><b>${esc(this.status(p))}</b></div>`;
+    }
+    if (el.innerHTML !== html) el.innerHTML = html;
+    el.hidden = false;
+  }
   setOmenMode(on: boolean) { this.omenMode = on; document.body.classList.toggle('omen', on); }
 
   private renderVeil() {

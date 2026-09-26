@@ -302,7 +302,8 @@ camera.
 | B: Village | Home zone, store-first, planner, construction, salvage → timber, newcomers | **[built]** |
 | C1: The Living Year | Calendar and seasons (48-day year), weather, seasonal visuals, woodlots with replanting, fields, sacred ground, winter needs (firewood, stores, warmth), desire paths → lanes, lane-aware siting | **[built]** |
 | C2: The Veil | Resonance field, Sight, phenomena on the perception gradient, see-through-their-eyes, council proposals, Influence and nudges | **[built]** |
-| **C3: Art pass** | Lighting (GTAO, grading, fog, depth of field), procedural building parts, flowers and moss, character-model trial | **[next]** |
+| **C2.5: Homes and purpose** | Households, petitions for homes, the store becomes a commons hall, know-how replaces eras, aspirations and crafts for idle seasons, the Veil given mechanical stakes, procedural starting sites (see §17) | **[proposed next]** |
+| C3: Art pass | Lighting (GTAO, grading, fog, depth of field), procedural building parts, flowers and moss, character-model trial | [after C2.5] |
 | D: Expeditions | Parties, ruins, blueprints, entity encounters, tactical hook | [planned] |
 | E: Generations | Skills by doing, aging, families, children, mentorship, personal arcs | [planned] |
 
@@ -392,3 +393,64 @@ Implementation notes and deviations:
 - **The Ring:** the fairy ring near the station, where wisps gather.
 - **The Orb:** the silent light that relocates over the treeline.
 - **The Quiet:** the collapse, and the stillness after it.
+
+---
+
+## 17. Playtest feedback, round 1 (Year 1, spring to early summer)
+
+What the player saw, and what we propose in response. Items marked
+**[done]** shipped in the same round.
+
+**Readability**
+- People looked translucent, with limbs ghosting through their own bodies.
+  → Silhouettes show only where the *world* hides someone; bodies are drawn
+  solid afterwards. **[done]**
+- Zones were hard to tell apart. → Outlines always; while a zone tool is
+  selected, every zone is shaded and hatched in its colour. **[done]**
+- The "hidden" roof mode was useless. → Roofs: shown / cutaway only. **[done]**
+- Buildings were opaque in meaning. → Click a building for a card: what it
+  is, what it does, who sleeps there, build status. **[done]**
+
+**"Eras" are the wrong idea.** Everything is salvage; what changes is what
+is *around* you and what people *know*. Replace the global era with:
+- *Know-how* the community learns by doing (joinery, masonry, glazing, solar
+  repair), taught person to person. If the teacher dies, the skill is lost.
+- *Local materials*: what can be built depends on what the region offers
+  (a quarry, a mall's glass, a pylon's cable, a reservoir's pipe).
+
+**Housing and households.**
+- Sleeping in a crowd is tolerated, not wanted. There is a crowding penalty
+  above about 4 per room, and privacy becomes a need once the early crisis passes.
+- Close bonds pair up into *households* (couples, siblings, friends). A
+  household with no home *petitions the council* for one, and the petition
+  names its builders and a site.
+- Homes are sized to the household (2–4 beds, never "critically small"), and
+  people move in when a home suits them.
+- Once most people have homes, the founding structure is *repurposed* into a
+  commons hall, communal kitchen or workshop, chosen by council.
+
+**Procedural starting sites.** The first shelter varies: gas station,
+chapel, school, greenhouse, motel, barn, railway depot. Each has its own
+repair path and its own later communal use.
+
+**Summer idling: people need wants beyond needs.**
+- *Aspirations* per person (build a proper home, learn a craft, map the
+  river, raise a child, understand the lights) drive discretionary work.
+- *Crafts and projects*: pottery, weaving, furniture, preserves, instruments,
+  murals. They yield comfort, trade goods and memories.
+- *Summer as the season of ambition*: expeditions, big builds, festivals.
+  Winter is for survival and stories.
+
+**The Veil needs stakes.** Currently phenomena appear and nothing follows.
+Proposal:
+- Resonance *modifies the world*: crop yields, healing speed, wisp-lit
+  nights, fertility of groves. Low resonance brings blight, bad dreams and
+  shades that linger.
+- Entities *want things* and give things: a stag leads a scout to a lost
+  cache; the choir teaches a song that calms grief; the lantern-man asks for
+  a light left burning, and ignoring him has costs.
+- Sight *grows* with exposure, and psi abilities scale with it (a Hush who
+  can calm a panicked expedition, a Finder who senses salvage).
+- A *lore arc*: what the Quiet was, what the orbs are, why the Veil thinned.
+  It is revealed in fragments through testimony, ruins and entity encounters.
+

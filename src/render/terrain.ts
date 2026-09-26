@@ -37,6 +37,39 @@ export class FogTexture {
   }
 }
 
+/** Zone colours per tile (crisp, tile-aligned). Alpha 1 where zoned. */
+export const ZONE_COLORS: Record<number, [number, number, number]> = {
+  [Zone.Home]: [255, 232, 140],
+  [Zone.Field]: [240, 150, 50],
+  [Zone.Woodlot]: [110, 215, 90],
+  [Zone.Sacred]: [195, 130, 255],
+};
+
+export class ZoneTexture {
+  texture: THREE.DataTexture;
+  private data: Uint8Array;
+  private version = -1;
+  constructor(private world: World) {
+    this.data = new Uint8Array(world.w * world.h * 4);
+    this.texture = new THREE.DataTexture(this.data, world.w, world.h, THREE.RGBAFormat, THREE.UnsignedByteType);
+    this.texture.magFilter = THREE.NearestFilter;
+    this.texture.minFilter = THREE.NearestFilter;
+    this.sync();
+  }
+  sync() {
+    const w = this.world;
+    if (this.version === w.zoneVersion) return;
+    this.version = w.zoneVersion;
+    const d = this.data;
+    for (let i = 0; i < w.zone.length; i++) {
+      const c = ZONE_COLORS[w.zone[i]];
+      if (c) { d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
+      else d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = d[i * 4 + 3] = 0;
+    }
+    this.texture.needsUpdate = true;
+  }
+}
+
 /** Footfall per tile, normalised so a lane reads as 1. Drives worn paths and flattened grass. */
 export class WearTexture {
   texture: THREE.DataTexture;
