@@ -56,12 +56,25 @@ function recipe(t: Tree, w: World): Part[] {
  * All standing trees, instanced per 32×32 chunk so off-screen chunks cull.
  * Felled trees are hidden and replaced by a short falling animation and a stump.
  */
+/** Scale a tree recipe about its base for a sapling at `g` of full size. */
+function grown(parts: Part[], g: number): Part[] {
+  if (g >= 1) return parts;
+  const k = Math.max(0.12, g);
+  const base = parts[0].pos;
+  return parts.map((p) => ({
+    ...p,
+    pos: base.clone().add(p.pos.clone().sub(base).multiplyScalar(k)),
+    scale: p.scale.clone().multiplyScalar(k),
+  }));
+}
+
 export class TreeField {
   group = new THREE.Group();
   private slots = new Map<number, Slot[]>();
   private geos: Record<Part['geo'], THREE.BufferGeometry>;
   private trunkMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }));
-  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.04 });
+  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.04, season: 'broadleaf' });
+  private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.03, season: 'conifer' });
   private falling: { g: THREE.Group; t: number; axis: THREE.Vector3; pivot: THREE.Vector3 }[] = [];
   private stumps: THREE.InstancedMesh;
   private stumpCount = 0;
@@ -87,7 +100,7 @@ export class TreeField {
       const meshes = {
         trunk: new THREE.InstancedMesh(this.geos.trunk, this.trunkMat, count('trunk')),
         blob: new THREE.InstancedMesh(this.geos.blob, this.leafMat, Math.max(1, count('blob'))),
-        cone: new THREE.InstancedMesh(this.geos.cone, this.leafMat, Math.max(1, count('cone'))),
+        cone: new THREE.InstancedMesh(this.geos.cone, this.pineMat, Math.max(1, count('cone'))),
       };
       const next = { trunk: 0, blob: 0, cone: 0 };
       for (const { t, parts } of recipes) {
@@ -126,15 +139,18 @@ export class TreeField {
 
   /** Hide a standing tree and play it falling in direction (dirX, dirZ). */
   fell(treeId: number, dirX: number, dirZ: number) {
-    const slots = this.slots.get(treeId);
-    if (!slots) return;
+    const slots = this.slots.get(treeId) ?? [];
     const t = this.world.trees[treeId];
-    const parts = recipe(t, this.world);
+    if (!slots.length && !t.planted) return;
+    const parts = grown(recipe(t, this.world), t.growth);
     const g = new THREE.Group();
     const base = parts[0].pos.clone();
     for (const p of parts) {
       const col = p.color.clone();
-      const mat = p.geo === 'trunk' ? this.trunkMat.clone() : this.leafMat.clone();
+      // Clones lose the shader patch, so re-apply it with the same seasonal style.
+      const mat = p.geo === 'trunk' ? enhance(this.trunkMat.clone())
+        : p.geo === 'cone' ? enhance(this.pineMat.clone(), { season: 'conifer' })
+        : enhance(this.leafMat.clone(), { season: 'broadleaf' });
       (mat as THREE.MeshLambertMaterial).color = col;
       mat.transparent = true;
       const mesh = new THREE.Mesh(this.geos[p.geo], mat);
@@ -146,6 +162,7 @@ export class TreeField {
     }
     g.position.copy(base);
     this.group.add(g);
+    this.youngKey = '';
     for (const s of slots) {
       s.mesh.setMatrixAt(s.index, ZERO);
       s.mesh.instanceMatrix.needsUpdate = true;
@@ -159,6 +176,37 @@ export class TreeField {
       this.stumps.setMatrixAt(this.stumpCount++, m);
       this.stumps.count = this.stumpCount;
       this.stumps.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  // ---- planted trees (woodlots): a small dynamic set, rebuilt when they grow ----
+  private young: THREE.InstancedMesh[] = [];
+  private youngKey = '';
+
+  syncPlanted() {
+    const planted = this.world.trees.filter((t) => t.planted && !t.felled);
+    const key = planted.map((t) => `${t.id}:${Math.round(t.growth * 20)}`).join(',');
+    if (key === this.youngKey) return;
+    this.youngKey = key;
+    for (const m of this.young) this.group.remove(m);
+    this.young = [];
+    if (!planted.length) return;
+    const all = planted.map((t) => grown(recipe(t, this.world), t.growth));
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+    for (const [geo, mat] of [['trunk', this.trunkMat], ['blob', this.leafMat], ['cone', this.pineMat]] as const) {
+      const parts = all.flat().filter((p) => p.geo === geo);
+      if (!parts.length) continue;
+      const mesh = new THREE.InstancedMesh(this.geos[geo], mat, parts.length);
+      parts.forEach((p, i) => {
+        q.setFromEuler(p.rot);
+        m.compose(p.pos, q, p.scale);
+        mesh.setMatrixAt(i, m);
+        mesh.setColorAt(i, p.color);
+      });
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.computeBoundingSphere();
+      this.group.add(mesh);
+      this.young.push(mesh);
     }
   }
 

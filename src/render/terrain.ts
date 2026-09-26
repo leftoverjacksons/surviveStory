@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { fbm } from '../sim/noise';
-import { Ground, heightAt, idx, type World } from '../sim/world';
+import { Ground, LANE_WEAR, Zone, heightAt, idx, type World } from '../sim/world';
 import { enhance, makeRand } from './util';
 
 /**
- * Map-sized RG texture shared by fog-aware materials:
- * R = explored (fog of war), G = home zone.
+ * Map-sized RGBA texture shared by fog-aware materials:
+ * R = explored (fog of war), G = home zone, B = woodlot, A = sacred ground.
  */
 export class FogTexture {
   texture: THREE.DataTexture;
@@ -13,8 +13,8 @@ export class FogTexture {
   private version = -1;
   private zoneVersion = -1;
   constructor(private world: World) {
-    this.data = new Uint8Array(world.w * world.h * 2);
-    this.texture = new THREE.DataTexture(this.data, world.w, world.h, THREE.RGFormat, THREE.UnsignedByteType);
+    this.data = new Uint8Array(world.w * world.h * 4);
+    this.texture = new THREE.DataTexture(this.data, world.w, world.h, THREE.RGBAFormat, THREE.UnsignedByteType);
     this.texture.magFilter = THREE.LinearFilter;
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.wrapS = this.texture.wrapT = THREE.ClampToEdgeWrapping;
@@ -27,9 +27,37 @@ export class FogTexture {
     this.zoneVersion = w.zoneVersion;
     const d = this.data;
     for (let i = 0, n = w.explored.length; i < n; i++) {
-      d[i * 2] = w.explored[i];
-      d[i * 2 + 1] = w.zone[i] ? 255 : 0;
+      const z = w.zone[i];
+      d[i * 4] = w.explored[i];
+      d[i * 4 + 1] = z === Zone.Home ? 255 : 0;
+      d[i * 4 + 2] = z === Zone.Woodlot ? 255 : 0;
+      d[i * 4 + 3] = z === Zone.Sacred ? 255 : 0;
     }
+    this.texture.needsUpdate = true;
+  }
+}
+
+/** Footfall per tile, normalised so a lane reads as 1. Drives worn paths and flattened grass. */
+export class WearTexture {
+  texture: THREE.DataTexture;
+  private data: Uint8Array;
+  private version = -1;
+  private lastSync = -Infinity;
+  constructor(private world: World) {
+    this.data = new Uint8Array(world.w * world.h);
+    this.texture = new THREE.DataTexture(this.data, world.w, world.h, THREE.RedFormat, THREE.UnsignedByteType);
+    this.texture.magFilter = THREE.LinearFilter;
+    this.texture.minFilter = THREE.LinearFilter;
+    this.sync(0, true);
+  }
+  /** Re-upload at most every couple of seconds; wear changes slowly. */
+  sync(now: number, force = false) {
+    const w = this.world;
+    if (!force && (now - this.lastSync < 2 || this.version === w.wearVersion)) return;
+    this.lastSync = now;
+    this.version = w.wearVersion;
+    const d = this.data;
+    for (let i = 0; i < d.length; i++) d[i] = Math.min(255, (w.wear[i] / LANE_WEAR) * 255);
     this.texture.needsUpdate = true;
   }
 }
@@ -139,20 +167,20 @@ export function buildTerrain(w: World): THREE.Group {
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const ground = new THREE.Mesh(geo, enhance(new THREE.MeshLambertMaterial({ vertexColors: true }), { zone: true }));
+  const ground = new THREE.Mesh(geo, enhance(new THREE.MeshLambertMaterial({ vertexColors: true }), { zone: true, season: 'ground' }));
   ground.receiveShadow = true;
   group.add(ground);
 
   // --- paved overlays ---
-  const asphalt = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(99, '#3b3e3a', 0.85) }), { zone: true });
-  const concrete = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(42, '#77756b', 0.6) }), { zone: true });
+  const asphalt = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(99, '#3b3e3a', 0.85) }), { zone: true, season: 'ground' });
+  const concrete = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(42, '#77756b', 0.6) }), { zone: true, season: 'ground' });
   group.add(tileOverlay(w, Ground.Asphalt, 0.03, asphalt));
   group.add(tileOverlay(w, Ground.Concrete, 0.04, concrete));
 
   // --- water ---
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry(w.w, w.h),
-    enhance(new THREE.MeshLambertMaterial({ color: '#2f5552', emissive: '#0c1c1e', transparent: true, opacity: 0.88 })),
+    enhance(new THREE.MeshLambertMaterial({ color: '#2f5552', emissive: '#0c1c1e', transparent: true, opacity: 0.88 }), { season: 'none' }),
   );
   water.rotation.x = -Math.PI / 2;
   water.position.y = -0.32;
@@ -179,7 +207,7 @@ function buildGrass(w: World): THREE.Group {
   const group = new THREE.Group();
   const rand = makeRand(21);
   const geo = bladeGeometry();
-  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.35 });
+  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.35, season: 'grass' });
   const CH = 32;
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
   const e = new THREE.Euler(), col = new THREE.Color();

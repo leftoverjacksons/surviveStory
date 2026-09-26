@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CANOPY, CAR, SIGN, STORE } from '../sim/layout';
-import { enhance, lambert, makeRand, shadowed } from './util';
+import { enhance, enhanced, lambert, makeRand, shadowed } from './util';
 
 /** Surfaces that vines should grow over, collected while building the station. */
 export interface VineSurface {
@@ -188,6 +188,11 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
     g.add(barrel);
   }
 
+  // Snow settles on the station's roofs and ledges in winter.
+  g.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+    if (m && (m as THREE.MeshLambertMaterial).isMeshLambertMaterial && !enhanced.has(m)) enhance(m, { fog: false });
+  });
   return { group: shadowed(g), surfaces, edges, store: { fallen, door, glow } };
 }
 
@@ -200,7 +205,7 @@ export function buildVines(surfaces: VineSurface[], edges: VineEdge[]): THREE.In
   ]), 3));
   leaf.setIndex([0, 1, 2, 0, 2, 3]);
   leaf.computeVertexNormals();
-  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25, fog: false });
+  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25, fog: false, season: 'broadleaf' });
   const max = 16000;
   const mesh = new THREE.InstancedMesh(leaf, mat, max);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();

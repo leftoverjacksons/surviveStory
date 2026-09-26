@@ -22,7 +22,7 @@ npm run build:single  # one self-contained HTML file in dist-single/
 - Click a survivor or their card: select · F: follow selected · Esc: deselect
 - Drag: pan · Right-drag / Ctrl-drag / Q,E: rotate · Wheel / pinch: zoom
 - WASD / arrows: pan · Space: pause · 1/2/3: speed · L: toggle names
-- Z / X (or Extend / Shrink): paint or erase the home zone; Esc to stop
+- Zones (bottom bar): Home, Field, Woodlot, Sacred, Erase. Click and drag to paint; Esc to stop
 
 ## How the colony works
 
@@ -53,6 +53,17 @@ stages.
   old shacks get rebuilt.
 - Newcomers arrive when morale is good and there is (or soon will be) room.
 
+## The year
+
+Four seasons of twelve days. Spring: till and sow the fields you mark.
+Summer: tend, long days. Autumn: harvest, colour, stock the woodpile and the
+cellars. Winter: snow, no foraging, firewood for heat, and whatever you
+stored. The Village panel shows winter readiness (food, firewood, beds).
+Paths wear into the grass where people walk and become lanes; new buildings
+face them. Woodlots are cut and replanted; sacred ground is never touched.
+
+See `DESIGN.md` for the full design and roadmap.
+
 ## Layout
 
 - `src/sim/` — deterministic simulation, no rendering.
@@ -62,6 +73,7 @@ stages.
     daily rhythms. `path.ts` A* pathfinding.
   - `community.ts` survivors, traits, psi, bonds, morale, permadeath grief.
   - `buildings.ts` buildings, projects, the planner and site selection.
+  - `calendar.ts` seasons, daylight, weather, seasonal look.
 - `src/render/` — Three.js: terrain + fog-of-war shader, chunked trees and
   grass, station and vines, ruins, deer, wisps, the Orb, animated people,
   camp/stockpile/memorials, buildings in stages and salvage heaps

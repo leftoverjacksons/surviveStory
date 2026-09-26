@@ -17,7 +17,7 @@ export class Bushes {
     const n = Math.max(1, world.bushes.length);
     const body = new THREE.InstancedMesh(
       new THREE.IcosahedronGeometry(0.5, 0),
-      enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.08 }),
+      enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.08, season: 'broadleaf' }),
       n,
     );
     this.berries = new THREE.InstancedMesh(
@@ -105,7 +105,7 @@ export function buildRuins(world: World): THREE.Group {
   leaf.computeVertexNormals();
   const perWall = 22;
   const leaves = new THREE.InstancedMesh(
-    leaf, enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25 }),
+    leaf, enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25, season: 'broadleaf' }),
     Math.max(1, world.walls.length * perWall),
   );
   const up = new THREE.Vector3(0, 0, 1);

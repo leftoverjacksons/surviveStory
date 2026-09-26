@@ -3,9 +3,11 @@ import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
 import { createCommunity, killSurvivor, recruit, setRole } from './sim/community';
 import { CAMP } from './sim/layout';
 import { generateWorld } from './sim/worldgen';
-import { heightAt, paintZone } from './sim/world';
+import { Zone, heightAt, paintZone } from './sim/world';
+import { daylightHours, seasonLook } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer } from './render/stage';
-import { FogTexture, buildTerrain } from './render/terrain';
+import { FogTexture, WearTexture, buildTerrain } from './render/terrain';
+import { FieldsView, Precipitation } from './render/land';
 import { buildStation, buildVines } from './render/station';
 import { TreeField } from './render/trees';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
@@ -14,7 +16,7 @@ import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView } from './render/village';
 import { worldUniforms } from './render/util';
-import { Hud } from './ui/hud';
+import { Hud, type ZoneTool } from './ui/hud';
 
 // ---------- simulation ----------
 const seed = Date.now() % 100000;
@@ -37,6 +39,8 @@ const { composer, bloom } = createComposer(renderer, scene, iso.camera, view.cli
 
 const fog = new FogTexture(world);
 worldUniforms.uFogTex.value = fog.texture;
+const wear = new WearTexture(world);
+worldUniforms.uWearTex.value = wear.texture;
 worldUniforms.uFogSize.value = world.w;
 
 scene.add(buildTerrain(world));
@@ -75,6 +79,10 @@ const villageView = new VillageView(world, colony.village, station.store);
 scene.add(villageView.group);
 const heaps = new HeapsView(world);
 scene.add(heaps.group);
+const fields = new FieldsView(world);
+scene.add(fields.group);
+const precip = new Precipitation();
+scene.add(precip.group);
 const people = new People(world);
 scene.add(people.group);
 
@@ -84,6 +92,8 @@ function syncScene() {
   camp.sync(community, colony.items, colony.beds);
   villageView.sync();
   heaps.sync();
+  fields.sync();
+  trees.syncPlanted();
 }
 syncScene();
 
@@ -122,8 +132,9 @@ const hud = new Hud(colony, {
   onZoneTool(mode) { setZoneTool(mode); },
 });
 
-let zoneTool: 'add' | 'del' | null = null;
-function setZoneTool(mode: 'add' | 'del' | null) {
+let zoneTool: ZoneTool | null = null;
+const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, erase: Zone.None };
+function setZoneTool(mode: ZoneTool | null) {
   zoneTool = mode;
   hud.setZoneMode(mode);
   worldUniforms.uZone.value = mode ? 1 : 0.18;
@@ -135,7 +146,7 @@ function paintAt(clientX: number, clientY: number) {
   const r = canvas.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, iso.camera);
-  if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) paintZone(world, hitPoint.x, hitPoint.z, 2.5, zoneTool === 'add' ? 1 : 0);
+  if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) paintZone(world, hitPoint.x, hitPoint.z, 2.5, ZONE_OF[zoneTool] as never);
 }
 
 function setSpeed(level: number) {
@@ -230,8 +241,6 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (speed === 0) setSpeed(lastSpeed); else { lastSpeed = speed; setSpeed(0); }
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
-  else if (k === 'z') setZoneTool(zoneTool === 'add' ? null : 'add');
-  else if (k === 'x') setZoneTool(zoneTool === 'del' ? null : 'del');
   else if (k === 'escape') { select(0); setZoneTool(null); }
   else keys.add(k);
 });
@@ -300,8 +309,18 @@ function frame() {
 
   // World.
   const hour = hourOf(colony);
+  const dayFrac = colony.minute / 1440 + 1;
+  const weather = colony.weather;
+  const look = seasonLook(dayFrac, weather === 'snow');
+  worldUniforms.uSnow.value = look.snow;
+  worldUniforms.uAutumn.value = look.autumn;
+  worldUniforms.uBare.value = look.bare;
+  worldUniforms.uBlossom.value = look.blossom;
+  const gloom = weather === 'rain' ? 1 : weather === 'snow' ? 0.7 : weather === 'overcast' ? 0.6 : weather === 'fog' ? 0.4 : 0;
   sky.follow(iso.target);
-  sky.setHour(hour);
+  sky.setHour(hour, daylightHours(dayFrac), gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, look.snow);
+  precip.update(dt, t, iso.target, weather === 'rain' ? 'rain' : weather === 'snow' ? 'snow' : null);
+  wear.sync(t);
   fog.sync();
   worldUniforms.uTime.value = t;
   const pointScale = renderer.getPixelRatio() * iso.zoom;
@@ -328,6 +347,8 @@ function frame() {
     camp.sync(community, colony.items, colony.beds);
     villageView.sync();
     heaps.sync();
+    fields.sync(t);
+    trees.syncPlanted();
     hud.render();
   }
   hud.updateClock(iso.headingDeg);
@@ -350,4 +371,4 @@ requestAnimationFrame(() => {
 });
 
 // Exposed for automated checks and debugging.
-Object.assign(window, { __game: { colony, iso, setSpeed, select, setZoneTool, tick: (m: number) => tick(colony, m), refresh: () => { syncScene(); hud.render(); } } });
+Object.assign(window, { __game: { colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), tick: (m: number) => tick(colony, m), refresh: () => { syncScene(); hud.render(); } } });

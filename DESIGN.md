@@ -111,7 +111,7 @@ Every phenomenon has a **depth**. How a survivor experiences it depends on
 
 ---
 
-## 5. Seasons and the year **[next: milestone C1]**
+## 5. Seasons and the year **[built: C1]**
 
 - **Long years.** 4 seasons × 12 days = 48 days per year. The player should
   get to know people across years; aging, children and mentorship depend on it.
@@ -139,16 +139,16 @@ Day length and speed will need tuning once seasons exist: at 8× a day is about
 | Zone | Purpose | Tradeoff | Status |
 |---|---|---|---|
 | **Home** | Where the village may build | — | **[built]** paint/erase |
-| **Woodlot** | Sustainable felling; saplings replanted and regrow | Clearing near the Ring or sacred ground lowers Resonance | [next] |
-| **Fields** | Sow, tend, harvest by season | Labour; soil quality varies (meadow good, forest poor) | [next] |
-| **Sacred ground** | No cutting or building; wisps gather | Costs usable land | [next] |
+| **Woodlot** | Sustainable felling; saplings replanted and regrow | Clearing near the Ring or sacred ground lowers Resonance (C2) | **[built]** |
+| **Fields** | Sow, tend, harvest by season | Labour; soil quality varies (meadow good, forest poor) | **[built]** |
+| **Sacred ground** | No cutting or building; wisps gather (C2) | Costs usable land | **[built]** (effects in C2) |
 | Salvage | Mark ruins/roads to strip | Distance, scarring, unstable sites | [planned] |
 | Explore target | Where scouts and parties go | — | [planned] |
 
 Today builders fell trees nearest home automatically **[built]**. Once
 woodlots exist, felling outside them will be rare and costly to Resonance.
 
-### Desire paths → lanes → streets [next]
+### Desire paths → lanes → streets **[built]**
 
 - Every footstep wears the ground a little. Frequently walked tiles become
   **desire paths** (visibly worn grass), then **lanes** (packed earth, faster
@@ -300,11 +300,36 @@ camera.
 |---|---|---|
 | A: Living world | Procedural region, autonomous survivors, needs, roles, fog of war | **[built]** |
 | B: Village | Home zone, store-first, planner, construction, salvage → timber, newcomers | **[built]** |
-| **C1: The Living Year** | Calendar and seasons (48-day year), weather, seasonal visuals, woodlots with replanting, fields, sacred ground, winter needs (firewood, stores, warmth), desire paths → lanes, lane-aware siting | **[next]** |
-| C2: The Veil | Resonance field, Sight, phenomena on the perception gradient, see-through-their-eyes, council proposals, Influence and nudges | [planned] |
+| C1: The Living Year | Calendar and seasons (48-day year), weather, seasonal visuals, woodlots with replanting, fields, sacred ground, winter needs (firewood, stores, warmth), desire paths → lanes, lane-aware siting | **[built]** |
+| **C2: The Veil** | Resonance field, Sight, phenomena on the perception gradient, see-through-their-eyes, council proposals, Influence and nudges | **[next]** |
 | C3: Art pass | Lighting (GTAO, grading, fog, depth of field), procedural building parts, flowers and moss, character-model trial | [planned] |
 | D: Expeditions | Parties, ruins, blueprints, entity encounters, tactical hook | [planned] |
 | E: Generations | Skills by doing, aging, families, children, mentorship, personal arcs | [planned] |
+
+### C1 results
+
+Headless probe (`npm run sim -- 8 48` and `--prepared`), first full year:
+
+| | Unprepared (no zones) | Prepared (2 fields + woodlot on day 1) |
+|---|---|---|
+| Deaths / departures | 0 / 0 | 0 / 0 |
+| Food at start of winter | ~280 | ~490 |
+| Food at end of winter | ~50 (half rations, scrounging) | ~200 |
+| Cold nights | 0 | 0 |
+
+Neglect means a hungry, low-morale late winter on half rations; preparation
+means a comfortable one. Firewood is handled well by the village on its own
+(woodpile targets rise from late summer).
+
+Implementation notes and deviations:
+- Gardens are small kitchen plots (2–3 food/day in summer and autumn); fields
+  are the staple. Berry bushes fruit spring (young greens, reduced) to autumn.
+- Surplus food above cellar capacity spoils; the planner digs root cellars
+  before winter and adds more when stores fill.
+- When stores run low everyone forages; in winter, meals are halved and
+  foragers and farmers ice-fish or scrounge. Starvation is slow (days), so
+  hardship precedes death.
+- Newcomers pause in winter and take the most short-handed role.
 
 ### C1 acceptance criteria
 

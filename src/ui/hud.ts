@@ -1,9 +1,14 @@
 import type { Colony } from '../sim/colony';
-import { dayOf, hourOf } from '../sim/colony';
+import { dayOf, fireWood, hourOf } from '../sim/colony';
+import {
+  dayOfSeason, daysUntilWinter, seasonOf, yearOf, DAYS_PER_SEASON, SEASON_NAMES, WEATHER_NAMES,
+} from '../sim/calendar';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { exploredFraction } from '../sim/world';
 import { bedsTotal, outstanding, type Project } from '../sim/buildings';
+
+export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'erase';
 
 export interface HudActions {
   onKill(id: number): void;
@@ -13,7 +18,7 @@ export interface HudActions {
   onSpeed(level: number): void;
   onSelect(id: number): void;
   onFollow(): void;
-  onZoneTool(mode: 'add' | 'del' | null): void;
+  onZoneTool(mode: ZoneTool | null): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -27,7 +32,7 @@ export class Hud {
   private selected = 0;
   private lastLog = -1;
   private rosterKey = '';
-  private zoneMode: 'add' | 'del' | null = null;
+  private zoneMode: ZoneTool | null = null;
 
   constructor(private col: Colony, act: HudActions) {
     $('rot-l').addEventListener('click', () => act.onRotate(-1));
@@ -35,8 +40,11 @@ export class Hud {
     $('recruit-btn').addEventListener('click', () => act.onRecruit());
     $('labels-btn').addEventListener('click', () => this.toggleLabels());
     $('follow-btn').addEventListener('click', () => act.onFollow());
-    $('zone-add').addEventListener('click', () => { this.setZoneMode(this.zoneMode === 'add' ? null : 'add'); act.onZoneTool(this.zoneMode); });
-    $('zone-del').addEventListener('click', () => { this.setZoneMode(this.zoneMode === 'del' ? null : 'del'); act.onZoneTool(this.zoneMode); });
+    document.querySelectorAll<HTMLButtonElement>('[data-zone]').forEach((b) => b.addEventListener('click', () => {
+      const z = b.dataset.zone as ZoneTool;
+      this.setZoneMode(this.zoneMode === z ? null : z);
+      act.onZoneTool(this.zoneMode);
+    }));
     for (let i = 0; i < 4; i++) $(`spd-${i}`).addEventListener('click', () => act.onSpeed(i));
     $('toggle-roster').addEventListener('click', () => {
       const r = $('roster');
@@ -79,10 +87,9 @@ export class Hud {
     for (let i = 0; i < 4; i++) $(`spd-${i}`).setAttribute('aria-pressed', String(i === level));
   }
 
-  setZoneMode(mode: 'add' | 'del' | null) {
+  setZoneMode(mode: ZoneTool | null) {
     this.zoneMode = mode;
-    $('zone-add').setAttribute('aria-pressed', String(mode === 'add'));
-    $('zone-del').setAttribute('aria-pressed', String(mode === 'del'));
+    document.querySelectorAll<HTMLButtonElement>('[data-zone]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.zone === mode)));
     document.body.classList.toggle('painting', mode !== null);
   }
 
@@ -108,6 +115,10 @@ export class Hud {
     if (el.textContent !== txt) el.textContent = txt;
     const cp = $('compass');
     if (cp.textContent !== dir) cp.textContent = dir;
+    const day = dayOf(this.col);
+    const season = `Year ${yearOf(day)} · ${SEASON_NAMES[seasonOf(day)]}, day ${dayOfSeason(day)} of ${DAYS_PER_SEASON} · ${WEATHER_NAMES[this.col.weather]}`;
+    const se = $('season');
+    if (se.textContent !== season) se.textContent = season;
   }
 
   placeLabels(project: (id: number, out: { x: number; y: number }) => boolean) {
@@ -210,6 +221,28 @@ export class Hud {
       : `<div class="empty">Nothing planned. They'll think of something when the village needs it.</div>`)
       + `<div class="st" style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink-dim)">${tier}<span>${built} built</span></div>`;
     if ($('projects').innerHTML !== html) $('projects').innerHTML = html;
+    this.renderWinter();
+  }
+
+  /** The yearly test, made visible: stores against what winter will take. */
+  private renderWinter() {
+    const col = this.col;
+    const day = dayOf(col);
+    const pop = col.agents.length;
+    const toWinter = daysUntilWinter(day);
+    const inWinter = toWinter === 0;
+    const daysLeft = inWinter ? DAYS_PER_SEASON - dayOfSeason(day) + 1 : DAYS_PER_SEASON;
+    const food = col.community.resources.food, wood = col.community.resources.wood;
+    const needFood = Math.round(pop * 1.8 * daysLeft);
+    const needWood = Math.round(fireWood(col, 'winter') * daysLeft);
+    const beds = bedsTotal(col.village);
+    const row = (label: string, have: number, need: number) => {
+      const pct = need > 0 ? Math.min(100, (have / need) * 100) : 100;
+      return `<div class="ready ${have < need ? 'short' : ''}"><span>${label}</span><div class="bar"><i style="width:${pct.toFixed(0)}%"></i></div><span>${Math.floor(have)}/${need}</span></div>`;
+    };
+    const head = inWinter ? `Winter · ${daysLeft} day${daysLeft === 1 ? '' : 's'} to spring` : `Winter in ${toWinter} day${toWinter === 1 ? '' : 's'}`;
+    const html = `<div class="h">${head}</div>${row('Food', food, needFood)}${row('Firewood', wood, needWood)}${row('Beds', beds, pop)}`;
+    if ($('winter').innerHTML !== html) $('winter').innerHTML = html;
   }
 
   private status(p: Project): string {

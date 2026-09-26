@@ -126,8 +126,22 @@ export class Sky {
   /** Keep the sun's shadow frustum centred on what the camera is looking at. */
   follow(p: THREE.Vector3) { this.center.copy(p); }
 
-  setHour(hour: number) {
-    const h = ((hour % 24) + 24) % 24;
+  /**
+   * Set the sky for a clock hour. `daylight` stretches the day (long summer,
+   * short winter); `gloom` 0..1 dims and flattens light for rain and overcast;
+   * `fogginess` 0..1 pulls the distance fog in; `snow` cools the palette.
+   */
+  setHour(hour: number, daylight = 12, gloom = 0, fogginess = 0, snow = 0) {
+    const raw = ((hour % 24) + 24) % 24;
+    // Map the real clock onto the 12h-day keyframes.
+    const rise = 12 - daylight / 2, set = 12 + daylight / 2;
+    let h: number;
+    if (raw >= rise && raw <= set) h = 6 + ((raw - rise) / daylight) * 12;
+    else {
+      const night = 24 - daylight;
+      const since = raw > set ? raw - set : raw + 24 - set;
+      h = (18 + (since / night) * 12) % 24;
+    }
     let i = 0;
     while (i < KEYS.length - 2 && KEYS[i + 1].h <= h) i++;
     const a = KEYS[i], b = KEYS[i + 1];
@@ -135,11 +149,18 @@ export class Sky {
 
     lerpColor(a.sky, b.sky, t, this.background);
     lerpColor(a.sun, b.sun, t, this.sun.color);
-    this.sun.intensity = a.sunI + (b.sunI - a.sunI) * t;
+    this.sun.intensity = (a.sunI + (b.sunI - a.sunI) * t) * (1 - gloom * 0.55);
     lerpColor(a.hemiSky, b.hemiSky, t, this.hemi.color);
     lerpColor(a.hemiGround, b.hemiGround, t, this.hemi.groundColor);
-    this.hemi.intensity = a.hemiI + (b.hemiI - a.hemiI) * t;
-    (this.scene.fog as THREE.Fog).color.copy(this.background);
+    this.hemi.intensity = (a.hemiI + (b.hemiI - a.hemiI) * t) * (1 - gloom * 0.15) * (1 + snow * 0.12);
+    // Grey skies and cold light.
+    const grey = cA.setRGB(0.55, 0.58, 0.6).multiplyScalar(0.4 + (1 - this.nightFor(h)) * 0.6);
+    this.background.lerp(grey, gloom * 0.6);
+    if (snow > 0) this.background.lerp(cB.setRGB(0.78, 0.82, 0.88).multiplyScalar(0.3 + (1 - this.nightFor(h)) * 0.7), snow * 0.35);
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.copy(this.background);
+    fog.near = 115 - fogginess * 70;
+    fog.far = 230 - fogginess * 120;
 
     // Sun arc: rises east (+x), sets west (-x). At night the "sun" is the moon, opposite.
     const dayAngle = ((h - 6) / 12) * Math.PI;
@@ -155,9 +176,11 @@ export class Sky {
     const sx = Math.round(c.x / 2) * 2, sz = Math.round(c.z / 2) * 2;
     this.sun.position.set(sx + az * 50, Math.max(elev, 0.15) * 55, sz + 22);
     this.sun.target.position.set(sx, 0, sz);
+    this.night = this.nightFor(h);
+  }
 
-    const sunElev = Math.sin(dayAngle);
-    this.night = 1 - THREE.MathUtils.smoothstep(sunElev, -0.1, 0.3);
+  private nightFor(h: number) {
+    return 1 - THREE.MathUtils.smoothstep(Math.sin(((h - 6) / 12) * Math.PI), -0.1, 0.3);
   }
 }
 
