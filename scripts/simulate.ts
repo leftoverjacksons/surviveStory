@@ -6,6 +6,7 @@
 import { alive, communityMorale, createCommunity } from '../src/sim/community';
 import { createColony, tick, type Colony } from '../src/sim/colony';
 import { bedsTotal } from '../src/sim/buildings';
+import { communitySight, homeResonance } from '../src/sim/veil';
 import { generateWorld } from '../src/sim/worldgen';
 import { Zone, exploredFraction, idx, paintZone, toTileX, toTileZ, zoneAllowed, type World } from '../src/sim/world';
 
@@ -67,6 +68,8 @@ for (let seed = 1; seed <= colonies; seed++) {
     bedsTotal(v), communityMorale(c), r.food, minFoodWinter === Infinity ? 0 : minFoodWinter, hungryDays, r.wood, coldNights,
     v.buildings.length - 1, v.tier, exploredFraction(col.world) * 100,
     col.world.trees.filter((t) => t.planted).length,
+    homeResonance(col), communitySight(col), col.veil.influence,
+    c.log.filter((l) => l.tone === 'strange').length, c.log.filter((l) => l.text.startsWith('The council met')).length,
   ]);
   if (showLog && seed === 1) {
     for (const l of c.log) if (l.tone !== 'info' || l.text.startsWith('Day')) console.log(`  D${l.day} ${l.text}`);
@@ -76,6 +79,6 @@ for (let seed = 1; seed <= colonies; seed++) {
 const mean = (i: number) => rows.reduce((s, r) => s + r[i], 0) / rows.length;
 const min = (i: number) => Math.min(...rows.map((r) => r[i]));
 const max = (i: number) => Math.max(...rows.map((r) => r[i]));
-const names = ['alive', 'food @ winter', 'died', 'left', 'beds', 'morale', 'food', 'min food (winter)', 'hungry days', 'wood', 'cold nights', 'buildings', 'tier', 'explored %', 'saplings'];
+const names = ['alive', 'food @ winter', 'died', 'left', 'beds', 'morale', 'food', 'min food (winter)', 'hungry days', 'wood', 'cold nights', 'buildings', 'tier', 'explored %', 'saplings', 'home resonance', 'mean sight', 'influence', 'strange lines', 'councils'];
 console.log(`${colonies} colonies × ${days} days${prepared ? ' (prepared)' : ''}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 names.forEach((n, i) => console.log(`${n.padEnd(18)} mean ${mean(i).toFixed(1).padStart(7)}   min ${min(i).toFixed(1).padStart(7)}   max ${max(i).toFixed(1).padStart(7)}`));

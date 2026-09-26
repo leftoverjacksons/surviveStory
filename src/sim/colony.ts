@@ -19,6 +19,8 @@ import {
 } from './buildings';
 import { bedSpot, KITCHEN, seatSpot } from './layout';
 import { highwayZ } from './worldgen';
+import { createVeil, disturb, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil } from './veil';
+import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
 import {
   Crop, Ground, LANE_WEAR, PATH_WEAR, Zone, findNearest, idx, isExplored, passable, reveal, tileX, tileZ, toTileX, toTileZ,
@@ -111,6 +113,8 @@ export interface Colony {
   /** One-off hints already given. */
   hints: Set<string>;
   private_fieldCache: { version: number; tiles: number[] };
+  veil: Veil;
+  council: Council;
 }
 
 // ---------- time ----------
@@ -127,6 +131,7 @@ export function createColony(world: World, community: Community): Colony {
     village: createVillage(world), beds: new Map(),
     weather: weatherOn(1, world.seed), claims: new Map(), replant: [], tended: new Set(), lowDays: new Map(),
     hints: new Set(), private_fieldCache: { version: -1, tiles: [] },
+    veil: createVeil(world), council: createCouncil(),
   };
   syncAgents(col);
   replan(col);
@@ -367,6 +372,11 @@ function pickForage(col: Colony, a: Agent): Task | null {
 
 function pickScout(col: Colony, a: Agent): Task | null {
   const w = col.world;
+  const omen = col.council.omen;
+  if (omen) {
+    col.council.omen = null;
+    if (setDest(col, a, omen.x, omen.z)) return { kind: 'scout', stage: 'go', t: 0 };
+  }
   return withRng(col.community, (rng) => {
     for (let tries = 0; tries < 10; tries++) {
       const ang = rng.range(0, Math.PI * 2);
@@ -610,6 +620,11 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     if (setDest(col, a, seat.x, seat.z)) return { kind: 'social', stage: 'go' };
   }
   let t: Task | null = null;
+  // A council rest day: no work, just company.
+  if (col.minute < col.council.restUntil) {
+    const seat = seatOf(col, a);
+    if (setDest(col, a, seat.x, seat.z)) return { kind: 'tend', stage: 'go', t: 0 };
+  }
   // When the stores run low, everyone who can goes out foraging (or, in winter, scrounging).
   const pop = col.agents.length;
   if (res.food < pop * 2 && s.role !== 'rest') {
@@ -717,6 +732,9 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         const ti = idx(w, tree.tx, tree.tz);
         w.treeAt[ti] = -1;
         if (w.zone[ti] === Zone.Woodlot) col.replant.push(ti);
+        // Cutting thins the Veil: gently in a woodlot, sharply near the Ring.
+        const nearRing = Math.hypot(tp.x - w.fairyRing.x, tp.z - w.fairyRing.z) < 14;
+        disturb(col, tp.x, tp.z, (w.zone[ti] === Zone.Woodlot ? 0.012 : 0.03) * (nearRing ? 2 : 1));
         const len = Math.hypot(tp.x - a.x, tp.z - a.z) || 1;
         col.events.push({ type: 'felled', tree: tree.id, dirX: (tp.x - a.x) / len, dirZ: (tp.z - a.z) / len });
         col.items.push({ id: col.nextItemId++, kind: 'wood', amount: Math.round(3 + tree.size * 5), x: tp.x, z: tp.z, reserved: 0 });
@@ -864,7 +882,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       face(a, w.fairyRing);
       a.anim = 'sit'; a.activity = 'Sitting with the wisps';
       t.t += dt;
-      res.glimmer += dt * 0.004 * workRate(s, 'attune') * (1 + s.stats.attunement * 0.2);
+      res.glimmer += dt * 0.004 * workRate(s, 'attune') * (1 + s.stats.attunement * 0.2) * (0.3 + resonanceAt(col, w.fairyRing.x, w.fairyRing.z));
       if (t.t >= 120) endTask(col, a);
       return;
     }
@@ -943,6 +961,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         if (t.t >= 30) {
           const take = Math.min(6, h.scrap);
           h.scrap -= take;
+          disturb(col, tileX(w, h.tx), tileZ(w, h.tz), 0.015);
           h.reserved = 0;
           a.carry = { kind: 'scrap', amount: take };
           if (!deliver(col, a)) { res.scrap += take; a.carry = null; return endTask(col, a); }
@@ -1071,6 +1090,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         };
         w.trees.push(tree);
         w.treeAt[i] = tree.id;
+        nurture(col, tileX(w, tx), tileZ(w, tz), 0.008);
         col.events.push({ type: 'planted', tree: tree.id });
       }
       col.replant = col.replant.filter((x) => x !== i);
@@ -1127,6 +1147,7 @@ const STRANGE = [
 function hourly(col: Colony) {
   const c = col.community;
   const living = alive(c);
+  const homeRes = homeResonance(col);
   withRng(c, (rng) => {
     for (const s of living) {
       const a = col.agents.find((x) => x.id === s.id);
@@ -1143,7 +1164,8 @@ function hourly(col: Colony) {
       const v = col.village;
       const comfort = (a.sleptIndoors ? 4 : -2) + (hasBuilt(v, 'kitchen') ? 3 : 0)
         + Math.min(3, v.buildings.filter((b) => b.kind === 'lantern').length)
-        - (rationing(col) ? 10 : 0) - (seasonNow(col) === 'winter' ? 2 : 0);
+        - (rationing(col) ? 10 : 0) - (seasonNow(col) === 'winter' ? 2 : 0)
+        + (homeRes < 0.3 ? -4 : homeRes > 0.6 ? 2 : 0) + (col.minute < col.council.festivalUntil ? 6 : 0);
       const target = TUNING.moraleBaseline + traitSum(s, (t) => t.moraleBaseline, 0, 'add')
         + (needs - 55) * 0.3 + Math.min(friends, 6) - (s.griefDays > 0 ? 15 : 0) + comfort;
       s.morale = Math.max(0, Math.min(100, s.morale + (target - s.morale) * 0.06));
@@ -1158,6 +1180,8 @@ function hourly(col: Colony) {
       const rate = traitSum(sa, (t) => t.bondRate, 1, 'mul') * traitSum(sb, (t) => t.bondRate, 1, 'mul');
       const good = bond > -30 || rng.chance(0.3);
       adjustBond(c, sa.id, sb.id, (good ? 3 : -2) * rate);
+      if (good) nurture(col, col.world.home.x, col.world.home.z, 0.002, 2);
+      else disturb(col, col.world.home.x, col.world.home.z, 0.006, 2);
       if (rng.chance(0.6)) {
         const line = rng.pick(good ? TALK_GOOD : TALK_BAD).replace('{a}', first(sa)).replace('{b}', first(sb));
         log(c, line, good ? 'info' : 'bad');
@@ -1172,6 +1196,10 @@ function hourly(col: Colony) {
       const lines = STRANGE.map((l) => l.replaceAll('{a}', n)).filter((l) => !recent.has(l));
       if (lines.length) log(c, rng.pick(lines), 'strange');
     }
+
+    const hour = Math.floor(hourOf(col));
+    veilHourly(col, rng, hour, hour >= 18 || hour < 6);
+    if (hour === 8) maybeConvene(col, rng);
   });
 
   const season = seasonNow(col);
@@ -1238,6 +1266,8 @@ function daily(col: Colony) {
     col.hints.add(`ration${dayOf(col) - (dayOf(col) - 1) % 48}`);
     log(c, 'The cellar is running low. Meals are cut to half rations until spring.', 'bad');
   }
+  veilDaily(col, { cold, rationing: rationing(col) });
+  councilDaily(col);
   departures(col);
   dailyRollover(c);
   checkTier(col.village, c);
@@ -1305,11 +1335,11 @@ function arrivals(col: Colony) {
   const pop = alive(c).length;
   if (pop === 0 || pop >= MAX_POP || communityMorale(c) < 50) return;
   // Nobody travels in winter, and nobody stays where there's no food.
-  if (seasonNow(col) === 'winter' || c.resources.food < pop * 4) return;
+  if (seasonNow(col) === 'winter' || c.resources.food < pop * 4 || col.council.gates === 'closed') return;
   const building = activeProjects(col).some((p) => p.kind === 'hut' || p.kind === 'annex' || p.kind === 'patch_roof');
   if (bedsTotal(col.village) < pop && !building) return;
   withRng(c, (rng) => {
-    if (!rng.chance(0.3)) return;
+    if (!rng.chance(col.council.gates === 'open' ? 0.55 : 0.3)) return;
     const s = recruit(c);
     s.role = neededRole(col);
     syncAgents(col);

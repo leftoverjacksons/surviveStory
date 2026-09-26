@@ -11,8 +11,8 @@ import {
   type Point, type World,
 } from './world';
 
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar';
-export type ProjectKind = 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'upgrade';
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine';
+export type ProjectKind = 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'upgrade';
 export type Tier = 0 | 1;
 
 export interface Cost { wood: number; scrap: number; glimmer: number }
@@ -59,6 +59,8 @@ export interface Project {
 }
 
 export interface Village {
+  /** What the council asked to build next, if anything. */
+  priority?: SiteKind;
   buildings: Building[];
   projects: Project[];
   nextId: number;
@@ -76,6 +78,7 @@ export const DEFS: Record<Exclude<ProjectKind, 'upgrade' | 'clear_store' | 'patc
   workshop: { name: ['Scrap workbench', 'Timber workshop'], w: 3, d: 3, cost: [c(10, 6), c(30, 4)], work: [420, 660] },
   kitchen:  { name: ['Canopy kitchen', 'Canopy kitchen'], w: 4, d: 2, cost: [c(12, 6), c(12, 6)], work: [480, 480] },
   cellar:   { name: ['Root cellar', 'Stone-lined cellar'], w: 3, d: 3, cost: [c(10, 4), c(20, 0)], work: [360, 480] },
+  shrine:   { name: ['Wayside shrine', 'Stone shrine'], w: 2, d: 2, cost: [c(8, 2, 8), c(14, 0, 8)], work: [300, 360] },
   lantern:  { name: ['Wisp lantern', 'Wisp lantern'], w: 1, d: 1, cost: [c(2, 2, 6), c(2, 2, 6)], work: [120, 120] },
 };
 
@@ -184,7 +187,7 @@ export function storageCapacity(v: Village): number {
   return 40 + v.buildings.filter((b) => b.kind === 'cellar').reduce((n, b) => n + (b.tier === 0 ? 100 : 160), 0);
 }
 
-type SiteKind = 'hut' | 'garden' | 'workshop' | 'lantern' | 'cellar';
+export type SiteKind = 'hut' | 'garden' | 'workshop' | 'lantern' | 'cellar' | 'shrine';
 
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
@@ -200,7 +203,7 @@ export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot
       const foot = { tx: cxT + dx, tz: czT + dz, w: fw, d: fd };
       const cen = footCenter(w, foot);
       const dist = Math.hypot(cen.x - CAMP.x, cen.z - CAMP.z);
-      const ideal = kind === 'lantern' ? 7 : kind === 'garden' ? 13 : kind === 'workshop' || kind === 'cellar' ? 10 : 9;
+      const ideal = kind === 'lantern' ? 7 : kind === 'garden' ? 13 : kind === 'workshop' || kind === 'cellar' ? 10 : kind === 'shrine' ? 14 : 9;
       let score = Math.abs(dist - ideal) * 1.2;
       if (score - 7 > bestScore) continue; // 7 = the most frontage can win back
       const free = footprintFree(w, v, foot, kind === 'lantern' ? 0 : 1);
@@ -218,6 +221,7 @@ export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot
         for (const [tx, tz] of footTiles(foot)) if (w.ground[idx(w, tx, tz)] === Ground.Meadow) meadow++;
         score -= meadow * 0.4;
       }
+      if (kind === 'shrine') score += Math.hypot(cen.x - w.fairyRing.x, cen.z - w.fairyRing.z) * 0.35; // toward the Ring
       if (kind === 'workshop') {
         const sp = w.stockpile;
         score += Math.hypot(cen.x - (sp.x0 + sp.x1) / 2, cen.z - (sp.z0 + sp.z1) / 2) * 0.3;
@@ -340,9 +344,9 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   if (beds < pop + 2) wants.push(shelter); // a little room for newcomers
   if (v.tier === 1 && !has('upgrade')) {
     wants.push(() => {
-      const old = v.buildings.find((b) => b.tier === 0 && (b.kind === 'hut' || b.kind === 'garden' || b.kind === 'workshop' || b.kind === 'cellar'));
+      const old = v.buildings.find((b) => b.tier === 0 && (b.kind === 'hut' || b.kind === 'garden' || b.kind === 'workshop' || b.kind === 'cellar' || b.kind === 'shrine'));
       if (!old) return null;
-      const def = DEFS[old.kind as 'hut' | 'garden' | 'workshop' | 'cellar'];
+      const def = DEFS[old.kind as 'hut' | 'garden' | 'workshop' | 'cellar' | 'shrine'];
       log(com, `${lead} wants to rebuild ${old.name.toLowerCase()} properly, in timber.`, 'good');
       return newProject(v, {
         kind: 'upgrade', tier: 1, name: `Rebuild as ${def.name[1].toLowerCase()}`, foot: old.foot, facing: old.facing,
@@ -351,13 +355,22 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
     });
   }
   const lanterns = v.buildings.filter((b) => b.kind === 'lantern').length;
-  if (com.resources.glimmer >= 8 && lanterns < Math.min(4, Math.floor(com.day / 4)) && !has('lantern')) {
+  if (com.resources.glimmer >= 8 && lanterns < Math.min(3, Math.floor(com.day / 8)) && !has('lantern')) {
     wants.push(() => site('lantern'));
   }
   if (v.buildings.filter((b) => b.kind === 'garden').length < Math.min(2, Math.ceil(pop / 6)) && !has('garden')) {
     wants.push(() => site('garden'));
   }
 
+  // The council's wish goes first.
+  if (v.priority && !has(v.priority)) {
+    const kind = v.priority;
+    wants.unshift(() => {
+      const p = site(kind);
+      if (p) v.priority = undefined;
+      return p;
+    });
+  }
   for (const want of wants) {
     const p = want();
     if (p) return p;
@@ -401,7 +414,7 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
       const b = v.buildings.find((x) => x.id === p.target);
       if (b) {
         b.tier = 1;
-        const def = DEFS[b.kind as 'hut' | 'garden' | 'workshop' | 'cellar'];
+        const def = DEFS[b.kind as 'hut' | 'garden' | 'workshop' | 'cellar' | 'shrine'];
         b.name = def.name[1];
         if (def.beds) b.beds = def.beds[1];
         log(com, `The ${def.name[0].toLowerCase()} is gone; a ${def.name[1].toLowerCase()} stands in its place.`, 'good');
