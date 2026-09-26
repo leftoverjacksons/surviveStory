@@ -10,7 +10,7 @@ export interface TraitDef {
   blurb: string;
   griefMult?: number;       // scales morale loss when a bonded survivor dies
   bondRate?: number;        // scales daily bond drift
-  jobBonus?: Partial<Record<JobId, number>>;
+  roleBonus?: Partial<Record<RoleId, number>>; // added to work speed
   attunement?: number;      // flat attunement bonus
   moraleBaseline?: number;  // shifts resting morale
 }
@@ -18,14 +18,14 @@ export interface TraitDef {
 export const TRAITS: Record<TraitId, TraitDef> = {
   stoic:       { id: 'stoic', name: 'Stoic', blurb: 'Grief lands softer, but so does joy.', griefMult: 0.5, bondRate: 0.7 },
   tender:      { id: 'tender', name: 'Tender', blurb: 'Loves quickly. Mourns hard.', griefMult: 1.6, bondRate: 1.5 },
-  green_thumb: { id: 'green_thumb', name: 'Green Thumb', blurb: 'The overgrowth yields to them.', jobBonus: { forage: 0.5 } },
-  tinkerer:    { id: 'tinkerer', name: 'Tinkerer', blurb: 'Sees parts where others see junk.', jobBonus: { scavenge: 0.5 } },
-  orb_touched: { id: 'orb_touched', name: 'Orb-Touched', blurb: 'Something followed them home once.', attunement: 3, bondRate: 0.6 },
-  night_owl:   { id: 'night_owl', name: 'Night Owl', blurb: 'Most awake when the wisps are.', jobBonus: { guard: 0.4 } },
+  green_thumb: { id: 'green_thumb', name: 'Green Thumb', blurb: 'The overgrowth yields to them.', roleBonus: { forager: 0.5 } },
+  tinkerer:    { id: 'tinkerer', name: 'Tinkerer', blurb: 'Sees parts where others see junk.', roleBonus: { builder: 0.5 } },
+  orb_touched: { id: 'orb_touched', name: 'Orb-Touched', blurb: 'Something followed them home once.', attunement: 3, bondRate: 0.6, roleBonus: { attune: 0.5 } },
+  night_owl:   { id: 'night_owl', name: 'Night Owl', blurb: 'Most awake when the wisps are.', roleBonus: { scout: 0.4 } },
   brave:       { id: 'brave', name: 'Brave', blurb: 'First through the door.', moraleBaseline: 5 },
-  skittish:    { id: 'skittish', name: 'Skittish', blurb: 'Hears every branch snap.', moraleBaseline: -6, jobBonus: { guard: 0.2 } },
-  hoarder:     { id: 'hoarder', name: 'Hoarder', blurb: 'Nothing is truly useless.', jobBonus: { scavenge: 0.25 }, bondRate: 0.8 },
-  storyteller: { id: 'storyteller', name: 'Storyteller', blurb: 'Keeps the fire and the names alive.', jobBonus: { tend: 0.5 }, bondRate: 1.2 },
+  skittish:    { id: 'skittish', name: 'Skittish', blurb: 'Hears every branch snap.', moraleBaseline: -6, roleBonus: { scout: 0.2 } },
+  hoarder:     { id: 'hoarder', name: 'Hoarder', blurb: 'Nothing is truly useless.', roleBonus: { builder: 0.25 }, bondRate: 0.8 },
+  storyteller: { id: 'storyteller', name: 'Storyteller', blurb: 'Keeps the fire and the names alive.', roleBonus: { tender: 0.5 }, bondRate: 1.2 },
 };
 
 export type PsiId = 'lumen' | 'farsight' | 'push' | 'hush' | 'echo';
@@ -40,15 +40,15 @@ export const PSI: Record<PsiId, PsiDef> = {
   echo:     { id: 'echo', name: 'Echo', blurb: 'Reads the last memory left in an object.' },
 };
 
-export type JobId = 'forage' | 'scavenge' | 'guard' | 'tend' | 'attune' | 'rest';
+export type RoleId = 'builder' | 'forager' | 'scout' | 'tender' | 'attune' | 'rest';
 
-export const JOBS: Record<JobId, { name: string; blurb: string }> = {
-  forage:   { name: 'Forage', blurb: 'Food and water from the green.' },
-  scavenge: { name: 'Scavenge', blurb: 'Scrap and medicine from the ruins.' },
-  guard:    { name: 'Guard', blurb: 'Watch the treeline.' },
-  tend:     { name: 'Tend', blurb: 'Keep the fire, the sick, the spirits.' },
-  attune:   { name: 'Attune', blurb: 'Sit with the wisps. Gather glimmer.' },
-  rest:     { name: 'Rest', blurb: 'Recover body and mind.' },
+export const ROLES: Record<RoleId, { name: string; blurb: string }> = {
+  builder: { name: 'Builder', blurb: 'Fells trees and hauls what the village needs.' },
+  forager: { name: 'Forager', blurb: 'Gathers berries and greens from the overgrowth.' },
+  scout:   { name: 'Scout', blurb: 'Walks the edge of the known map and pushes it back.' },
+  tender:  { name: 'Tender', blurb: 'Keeps the fire and keeps people company.' },
+  attune:  { name: 'Attuner', blurb: 'Sits with the wisps at the ring. Gathers glimmer.' },
+  rest:    { name: 'Resting', blurb: 'Stays close to camp and recovers.' },
 };
 
 export const FIRST_NAMES = [

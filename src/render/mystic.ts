@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt } from './terrain';
+import { heightAt, type World } from '../sim/world';
 import { glowTexture, makeRand } from './util';
 
 const GLOW = () => glowTexture();
@@ -32,7 +32,7 @@ export class Wisps {
   private rand = makeRand(77);
   private anchors: THREE.Vector3[];
 
-  constructor(anchors: THREE.Vector3[], count = 9) {
+  constructor(private world: World, anchors: THREE.Vector3[], count = 9) {
     this.anchors = anchors;
     const tex = GLOW();
     const palette = ['#9ff7e4', '#bfe8ff', '#f4e7a1', '#c9b8ff', '#a8ffb8'];
@@ -121,7 +121,7 @@ export class Wisps {
         0,
         base.z + Math.cos(ph * w.freq.z) * 1.6,
       );
-      p.y = heightAt(p.x, p.z) + 1.3 + Math.sin(ph * w.freq.y) * 0.6 + base.y;
+      p.y = heightAt(this.world, p.x, p.z) + 1.3 + Math.sin(ph * w.freq.y) * 0.6 + base.y;
       const flicker = 0.85 + Math.sin(ph * 9.1) * 0.08 + Math.sin(ph * 23.7) * 0.07;
       w.halo.position.copy(p);
       w.halo.scale.setScalar((0.9 + night * 0.9) * flicker);
@@ -150,14 +150,14 @@ export class Wisps {
 export class Fireflies {
   points: THREE.Points;
   private mat: THREE.ShaderMaterial;
-  constructor(count = 420) {
+  constructor(world: World, count = 420) {
     const rand = makeRand(55);
     const pos = new Float32Array(count * 3);
     const phase = new Float32Array(count);
     for (let i = 0; i < count; i++) {
       const a = rand() * Math.PI * 2, r = 6 + rand() * 34;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      pos.set([x, heightAt(x, z) + 0.3 + rand() * 1.6, z], i * 3);
+      pos.set([x, heightAt(world, x, z) + 0.3 + rand() * 1.6, z], i * 3);
       phase[i] = rand() * 100;
     }
     const geo = new THREE.BufferGeometry();

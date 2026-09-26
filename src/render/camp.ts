@@ -1,24 +1,30 @@
 import * as THREE from 'three';
-import type { Survivor } from '../sim/community';
-import { CAMP, MEMORIAL } from './station';
+import type { Item } from '../sim/colony';
+import type { Community } from '../sim/community';
+import { bedSpot, CAMP, MEMORIAL } from '../sim/layout';
+import { heightAt, type World } from '../sim/world';
+import { CLOTH } from './people';
 import { glowTexture, lambert } from './util';
 
-export const CLOTH = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a', '#6b5a7a', '#8a7a6a'];
-const SKIN = ['#e0b896', '#c99a74', '#a8764f', '#7d5537', '#f0cfb0'];
-
-interface Figure { group: THREE.Group; torso: THREE.Mesh; head: THREE.Mesh; id: number; fading: number; seated: boolean; phase: number }
-
+/**
+ * The camp around the fire: flames, bedrolls, the stockpile (logs and food
+ * that visibly grow with the colony's stores), wood lying where trees fell,
+ * and memorial stones for the dead.
+ */
 export class Camp {
   group = new THREE.Group();
   private fireLight: THREE.PointLight;
   private flames: THREE.Mesh[] = [];
   private flameHalo: THREE.Sprite;
-  private figures = new Map<number, Figure>();
-  private stones = new Map<number, { group: THREE.Group; light: THREE.PointLight }>();
-  private stoneCount = 0;
+  private stones = new Map<number, THREE.PointLight>();
+  private beds = new Map<number, THREE.Group>();
+  private pileLogs: THREE.InstancedMesh;
+  private pileFood: THREE.InstancedMesh;
+  private groundLogs = new Map<number, THREE.Group>();
+  private logGeo = new THREE.CylinderGeometry(0.12, 0.12, 1.2, 7).rotateZ(Math.PI / 2);
+  private logMat = lambert('#6a4a30');
 
-  constructor() {
-    // Fire pit: ring of stones, crossed logs, flame cones.
+  constructor(private world: World) {
     const pit = new THREE.Group();
     for (let i = 0; i < 9; i++) {
       const a = (i / 9) * Math.PI * 2;
@@ -48,77 +54,109 @@ export class Camp {
     this.flameHalo.position.y = 0.6;
     this.flameHalo.scale.setScalar(2.4);
     pit.add(this.flameHalo);
-    this.fireLight = new THREE.PointLight('#ff9448', 8, 11, 1.5);
+    this.fireLight = new THREE.PointLight('#ff9448', 8, 12, 1.5);
     this.fireLight.position.y = 1.0;
     this.fireLight.castShadow = true;
     this.fireLight.shadow.mapSize.set(512, 512);
     this.fireLight.shadow.bias = -0.002;
     pit.add(this.fireLight);
-    pit.position.copy(CAMP);
+    pit.position.set(CAMP.x, 0, CAMP.z);
+    pit.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
     this.group.add(pit);
-  }
 
-  /** Reconcile figures and memorial stones with the simulation roster. */
-  sync(roster: Survivor[]) {
-    const living = roster.filter((s) => s.alive);
-    living.forEach((s, i) => {
-      let f = this.figures.get(s.id);
-      if (!f) {
-        f = this.makeFigure(s);
-        this.figures.set(s.id, f);
-        this.group.add(f.group);
+    // Stockpile: logs stacked in a rack, food in crates.
+    const sp = world.stockpile;
+    const rack = new THREE.Group();
+    for (const x of [sp.x0 + 0.3, sp.x0 + 1.5]) {
+      for (const z of [sp.z0 + 0.4, sp.z1 - 0.4]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 0.1), lambert('#4a3a2a'));
+        post.position.set(x + 0.6, 0.6, z);
+        rack.add(post);
       }
-      const a = (i / Math.max(living.length, 1)) * Math.PI * 2 + 0.4;
-      const r = f.seated ? 1.45 : 1.9;
-      f.group.position.set(CAMP.x + Math.cos(a) * r, 0, CAMP.z + Math.sin(a) * r);
-      f.group.lookAt(CAMP.x, 0, CAMP.z);
-    });
-    for (const s of roster) {
-      if (s.alive) continue;
-      const f = this.figures.get(s.id);
-      if (f && f.fading === 0) f.fading = 0.0001;
-      if (!this.stones.has(s.id)) this.addStone(s.id);
+    }
+    this.group.add(rack);
+    this.pileLogs = new THREE.InstancedMesh(this.logGeo, this.logMat, 90);
+    this.pileLogs.count = 0;
+    this.pileFood = new THREE.InstancedMesh(new THREE.BoxGeometry(0.6, 0.45, 0.6).translate(0, 0.225, 0), lambert('#7b6243'), 40);
+    this.pileFood.count = 0;
+    for (const im of [this.pileLogs, this.pileFood]) {
+      im.castShadow = im.receiveShadow = true;
+      im.frustumCulled = false;
+      this.group.add(im);
     }
   }
 
-  private makeFigure(s: Survivor): Figure {
-    const g = new THREE.Group();
-    const seated = s.id % 3 !== 0;
-    const cloth = lambert(CLOTH[s.hue % CLOTH.length]);
-    const pants = lambert('#3a3a34');
-    const skin = lambert(SKIN[s.id % SKIN.length]);
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.45, 3, 8), cloth);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), skin);
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2.2), lambert(['#2a1d14', '#5a3b22', '#8a8070', '#1a1a1a'][s.id % 4]));
-    if (seated) {
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.5), lambert('#5b4632'));
-      seat.position.y = 0.17;
-      torso.position.y = 0.72;
-      head.position.y = 1.23;
-      const thighs = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.14, 0.45), pants);
-      thighs.position.set(0, 0.42, 0.2);
-      const shins = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.14), pants);
-      shins.position.set(0, 0.2, 0.42);
-      g.add(seat, thighs, shins);
-    } else {
-      for (const lx of [-0.1, 0.1]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.75, 6), pants);
-        leg.position.set(lx, 0.38, 0);
-        g.add(leg);
+  sync(c: Community, items: Item[]) {
+    // Bedrolls for the living.
+    for (const s of c.survivors) {
+      if (s.alive && !this.beds.has(s.id)) {
+        const g = new THREE.Group();
+        const roll = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 1.8), lambert(CLOTH[s.hue % CLOTH.length]));
+        roll.position.y = 0.04;
+        const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.3), lambert('#cfc6a8'));
+        pillow.position.set(0, 0.09, -0.75);
+        g.add(roll, pillow);
+        const p = bedSpot(s.id);
+        g.position.set(p.x, heightAt(this.world, p.x, p.z), p.z);
+        g.traverse((o) => { o.receiveShadow = true; });
+        this.beds.set(s.id, g);
+        this.group.add(g);
       }
-      torso.position.y = 1.05;
-      head.position.y = 1.56;
+      if (!s.alive && this.beds.has(s.id)) {
+        this.group.remove(this.beds.get(s.id)!);
+        this.beds.delete(s.id);
+      }
+      if (!s.alive && !this.stones.has(s.id)) this.addStone(s.id);
     }
-    hair.position.copy(head.position).add(new THREE.Vector3(0, 0.03, -0.01));
-    g.add(torso, head, hair);
-    g.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
-    g.userData.survivorId = s.id;
-    return { group: g, torso, head, id: s.id, fading: 0, seated, phase: s.id * 1.7 };
+
+    // Stockpile size follows the stores.
+    const sp = this.world.stockpile;
+    const m = new THREE.Matrix4();
+    const logs = Math.min(90, Math.floor(c.resources.wood / 1.5));
+    for (let i = 0; i < logs; i++) {
+      const row = Math.floor(i / 6), col = i % 6;
+      const layer = Math.floor(row / 3);
+      m.makeTranslation(sp.x0 + 0.9, 0.13 + layer * 0.24, sp.z0 + 0.5 + col * 0.26 + (row % 3) * 0.02);
+      if (layer >= 5) m.makeTranslation(sp.x0 + 2.4, 0.13 + (layer - 5) * 0.24, sp.z0 + 0.5 + col * 0.26);
+      this.pileLogs.setMatrixAt(i, m);
+    }
+    this.pileLogs.count = logs;
+    this.pileLogs.instanceMatrix.needsUpdate = true;
+    const crates = Math.min(40, Math.ceil(c.resources.food / 8));
+    for (let i = 0; i < crates; i++) {
+      const layer = Math.floor(i / 8), k = i % 8;
+      m.makeTranslation(sp.x0 + 2.9 + (k % 4) * 0.66, layer * 0.46, sp.z0 + 0.5 + Math.floor(k / 4) * 0.66);
+      this.pileFood.setMatrixAt(i, m);
+    }
+    this.pileFood.count = crates;
+    this.pileFood.instanceMatrix.needsUpdate = true;
+
+    // Wood lying on the ground where trees fell.
+    const live = new Set(items.map((i) => i.id));
+    for (const [id, g] of this.groundLogs) if (!live.has(id)) { this.group.remove(g); this.groundLogs.delete(id); }
+    for (const it of items) {
+      if (it.kind !== 'wood') continue;
+      let g = this.groundLogs.get(it.id);
+      if (!g) {
+        g = new THREE.Group();
+        for (let k = 0; k < 3; k++) {
+          const l = new THREE.Mesh(this.logGeo, this.logMat);
+          l.position.set(0, 0.12 + (k === 2 ? 0.2 : 0), (k === 2 ? 0 : k === 0 ? -0.13 : 0.13));
+          l.castShadow = true;
+          g.add(l);
+        }
+        g.rotation.y = (it.id * 1.37) % Math.PI;
+        g.position.set(it.x, heightAt(this.world, it.x, it.z), it.z);
+        this.groundLogs.set(it.id, g);
+        this.group.add(g);
+      }
+      g.children[2].visible = it.amount > 6;
+    }
   }
 
   private addStone(id: number) {
+    const i = this.stones.size;
     const g = new THREE.Group();
-    const i = this.stoneCount++;
     const stone = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.18), lambert('#8d8a80'));
     stone.position.y = 0.35;
     stone.rotation.z = (i % 2 ? 1 : -1) * 0.06;
@@ -131,44 +169,19 @@ export class Camp {
     g.add(stone, candle, flame, light);
     g.position.set(MEMORIAL.x + (i % 4) * 0.75, 0, MEMORIAL.z + Math.floor(i / 4) * 0.7);
     g.traverse((o) => { o.castShadow = true; });
-    this.stones.set(id, { group: g, light });
+    this.stones.set(id, light);
     this.group.add(g);
   }
 
-  figureObjects(): THREE.Object3D[] {
-    return [...this.figures.values()].map((f) => f.group);
-  }
-
-  headPosition(id: number, out: THREE.Vector3): boolean {
-    const f = this.figures.get(id);
-    if (!f || f.fading >= 1) return false;
-    f.head.getWorldPosition(out);
-    out.y += 0.4;
-    return true;
-  }
-
-  update(t: number, dt: number) {
+  update(t: number, fireLit: boolean) {
     const flick = 1 + Math.sin(t * 13) * 0.12 + Math.sin(t * 29) * 0.08 + Math.sin(t * 5.3) * 0.1;
-    this.fireLight.intensity = 9 * flick;
+    const lit = fireLit ? 1 : 0.25;
+    this.fireLight.intensity = 9 * flick * lit;
     this.flames.forEach((f, i) => {
-      f.scale.set(1, flick * (1 + Math.sin(t * (9 + i * 3)) * 0.15), 1);
+      f.scale.set(lit, flick * lit * (1 + Math.sin(t * (9 + i * 3)) * 0.15), lit);
       f.rotation.y = t * (1 + i);
     });
-    this.flameHalo.scale.setScalar(2.2 * flick);
-    for (const s of this.stones.values()) s.light.intensity = 1.1 + Math.sin(t * 11 + s.group.position.x) * 0.2;
-
-    for (const [id, f] of this.figures) {
-      f.torso.scale.y = 1 + Math.sin(t * 1.6 + f.phase) * 0.025;
-      f.head.rotation.y = Math.sin(t * 0.3 + f.phase) * 0.5;
-      if (f.fading > 0) {
-        f.fading += dt * 0.5;
-        const k = Math.max(0, 1 - f.fading);
-        f.group.scale.setScalar(Math.max(0.001, k));
-        if (f.fading >= 1) {
-          this.group.remove(f.group);
-          this.figures.delete(id);
-        }
-      }
-    }
+    this.flameHalo.scale.setScalar(2.2 * flick * lit);
+    for (const l of this.stones.values()) l.intensity = 1.1 + Math.sin(t * 11 + l.id) * 0.2;
   }
 }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { addWind, lambert, makeRand, shadowed } from './util';
+import { CANOPY, CAR, SIGN, STORE } from '../sim/layout';
+import { enhance, lambert, makeRand, shadowed } from './util';
 
 /** Surfaces that vines should grow over, collected while building the station. */
 export interface VineSurface {
@@ -10,10 +11,6 @@ export interface VineSurface {
 
 export interface VineEdge { a: THREE.Vector3; b: THREE.Vector3 } // hanging-vine anchor lines
 
-export const CANOPY = { x: 0, z: 1.5, w: 11, d: 7, y: 4.4 };
-export const STORE = { x: -1, z: -9, w: 10, h: 3.6, d: 5.5 };
-export const CAMP = new THREE.Vector3(6.6, 0, -2.2);
-export const MEMORIAL = new THREE.Vector3(-7.4, 0, -3.4);
 
 function boxSurface(center: THREE.Vector3, size: THREE.Vector3, faces: ('px' | 'nx' | 'pz' | 'nz' | 'py')[], weight: number): VineSurface {
   return {
@@ -148,10 +145,10 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.82, 0.4, 0.32), fasciaTeal);
   stripe.position.y = 7.7;
   sign.add(pole, board, stripe);
-  sign.position.set(9, 0, 9.4);
+  sign.position.set(SIGN.x, 0, SIGN.z);
   sign.rotation.set(0.05, 0.4, -0.09);
   g.add(sign);
-  surfaces.push(boxSurface(new THREE.Vector3(9, 2.5, 9.4), new THREE.Vector3(0.35, 5, 0.35), ['px', 'nx', 'pz', 'nz'], 0.6));
+  surfaces.push(boxSurface(new THREE.Vector3(SIGN.x, 2.5, SIGN.z), new THREE.Vector3(0.35, 5, 0.35), ['px', 'nx', 'pz', 'nz'], 0.6));
 
   // Abandoned car, rusting into the apron.
   const car = new THREE.Group();
@@ -169,18 +166,12 @@ export function buildStation(): { group: THREE.Group; surfaces: VineSurface[]; e
     rim.position.set(wx, 0.22, wz);
     car.add(rim);
   }
-  car.position.set(-6.8, -0.1, 5.8);
-  car.rotation.set(0, 0.35, 0.04);
+  car.position.set(CAR.x, -0.1, CAR.z);
+  car.rotation.set(0, CAR.rot, 0.04);
   g.add(car);
-  surfaces.push(boxSurface(new THREE.Vector3(-6.8, 0.8, 5.8), new THREE.Vector3(4.2, 1.4, 1.8), ['py', 'pz', 'nx'], 0.8));
+  surfaces.push(boxSurface(new THREE.Vector3(CAR.x, 0.8, CAR.z), new THREE.Vector3(4.2, 1.4, 1.8), ['py', 'pz', 'nx'], 0.8));
 
-  // Crates and barrels the survivors have hauled in.
-  for (let i = 0; i < 7; i++) {
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 0.7), lambert(i % 2 ? '#7b6243' : '#665136'));
-    crate.position.set(3.2 + (i % 3) * 0.75, 0.3 + Math.floor(i / 5) * 0.6, -5.3 - Math.floor(i / 3) * 0.7);
-    crate.rotation.y = rand() * 0.4;
-    g.add(crate);
-  }
+  // Fuel barrels, long empty.
   for (let i = 0; i < 3; i++) {
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.95, 10), lambert('#3f5a4a'));
     barrel.position.set(-8.3 + i * 0.75, 0.48, -1.2 + (i % 2) * 0.4);
@@ -199,7 +190,7 @@ export function buildVines(surfaces: VineSurface[], edges: VineEdge[]): THREE.In
   ]), 3));
   leaf.setIndex([0, 1, 2, 0, 2, 3]);
   leaf.computeVertexNormals();
-  const mat = addWind(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), 0.25);
+  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25, fog: false });
   const max = 16000;
   const mesh = new THREE.InstancedMesh(leaf, mat, max);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();

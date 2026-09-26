@@ -72,33 +72,93 @@ export function shadowed<T extends THREE.Object3D>(o: T, cast = true, receive = 
   return o;
 }
 
-/** Shared wind uniform; injected into vegetation materials. */
-export const windUniforms = { uTime: { value: 0 }, uWind: { value: 1 } };
+/** Shared uniforms injected into world materials. */
+export const worldUniforms = {
+  uTime: { value: 0 },
+  uWind: { value: 1 },
+  uFogTex: { value: null as THREE.Texture | null },
+  uFogSize: { value: 256 },
+};
+/** Back-compat alias used by older call sites. */
+export const windUniforms = worldUniforms;
+
+export interface EnhanceOptions {
+  /** Sway amplitude for foliage; sway scales with local height so bases stay planted. */
+  wind?: number;
+  /** Darken unexplored parts of the map (fog of war). Default true. */
+  fog?: boolean;
+}
 
 /**
- * Adds a sway to instanced foliage. Sway scales with local height so bases stay planted.
+ * Patch a built-in material with wind sway and/or fog of war. The fog samples
+ * a map-sized texture of explored tiles using world-space XZ.
  */
-export function addWind(mat: THREE.Material, strength = 0.12) {
+export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions = {}): T {
+  const wind = opts.wind ?? 0;
+  const fog = opts.fog ?? true;
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = windUniforms.uTime;
-    shader.uniforms.uWind = windUniforms.uWind;
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uWind;')
-      .replace(
+    Object.assign(shader.uniforms, worldUniforms);
+    let vs = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>
+      uniform float uTime; uniform float uWind;
+      varying vec2 vFowXZ;`,
+    );
+    if (wind > 0) {
+      vs = vs.replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
         #ifdef USE_INSTANCING
           vec3 ip = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
         #else
-          vec3 ip = vec3(0.0);
+          vec3 ip = vec3(modelMatrix[3][0], 0.0, modelMatrix[3][2]);
         #endif
         float h = max(position.y, 0.0);
         float ph = ip.x * 0.37 + ip.z * 0.23;
         float sway = sin(uTime * 1.7 + ph) * 0.6 + sin(uTime * 3.1 + ph * 1.9) * 0.4;
-        transformed.x += sway * ${strength.toFixed(3)} * h * uWind;
-        transformed.z += cos(uTime * 1.3 + ph) * ${(strength * 0.6).toFixed(3)} * h * uWind;`,
+        transformed.x += sway * ${wind.toFixed(3)} * h * uWind;
+        transformed.z += cos(uTime * 1.3 + ph) * ${(wind * 0.6).toFixed(3)} * h * uWind;`,
       );
+    }
+    vs = vs.replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>
+      vec4 fowWP = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        fowWP = instanceMatrix * fowWP;
+      #endif
+      fowWP = modelMatrix * fowWP;
+      vFowXZ = fowWP.xz;`,
+    );
+    shader.vertexShader = vs;
+    if (fog) {
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+          uniform sampler2D uFogTex; uniform float uFogSize; uniform float uTime;
+          varying vec2 vFowXZ;`,
+        )
+        .replace(
+          '#include <fog_fragment>',
+          `{
+            vec2 fuv = (vFowXZ + uFogSize * 0.5) / uFogSize;
+            float seen = texture2D(uFogTex, fuv).r;
+            float drift = sin(vFowXZ.x * 0.21 + uTime * 0.15) * sin(vFowXZ.y * 0.17 - uTime * 0.11) * 0.08;
+            float k = smoothstep(0.25, 0.75, seen + drift);
+            float lum = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
+            vec3 mist = vec3(0.045, 0.06, 0.07) + lum * 0.08;
+            gl_FragColor.rgb = mix(mist, gl_FragColor.rgb, k);
+          }
+          #include <fog_fragment>`,
+        );
+    }
   };
-  mat.customProgramCacheKey = () => `wind-${strength}`;
+  mat.customProgramCacheKey = () => `enh-${wind}-${fog}`;
   return mat;
+}
+
+/** Wind-only helper kept for call sites that want the old behaviour. */
+export function addWind(mat: THREE.Material, strength = 0.12) {
+  return enhance(mat, { wind: strength });
 }

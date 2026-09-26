@@ -1,80 +1,141 @@
 import * as THREE from 'three';
-import { heightAt, isPaved } from './terrain';
-import { addWind, lambert, makeRand } from './util';
+import type { Agent } from '../sim/colony';
+import { Ground, heightAt, idx, isExplored, passable, toTileX, toTileZ, type World } from '../sim/world';
+import { enhance, lambert, makeRand, shadowed } from './util';
 
-const inStationFootprint = (x: number, z: number) => x > -12 && x < 12 && z > -13 && z < 10;
+// ---------------- berry bushes ----------------
 
-export function buildTrees(): THREE.Group {
-  const g = new THREE.Group();
-  const rand = makeRand(17);
-  const spots: { x: number; z: number; s: number }[] = [];
+export class Bushes {
+  group = new THREE.Group();
+  private berries: THREE.InstancedMesh;
+  private shown: boolean[];
+  private berryMats: THREE.Matrix4[][] = [];
+  private timer = 0;
 
-  // Treeline ring plus a few pioneers creeping toward the station.
-  for (let i = 0; i < 140 && spots.length < 90; i++) {
-    const a = rand() * Math.PI * 2;
-    const r = 19 + Math.pow(rand(), 0.7) * 26;
-    const x = Math.cos(a) * r, z = Math.sin(a) * r;
-    if (isPaved(x, z) || inStationFootprint(x, z)) continue;
-    if (spots.some((o) => Math.hypot(o.x - x, o.z - z) < 2.6)) continue;
-    spots.push({ x, z, s: 0.8 + rand() * 0.9 });
+  constructor(private world: World) {
+    const rand = makeRand(61);
+    const n = Math.max(1, world.bushes.length);
+    const body = new THREE.InstancedMesh(
+      new THREE.IcosahedronGeometry(0.5, 0),
+      enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.08 }),
+      n,
+    );
+    this.berries = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(0.07, 5, 4),
+      enhance(new THREE.MeshLambertMaterial({ color: '#b3304a', emissive: '#3a0812' })),
+      n * 5,
+    );
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
+    const col = new THREE.Color();
+    world.bushes.forEach((b, i) => {
+      const x = b.tx - world.w / 2 + 0.5, z = b.tz - world.h / 2 + 0.5;
+      const y = heightAt(world, x, z);
+      const r = 0.7 + rand() * 0.4;
+      q.setFromEuler(new THREE.Euler(0, rand() * 6, 0));
+      m.compose(p.set(x, y + r * 0.3, z), q, s.set(r, r * 0.75, r));
+      body.setMatrixAt(i, m);
+      col.setHSL(0.26 + rand() * 0.06, 0.45, 0.2 + rand() * 0.08);
+      body.setColorAt(i, col);
+      const mats: THREE.Matrix4[] = [];
+      for (let k = 0; k < 5; k++) {
+        const a = rand() * Math.PI * 2, rr = r * 0.45;
+        mats.push(new THREE.Matrix4().makeTranslation(x + Math.cos(a) * rr, y + r * 0.35 + rand() * r * 0.3, z + Math.sin(a) * rr));
+      }
+      this.berryMats.push(mats);
+    });
+    body.count = world.bushes.length;
+    body.castShadow = body.receiveShadow = true;
+    this.shown = world.bushes.map(() => false);
+    this.berries.count = world.bushes.length * 5;
+    this.berries.frustumCulled = false;
+    this.group.add(body, this.berries);
+    this.sync(true);
   }
-  // One old tree has grown up right against the canopy corner.
-  spots.push({ x: 6.6, z: 5.8, s: 1.35 });
-  spots.push({ x: -11, z: -7.5, s: 1.1 });
 
-  const trunkGeo = new THREE.CylinderGeometry(0.16, 0.28, 1, 6);
-  trunkGeo.translate(0, 0.5, 0);
-  const crownGeo = new THREE.IcosahedronGeometry(1, 1);
-  const trunks = new THREE.InstancedMesh(trunkGeo, lambert('#4a3a2c'), spots.length);
-  const crownMat = addWind(new THREE.MeshLambertMaterial({ flatShading: true }), 0.04);
-  const crowns = new THREE.InstancedMesh(crownGeo, crownMat, spots.length * 4);
+  sync(force = false) {
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    let dirty = false;
+    this.world.bushes.forEach((b, i) => {
+      const show = b.berries > 0;
+      if (!force && show === this.shown[i]) return;
+      this.shown[i] = show;
+      dirty = true;
+      for (let k = 0; k < 5; k++) this.berries.setMatrixAt(i * 5 + k, show ? this.berryMats[i][k] : zero);
+    });
+    if (dirty) this.berries.instanceMatrix.needsUpdate = true;
+  }
+
+  update(dt: number) {
+    this.timer += dt;
+    if (this.timer > 0.25) { this.timer = 0; this.sync(); }
+  }
+}
+
+// ---------------- ruins ----------------
+
+export function buildRuins(world: World): THREE.Group {
+  const g = new THREE.Group();
+  const rand = makeRand(9);
+  const mesh = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
+    enhance(new THREE.MeshLambertMaterial({ flatShading: true })),
+    Math.max(1, world.walls.length),
+  );
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
   const col = new THREE.Color();
-  let ci = 0;
-  spots.forEach((t, i) => {
-    const y = heightAt(t.x, t.z);
-    const h = (3 + rand() * 2.5) * t.s;
-    q.setFromEuler(new THREE.Euler((rand() - 0.5) * 0.1, 0, (rand() - 0.5) * 0.1));
-    m.compose(p.set(t.x, y, t.z), q, s.set(t.s, h, t.s));
-    trunks.setMatrixAt(i, m);
-    const blobs = 2 + Math.floor(rand() * 3);
-    const hue = 0.22 + rand() * 0.09;
-    for (let b = 0; b < blobs; b++) {
-      const r = (1.1 + rand() * 0.9) * t.s;
-      p.set(t.x + (rand() - 0.5) * 1.4 * t.s, y + h + (rand() - 0.2) * 1.2 * t.s, t.z + (rand() - 0.5) * 1.4 * t.s);
-      q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
-      m.compose(p, q, s.set(r, r * (0.75 + rand() * 0.3), r));
-      crowns.setMatrixAt(ci, m);
-      col.setHSL(hue + (rand() - 0.5) * 0.03, 0.42 + rand() * 0.15, 0.2 + rand() * 0.1);
-      crowns.setColorAt(ci, col);
-      ci++;
-    }
+  world.walls.forEach((wb, i) => {
+    const x = wb.tx - world.w / 2 + 0.5, z = wb.tz - world.h / 2 + 0.5;
+    p.set(x, heightAt(world, x, z), z);
+    s.set(1, wb.h, 1);
+    m.compose(p, q, s);
+    mesh.setMatrixAt(i, m);
+    const brick = rand() < 0.4;
+    col.set(brick ? '#7a5446' : '#8e8a7e').offsetHSL(0, 0, (rand() - 0.5) * 0.08);
+    mesh.setColorAt(i, col);
   });
-  crowns.count = ci;
-  for (const im of [trunks, crowns]) {
-    im.castShadow = true;
-    im.receiveShadow = true;
-  }
-  g.add(trunks, crowns);
+  mesh.count = world.walls.length;
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  g.add(mesh);
 
-  // Low shrubs and ferns hugging the buildings.
-  const shrubs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.6, 0), addWind(new THREE.MeshLambertMaterial({ flatShading: true }), 0.1), 220);
-  let si = 0;
-  for (let i = 0; i < 600 && si < 220; i++) {
-    const x = (rand() - 0.5) * 70, z = (rand() - 0.5) * 70;
-    const nearWall = Math.abs(z + 11.9) < 1.5 && Math.abs(x + 1) < 7;
-    if (isPaved(x, z) && !nearWall) continue;
-    if (!nearWall && rand() < 0.5) continue;
-    const r = 0.6 + rand() * 0.9;
-    m.compose(p.set(x, heightAt(x, z) + r * 0.3, z), q.identity(), s.set(r, r * 0.7, r));
-    shrubs.setMatrixAt(si, m);
-    col.setHSL(0.2 + rand() * 0.1, 0.4, 0.18 + rand() * 0.1);
-    shrubs.setColorAt(si, col);
-    si++;
+  // Ivy on the ruins: leaves on wall tops and faces.
+  const leaf = new THREE.BufferGeometry();
+  leaf.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, 0, 0, 0.09, 0.1, 0, 0, 0.24, 0, -0.09, 0.1, 0]), 3));
+  leaf.setIndex([0, 1, 2, 0, 2, 3]);
+  leaf.computeVertexNormals();
+  const perWall = 22;
+  const leaves = new THREE.InstancedMesh(
+    leaf, enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25 }),
+    Math.max(1, world.walls.length * perWall),
+  );
+  const up = new THREE.Vector3(0, 0, 1);
+  const nrm = new THREE.Vector3();
+  let n = 0;
+  for (const wb of world.walls) {
+    const x = wb.tx - world.w / 2 + 0.5, z = wb.tz - world.h / 2 + 0.5;
+    const y0 = heightAt(world, x, z);
+    for (let k = 0; k < perWall; k++) {
+      if (rand() < 0.35) continue;
+      const face = Math.floor(rand() * 5);
+      const u = rand() - 0.5, v = Math.pow(rand(), 1.4) * wb.h;
+      if (face === 0) { p.set(x + u, y0 + wb.h + 0.02, z + rand() - 0.5); nrm.set(0, 1, 0); }
+      else if (face === 1) { p.set(x + 0.52, y0 + v, z + u); nrm.set(1, 0, 0); }
+      else if (face === 2) { p.set(x - 0.52, y0 + v, z + u); nrm.set(-1, 0, 0); }
+      else if (face === 3) { p.set(x + u, y0 + v, z + 0.52); nrm.set(0, 0, 1); }
+      else { p.set(x + u, y0 + v, z - 0.52); nrm.set(0, 0, -1); }
+      nrm.add(new THREE.Vector3(rand() - 0.5, rand() - 0.5, rand() - 0.5).multiplyScalar(0.8)).normalize();
+      q.setFromUnitVectors(up, nrm);
+      m.compose(p, q, s.setScalar(0.8 + rand() * 0.8));
+      leaves.setMatrixAt(n, m);
+      col.setHSL(0.24 + rand() * 0.1, 0.5 + rand() * 0.25, 0.18 + rand() * 0.16);
+      leaves.setColorAt(n, col);
+      n++;
+    }
   }
-  shrubs.count = si;
-  shrubs.castShadow = shrubs.receiveShadow = true;
-  g.add(shrubs);
+  leaves.count = n;
+  leaves.frustumCulled = false;
+  leaves.castShadow = true;
+  g.add(leaves);
   return g;
 }
 
@@ -85,12 +146,12 @@ class Deer {
   private legs: THREE.Object3D[] = [];
   private neck = new THREE.Group();
   private target = new THREE.Vector3();
-  private state: 'walk' | 'graze' | 'alert' = 'graze';
+  private state: 'walk' | 'graze' | 'alert' | 'flee' = 'graze';
   private timer = 0;
-  private phase = Math.random() * 10;
+  private phase = 0;
   private heading = 0;
 
-  constructor(private rand: () => number, x: number, z: number) {
+  constructor(private world: World, private rand: () => number, private home: THREE.Vector3) {
     const coat = lambert('#8a5b3c'), belly = lambert('#c9a27d'), dark = lambert('#2b1d14');
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 0.42), coat);
     body.position.y = 0.95;
@@ -126,25 +187,40 @@ class Deer {
     this.root.add(this.neck);
     this.root.scale.setScalar(0.85 + rand() * 0.25);
     this.root.traverse((o) => { o.castShadow = true; });
-    this.root.position.set(x, heightAt(x, z), z);
+    this.root.position.copy(home).add(new THREE.Vector3((rand() - 0.5) * 8, 0, (rand() - 0.5) * 8));
+    this.phase = rand() * 10;
     this.pickTarget();
     this.timer = rand() * 5;
   }
 
+  private walkable(x: number, z: number) {
+    const w = this.world;
+    const tx = toTileX(w, x), tz = toTileZ(w, z);
+    if (!passable(w, tx, tz)) return false;
+    const g = w.ground[idx(w, tx, tz)];
+    return g !== Ground.Asphalt || this.rand() < 0.2;
+  }
+
   private pickTarget() {
     for (let i = 0; i < 20; i++) {
-      const a = this.rand() * Math.PI * 2, r = 14 + this.rand() * 22;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      if (!inStationFootprint(x, z)) {
-        this.target.set(x, 0, z);
-        return;
-      }
+      const x = this.home.x + (this.rand() - 0.5) * 26, z = this.home.z + (this.rand() - 0.5) * 26;
+      if (this.walkable(x, z)) { this.target.set(x, 0, z); return; }
     }
   }
 
-  update(dt: number) {
+  update(dt: number, agents: Agent[]) {
     this.timer -= dt;
     const pos = this.root.position;
+    // Keep a wary distance from people.
+    let near: Agent | null = null;
+    for (const a of agents) if (Math.hypot(a.x - pos.x, a.z - pos.z) < 7) near = a;
+    if (near && this.state !== 'flee') {
+      this.state = 'flee';
+      this.timer = 3;
+      const dx = pos.x - near.x, dz = pos.z - near.z, d = Math.hypot(dx, dz) || 1;
+      const tx = pos.x + (dx / d) * 12, tz = pos.z + (dz / d) * 12;
+      if (this.walkable(tx, tz)) this.target.set(tx, 0, tz);
+    }
     if (this.timer <= 0) {
       const roll = this.rand();
       this.state = roll < 0.45 ? 'walk' : roll < 0.85 ? 'graze' : 'alert';
@@ -152,18 +228,18 @@ class Deer {
       if (this.state === 'walk') this.pickTarget();
     }
     let neckTarget = 0;
-    if (this.state === 'walk') {
+    if (this.state === 'walk' || this.state === 'flee') {
       const dx = this.target.x - pos.x, dz = this.target.z - pos.z;
       const d = Math.hypot(dx, dz);
       if (d < 0.5) this.state = 'graze';
       const want = Math.atan2(-dz, dx);
       let diff = want - this.heading;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-      this.heading += diff * Math.min(1, dt * 2);
-      const speed = 1.1;
-      pos.x += Math.cos(this.heading) * speed * dt;
-      pos.z -= Math.sin(this.heading) * speed * dt;
-      this.phase += dt * 7;
+      this.heading += diff * Math.min(1, dt * 3);
+      const speed = this.state === 'flee' ? 3.2 : 1.1;
+      const nx = pos.x + Math.cos(this.heading) * speed * dt, nz = pos.z - Math.sin(this.heading) * speed * dt;
+      if (this.walkable(nx, nz)) { pos.x = nx; pos.z = nz; } else this.pickTarget();
+      this.phase += dt * (this.state === 'flee' ? 12 : 7);
       this.legs.forEach((l, i) => { l.rotation.z = Math.sin(this.phase + (i % 3 === 0 ? 0 : Math.PI)) * 0.45; });
     } else {
       this.legs.forEach((l) => { l.rotation.z *= 0.9; });
@@ -171,43 +247,60 @@ class Deer {
     }
     this.neck.rotation.z += (neckTarget - this.neck.rotation.z) * Math.min(1, dt * 3);
     this.root.rotation.y = this.heading;
-    pos.y = heightAt(pos.x, pos.z);
+    pos.y = heightAt(this.world, pos.x, pos.z);
+    this.root.visible = isExplored(this.world, toTileX(this.world, pos.x), toTileZ(this.world, pos.z));
   }
 }
 
-export class Herd {
+/** Several small herds grazing in meadows around the region. */
+export class Herds {
   group = new THREE.Group();
   private deer: Deer[] = [];
-  constructor(count = 6) {
+  constructor(world: World) {
     const rand = makeRand(41);
-    for (let i = 0; i < count; i++) {
-      const d = new Deer(rand, -20 + rand() * 8, -18 + rand() * 8);
-      this.deer.push(d);
-      this.group.add(d.root);
+    const homes: THREE.Vector3[] = [];
+    for (let tries = 0; tries < 400 && homes.length < 6; tries++) {
+      const a = rand() * Math.PI * 2, r = 16 + rand() * 70;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      const tx = toTileX(world, x), tz = toTileZ(world, z);
+      if (!passable(world, tx, tz)) continue;
+      const g = world.ground[idx(world, tx, tz)];
+      if (g !== Ground.Meadow && g !== Ground.Grass) continue;
+      if (homes.some((h) => h.distanceTo(new THREE.Vector3(x, 0, z)) < 25)) continue;
+      homes.push(new THREE.Vector3(x, 0, z));
+    }
+    for (const h of homes) {
+      const n = 2 + Math.floor(rand() * 3);
+      for (let i = 0; i < n; i++) {
+        const d = new Deer(world, rand, h);
+        this.deer.push(d);
+        this.group.add(d.root);
+      }
     }
   }
-  update(dt: number) {
-    for (const d of this.deer) d.update(dt);
+  update(dt: number, agents: Agent[]) {
+    for (const d of this.deer) d.update(dt, agents);
   }
 }
 
 // ---------------- fairy ring ----------------
 
-export function buildFairyRing(center: THREE.Vector3, glowMat: THREE.MeshBasicMaterial): THREE.Group {
+export function buildFairyRing(world: World, glowMat: THREE.MeshBasicMaterial): THREE.Group {
   const g = new THREE.Group();
   const rand = makeRand(3);
   const stemMat = lambert('#e7e0cc');
+  const c = world.fairyRing;
   const n = 22;
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + rand() * 0.1;
     const r = 2.2 + (rand() - 0.5) * 0.3;
-    const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
-    const y = heightAt(x, z);
+    const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
+    const y = heightAt(world, x, z);
     const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.22, 5), stemMat);
     stem.position.set(x, y + 0.11, z);
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.12, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2), glowMat);
     cap.position.set(x, y + 0.2, z);
     g.add(stem, cap);
   }
-  return g;
+  return shadowed(g, true, false);
 }

@@ -1,7 +1,7 @@
 import { Rng } from './rng';
 import {
-  BACKGROUNDS, EPITHETS, FIRST_NAMES, JOBS, PSI, TRAITS,
-  type JobId, type PsiId, type TraitId,
+  BACKGROUNDS, EPITHETS, FIRST_NAMES, PSI, ROLES, TRAITS,
+  type PsiId, type RoleId, type TraitId,
 } from './data';
 
 export interface Stats {
@@ -25,7 +25,7 @@ export interface Survivor {
   hp: number;
   maxHp: number;
   morale: number; // 0..100
-  job: JobId;
+  role: RoleId;
   alive: boolean;
   diedOnDay: number | null;
   causeOfDeath: string | null;
@@ -41,7 +41,7 @@ export interface Bond { a: number; b: number; value: number } // value -100..100
 
 export interface Resources {
   food: number;
-  water: number;
+  wood: number;
   scrap: number;
   medicine: number;
   glimmer: number; // gathered from wisps; fuels psi
@@ -62,19 +62,13 @@ export interface Community {
 
 // ---------- tuning ----------
 export const TUNING = {
-  foodPerSurvivor: 1,
-  waterPerSurvivor: 1,
-  baseYield: { forage: 3.2, scavenge: 1.0, attune: 0.6 },
   moraleBaseline: 60,
-  moraleDriftRate: 0.08,
-  starvationMorale: -8,
-  starvationHp: -2,
   griefBase: 6,
   griefPerBond: 0.35,   // extra morale loss per point of positive bond
   griefDays: 5,
   communalGrief: 4,     // everyone loses this much when anyone dies
   rivalRelief: -2,      // rivals still feel a small hit: guilt, not joy
-  bondDailyDrift: 1.5,
+  bondDailyDrift: 1.0,
 } as const;
 
 // ---------- helpers ----------
@@ -98,7 +92,7 @@ export function bondKind(value: number): BondKind {
   return 'stranger';
 }
 
-function adjustBond(c: Community, a: number, b: number, delta: number) {
+export function adjustBond(c: Community, a: number, b: number, delta: number) {
   const [lo, hi] = a < b ? [a, b] : [b, a];
   let bond = c.bonds.find((x) => x.a === lo && x.b === hi);
   if (!bond) {
@@ -108,7 +102,7 @@ function adjustBond(c: Community, a: number, b: number, delta: number) {
   bond.value = clamp(bond.value + delta, -100, 100);
 }
 
-function traitSum(s: Survivor, pick: (t: (typeof TRAITS)[TraitId]) => number | undefined, neutral: number, combine: 'add' | 'mul') {
+export function traitSum(s: Survivor, pick: (t: (typeof TRAITS)[TraitId]) => number | undefined, neutral: number, combine: 'add' | 'mul') {
   let acc = neutral;
   for (const id of s.traits) {
     const v = pick(TRAITS[id]);
@@ -131,7 +125,7 @@ export function log(c: Community, text: string, tone: LogEntry['tone'] = 'info')
   if (c.log.length > 200) c.log.splice(0, c.log.length - 200);
 }
 
-function remember(s: Survivor, day: number, text: string) {
+export function remember(s: Survivor, day: number, text: string) {
   s.memories.push({ day, text });
   if (s.memories.length > 40) s.memories.shift();
 }
@@ -173,7 +167,7 @@ export function createSurvivor(c: Community, rng: Rng): Survivor {
     hp: maxHp,
     maxHp,
     morale: TUNING.moraleBaseline + rng.int(-10, 10),
-    job: 'rest',
+    role: 'rest',
     alive: true,
     diedOnDay: null,
     causeOfDeath: null,
@@ -193,7 +187,7 @@ export function createCommunity(seed: number, size = 5): Community {
     nextId: 1,
     survivors: [],
     bonds: [],
-    resources: { food: 12, water: 12, scrap: 4, medicine: 2, glimmer: 0 },
+    resources: { food: 24, wood: 10, scrap: 4, medicine: 2, glimmer: 0 },
     log: [],
   };
   for (let i = 0; i < size; i++) c.survivors.push(createSurvivor(c, rng));
@@ -208,119 +202,37 @@ export function createCommunity(seed: number, size = 5): Community {
     }
   }
 
-  // Sensible default jobs.
-  const jobs: JobId[] = ['forage', 'forage', 'scavenge', 'guard', 'tend', 'attune'];
-  c.survivors.forEach((s, i) => { s.job = jobs[i % jobs.length]; });
+  // Sensible default roles.
+  const roles: RoleId[] = ['builder', 'forager', 'scout', 'attune', 'builder', 'tender'];
+  c.survivors.forEach((s, i) => { s.role = roles[i % roles.length]; });
 
   c.rngState = rng.state;
   log(c, 'The old station at the crossroads holds. The vines hold it tighter.', 'info');
   return c;
 }
 
-// ---------- daily tick ----------
-function withRng<T>(c: Community, fn: (rng: Rng) => T): T {
+// ---------- daily rollover ----------
+export function withRng<T>(c: Community, fn: (rng: Rng) => T): T {
   const rng = new Rng(c.rngState);
   const out = fn(rng);
   c.rngState = rng.state;
   return out;
 }
 
-export function advanceDay(c: Community): void {
+/** Slow background changes applied once per in-game day. */
+export function dailyRollover(c: Community): void {
   withRng(c, (rng) => {
     const living = alive(c);
-    const r = c.resources;
-
-    // 1. Work.
-    for (const s of living) {
-      if (s.hp <= s.maxHp * 0.3 && s.job !== 'rest') s.job = 'rest';
-      const bonus = traitSum(s, (t) => t.jobBonus?.[s.job], 1, 'add');
-      const moraleFactor = 0.6 + (s.morale / 100) * 0.6;
-      switch (s.job) {
-        case 'forage': {
-          const y = TUNING.baseYield.forage * bonus * moraleFactor * (1 + s.stats.wits * 0.03);
-          r.food += y;
-          r.water += y * 0.9;
-          break;
-        }
-        case 'scavenge': {
-          const y = TUNING.baseYield.scavenge * bonus * moraleFactor * (1 + s.stats.wits * 0.08);
-          r.scrap += y;
-          if (rng.chance(0.2 + s.stats.wits * 0.02)) r.medicine += 1;
-          if (rng.chance(0.06)) {
-            s.hp -= rng.int(1, 3);
-            remember(s, c.day, 'Cut myself on rebar in the old pharmacy.');
-            log(c, `${s.name} came back from the ruins bleeding.`, 'bad');
-          }
-          break;
-        }
-        case 'attune': {
-          r.glimmer += TUNING.baseYield.attune * bonus * (1 + s.stats.attunement * 0.25);
-          if (rng.chance(0.04 + s.stats.attunement * 0.01)) {
-            log(c, `${s.name} says the wisps spelled something tonight. They won't say what.`, 'strange');
-            remember(s, c.day, 'The wisps spelled something.');
-          }
-          break;
-        }
-        case 'tend': {
-          // Tenders lift everyone a little.
-          for (const o of living) if (o !== s) o.morale += 0.4 * bonus * (1 + s.stats.empathy * 0.1);
-          break;
-        }
-        case 'rest':
-          s.morale += 2; // healing happens after meals, and only if fed
-          break;
-        case 'guard':
-          break;
-      }
-      if (r.medicine > 0 && s.hp < s.maxHp * 0.5) {
-        r.medicine -= 1;
-        s.hp = Math.min(s.maxHp, s.hp + 4);
-      }
-    }
-
-    // 2. Consumption.
-    const needFood = living.length * TUNING.foodPerSurvivor;
-    const needWater = living.length * TUNING.waterPerSurvivor;
-    const hungry = r.food < needFood || r.water < needWater;
-    r.food = Math.max(0, r.food - needFood);
-    r.water = Math.max(0, r.water - needWater);
-    if (hungry) {
-      log(c, 'Not enough to go around. Portions were cut.', 'bad');
-      for (const s of living) {
-        s.morale += TUNING.starvationMorale;
-        s.hp += TUNING.starvationHp;
-      }
-    } else {
-      for (const s of living) if (s.job === 'rest') s.hp = Math.min(s.maxHp, s.hp + 2);
-    }
-
-    // 3. Bonds drift: people who share work grow closer; everyone drifts a bit.
     for (let i = 0; i < living.length; i++) {
       for (let j = i + 1; j < living.length; j++) {
         const a = living[i], b = living[j];
         const rate = traitSum(a, (t) => t.bondRate, 1, 'mul') * traitSum(b, (t) => t.bondRate, 1, 'mul');
-        let delta = rng.range(-0.5, 1) * TUNING.bondDailyDrift * rate;
-        if (a.job === b.job) delta += 1.2 * rate;
+        let delta = rng.range(-0.6, 0.8) * TUNING.bondDailyDrift * rate;
+        if (a.role === b.role) delta += 0.8 * rate;
         adjustBond(c, a.id, b.id, delta);
       }
     }
-
-    // 4. Morale: drift toward baseline, friends near you help, grief decays.
-    for (const s of living) {
-      const baseline = TUNING.moraleBaseline + traitSum(s, (t) => t.moraleBaseline, 0, 'add');
-      let friendLift = 0;
-      for (const o of living) if (o !== s && bondValue(c, s.id, o.id) >= 20) friendLift += 0.5;
-      const target = baseline + Math.min(friendLift, 6) - (s.griefDays > 0 ? 15 : 0);
-      s.morale += (target - s.morale) * TUNING.moraleDriftRate;
-      if (s.griefDays > 0) s.griefDays--;
-      s.morale = clamp(s.morale, 0, 100);
-    }
-
-    // 5. Deaths from neglect.
-    for (const s of living) {
-      if (s.hp <= 0) killSurvivor(c, s.id, 'wasted away');
-    }
-
+    for (const s of living) if (s.griefDays > 0) s.griefDays--;
     c.day++;
   });
 }
@@ -364,7 +276,7 @@ export function killSurvivor(c: Community, id: number, cause: string): GriefRepo
 export function recruit(c: Community): Survivor {
   return withRng(c, (rng) => {
     const s = createSurvivor(c, rng);
-    s.job = 'rest';
+    s.role = 'rest';
     for (const o of alive(c)) adjustBond(c, s.id, o.id, rng.int(-5, 10));
     c.survivors.push(s);
     log(c, `${s.name}, ${s.background}, walked out of the green and asked to stay.`, 'good');
@@ -372,7 +284,7 @@ export function recruit(c: Community): Survivor {
   });
 }
 
-export function setJob(c: Community, id: number, job: JobId) {
+export function setRole(c: Community, id: number, role: RoleId) {
   const s = c.survivors.find((x) => x.id === id);
-  if (s && s.alive && job in JOBS) s.job = job;
+  if (s && s.alive && role in ROLES) s.role = role;
 }

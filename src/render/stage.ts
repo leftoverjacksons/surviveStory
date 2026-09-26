@@ -20,6 +20,7 @@ export class IsoCamera {
   zoomGoal = 1.45;
   private viewSize = 30; // world units visible vertically at zoom 1
   private distance = 80;
+  bounds = 120;
 
   constructor(aspect: number) {
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
@@ -40,7 +41,7 @@ export class IsoCamera {
     const step = Math.PI / 4;
     this.yawGoal = Math.round(this.yawGoal / step) * step + dir * step;
   }
-  zoomBy(factor: number) { this.zoomGoal = THREE.MathUtils.clamp(this.zoomGoal * factor, 0.45, 3.2); }
+  zoomBy(factor: number) { this.zoomGoal = THREE.MathUtils.clamp(this.zoomGoal * factor, 0.6, 3.2); }
 
   /** Pan in screen-aligned ground directions. dx/dy in world units at zoom 1. */
   pan(dx: number, dy: number) {
@@ -48,8 +49,8 @@ export class IsoCamera {
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     this.target.addScaledVector(right, dx * s).addScaledVector(fwd, dy * s);
-    this.target.x = THREE.MathUtils.clamp(this.target.x, -35, 35);
-    this.target.z = THREE.MathUtils.clamp(this.target.z, -35, 35);
+    this.target.x = THREE.MathUtils.clamp(this.target.x, -this.bounds, this.bounds);
+    this.target.z = THREE.MathUtils.clamp(this.target.z, -this.bounds, this.bounds);
   }
 
   update(dt: number) {
@@ -120,6 +121,11 @@ export class Sky {
     scene.background = this.background;
   }
 
+  private center = new THREE.Vector3();
+
+  /** Keep the sun's shadow frustum centred on what the camera is looking at. */
+  follow(p: THREE.Vector3) { this.center.copy(p); }
+
   setHour(hour: number) {
     const h = ((hour % 24) + 24) % 24;
     let i = 0;
@@ -144,8 +150,11 @@ export class Sky {
       elev = 0.6;
       az = -0.4;
     }
-    this.sun.position.set(az * 50, Math.max(elev, 0.15) * 55, 22);
-    this.sun.target.position.set(0, 0, 0);
+    const c = this.center;
+    // Snap to a coarse grid so the shadow map doesn't shimmer while panning.
+    const sx = Math.round(c.x / 2) * 2, sz = Math.round(c.z / 2) * 2;
+    this.sun.position.set(sx + az * 50, Math.max(elev, 0.15) * 55, sz + 22);
+    this.sun.target.position.set(sx, 0, sz);
 
     const sunElev = Math.sin(dayAngle);
     this.night = 1 - THREE.MathUtils.smoothstep(sunElev, -0.1, 0.3);
