@@ -81,7 +81,7 @@ reference: Tiny Glade.
   - Survivors are now OUR OWN Blender figures (`scripts/blender/survivor.py`,
     then `node scripts/characters.mjs --figures <dir>`; DESIGN §17). The user
     disliked the Quaternius people and rejected Kenney's minis. Iterate on
-    these with the user. Deer are still Quaternius. NOT published.
+    these with the user. Deer are still Quaternius.
   - Earlier: CC0 characters and animals (Quaternius; `src/render/characters.ts`,
     `scripts/characters.mjs`, `src/assets/CREDITS.md`; DESIGN §17).
     The environment now has full network access; Quaternius packs download from
@@ -95,10 +95,11 @@ reference: Tiny Glade.
     factories) matching the starting site. Station Eleven is the reference.
   - Old world phase 1 done: districts of ruins by site (`sim/oldworld.ts`,
     `render/ruins.ts`), salvage with provenance (`village.salvaged`), better
-    cars. NOT published.
+    cars.
   - Old world phase 2 done: houses are modern salvage vernacular built from
     `village.salvaged` (`HouseSpec.clad`), with levels 0 shack → 1 patched →
-    2 glasshouse + solar (`Building.level`, upgrade projects). NOT published.
+    2 glasshouse + solar (`Building.level`, upgrade projects).
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
-  - Published: the artifact has the CC0 survivors and deer (commit c65e3cb, version 12).
+  - Published: version 13 (commit 82f3d22): Blender survivors, soft look, pixel art
+    default, old world phases 1–2. Awaiting the user's feedback on all of it.
