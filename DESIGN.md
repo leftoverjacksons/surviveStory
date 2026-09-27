@@ -1084,7 +1084,7 @@ object).
   player guides one survivor per point of Influence spent, and the others
   act on their temperaments. This keeps "never command" as a scarcity
   instead of breaking it, and it feeds the long-arc question of what the
-  player is. **[open]**
+  player is. **[open: see 19.7]**
 - **Perception is the fog of war.** Each spirit is seen as the best
   perceiver sees it (the §4 gradient):
   - nothing;
@@ -1125,11 +1125,11 @@ object).
 - **Harm.** When Nerve breaks, a survivor flees. If they were lured, they
   can be **taken**: missing, in the Veil. Folklore suggests rescue (a later
   clearing, a bargain with the Folk), or a return after a year and a day,
-  changed. Death is rare or absent. **[open]**
+  changed. Death is rare or absent. **[decided: 19.7]**
 
 ### 19.4 The Folk: a second society beside ours
 Inspired by fairy folklore (the good neighbours, the mound people) and by
-the Nunnehi of Cherokee tradition. **[open]** Recommendation: take the
+the Nunnehi of Cherokee tradition. **[decided: they are called the Folk]** Recommendation: take the
 feeling and give them our own name, rather than using "Nunnehi", which
 belongs to a living culture's sacred tradition.
 
@@ -1212,3 +1212,63 @@ belongs to a living culture's sacred tradition.
 
 The order is a recommendation. Steps 4–5 could come first if the user wants
 the Folk before the conflict.
+
+### 19.7 Decisions, round 2 (user)
+- **Name.** They are **the Folk**.
+- **Clearing is optional.** A district is cleared only if the player wants
+  it.
+- **No deaths in the Veil.** Spirits *rattle* people or *take* them.
+  - **Rattled.** When Nerve breaks, the survivor flees the clearing. For
+    days at home they have nightmares, work less and need company. Repeated
+    breaks can leave a lasting trait.
+  - **Taken.** The survivor goes missing. Time runs differently in the
+    Veil, so they are gone for days, or for a season or more.
+    - Their loved ones feel it: the household keeps their bed and sets a
+      place for them.
+    - Some feel compelled to search, walking the woods and the district's
+      edge.
+    - This is grief without death, and it does not close.
+    - Then they come back, changed. Candidate changes:
+      - higher Sight;
+      - they speak with the Folk;
+      - strange habits, gaps in memory, or not having aged;
+      - a gift, or a debt.
+- **Two societies, one map.** Both the humans and the good Folk are visible
+  and planned.
+  - **The first mound.** From the start there is one mound of good Folk
+    near the village. The player guides it as they guide the village.
+  - **Kinds of Folk.** The *good* Folk can be allies. The *bad* spirits
+    are what clearings deal with.
+  - **Living apart.** Humans and good Folk cannot live healthily right on
+    top of each other; each needs a buffer (the Wild).
+  - **Clearing together.** A team can mix survivors and Folk.
+  - **Who gets it.** After a clearing, the player decides who gets the
+    district: the village (repurpose the ruins, §18) or the Folk (they
+    rewild it and a new mound grows).
+  - **Suitability.** Districts suit one society or the other:
+    - **Human:** grocery store, strip mall, garage, depot, motel. Useful
+      buildings and salvage.
+    - **Folk:** churchyard, park, golf course gone to meadow, flooded car
+      park, quarry pond, orchard, old water works, railway cutting.
+      Quiet, green, watery, or old.
+    - Giving a district to the "wrong" society works, but it thrives less.
+- **What clearing plays like.** Time and the seasons stop at home while
+  the team is in the Veil. The clearing is a turn-based encounter on the
+  district's own map, in the manner of XCOM.
+  - The goal is **recruiting** (converting, befriending, laying to rest)
+    as much as removing.
+  - What you know depends on the team's Sight.
+  - The resource at risk is Nerve.
+
+### 19.8 Control in clearings (proposal, awaiting the user)
+In XCOM the player picks each soldier's action every turn. Everywhere else
+in this game the player never commands: survivors act on their own, and
+the player only nudges. The recommendation is XCOM-style control inside
+clearings, justified in the fiction because the player is a Veil presence
+and is strongest there. Character is kept through Nerve:
+- A rattled survivor may refuse an order.
+- They may act on their own temperament: freeze, run, or reach for the
+  spirit.
+- Low-Nerve turns show that loss of control, much like panic in XCOM.
+- Folk team members may follow their own rules. For example, they will
+  not touch iron.
