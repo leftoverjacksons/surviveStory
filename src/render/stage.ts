@@ -23,7 +23,9 @@ const GradeShader = {
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
       // Split toning: teal in the shadows, warm in the highlights (less at night).
       float sh = 1.0 - smoothstep(0.0, 0.45, l), hi = smoothstep(0.55, 1.0, l);
-      c += sh * vec3(-0.012, 0.006, 0.018) + hi * vec3(0.02, 0.008, -0.018) * (1.0 - uNight);
+      float tone = uSteps > 0.0 ? 2.2 : 1.0;
+      c += (sh * vec3(-0.012, 0.006, 0.018) + hi * vec3(0.02, 0.008, -0.018) * (1.0 - uNight)) * tone;
+      if (uSteps > 0.0) c *= mix(vec3(1.0), vec3(1.05, 1.0, 0.9), (1.0 - uNight) * smoothstep(0.15, 0.7, l));
       // Saturation and a gentle S-curve.
       c = mix(vec3(l), c, 1.08);
       c = mix(c, c * c * (3.0 - 2.0 * c), 0.18);
@@ -238,7 +240,7 @@ export class Sky {
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.04;
     // Soft-edged shadows (the light filtered through leaves and haze).
-    this.sun.shadow.radius = SOFT ? 3.5 : 1;
+    this.sun.shadow.radius = PIXEL ? 0 : SOFT ? 3.5 : 1; // pixel art wants crisp shadows
     this.sun.shadow.blurSamples = 12;
     this.hemi = new THREE.HemisphereLight('#ffffff', '#223311', 1);
     scene.add(this.sun, this.sun.target, this.hemi);
@@ -274,9 +276,12 @@ export class Sky {
 
     lerpColor(a.sky, b.sky, t, this.background);
     lerpColor(a.sun, b.sun, t, this.sun.color);
+    // Pixel art: golden-hour warmth all day, and a warm bounce from the ground.
+    if (PIXEL) this.sun.color.lerp(cB.set('#ffc98a'), 0.28 * (1 - this.nightFor(h)));
     this.sun.intensity = (a.sunI + (b.sunI - a.sunI) * t) * (1 - gloom * 0.55);
     lerpColor(a.hemiSky, b.hemiSky, t, this.hemi.color);
     lerpColor(a.hemiGround, b.hemiGround, t, this.hemi.groundColor);
+    if (PIXEL) this.hemi.groundColor.lerp(cB.set('#6a5030'), 0.35);
     this.hemi.intensity = (a.hemiI + (b.hemiI - a.hemiI) * t) * (1 - gloom * 0.15) * (1 + snow * 0.12);
     // Grey skies and cold light.
     const grey = cA.setRGB(0.55, 0.58, 0.6).multiplyScalar(0.4 + (1 - this.nightFor(h)) * 0.6);
@@ -299,7 +304,8 @@ export class Sky {
     const c = this.center;
     // Snap to a coarse grid so the shadow map doesn't shimmer while panning.
     const sx = Math.round(c.x / 2) * 2, sz = Math.round(c.z / 2) * 2;
-    this.sun.position.set(sx + az * 50, Math.max(elev, 0.15) * 55, sz + 22);
+    // Pixel art: a lower sun, for long raking shadows and warm side light.
+    this.sun.position.set(sx + az * 50, Math.max(elev, 0.15) * (PIXEL ? 38 : 55), sz + 22);
     this.sun.target.position.set(sx, 0, sz);
     this.night = this.nightFor(h);
   }
@@ -321,7 +327,7 @@ export function createRenderer(container: HTMLElement) {
   renderer.info.autoReset = false; // reset once per frame, so the counts cover every pass
   renderer.shadowMap.type = THREE.PCFShadowMap; // PCFSoft is gone from three; the sun's radius softens instead
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = PIXEL ? 1.22 : 1.0; // pixel art: brighter, golden
   container.appendChild(renderer.domElement);
   return renderer;
 }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { fbm } from '../sim/noise';
 import { Ground, LANE_WEAR, Zone, heightAt, idx, type World } from '../sim/world';
-import { SOFT, enhance, makeRand, soften } from './util';
+import { PIXEL, SOFT, enhance, makeRand, soften } from './util';
 
 /**
  * Map-sized RGBA texture shared by fog-aware materials:
@@ -206,8 +206,8 @@ export function buildTerrain(w: World): THREE.Group {
   group.add(ground);
 
   // --- paved overlays ---
-  const asphalt = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(99, '#3b3e3a', 0.85) }), { zone: true, season: 'ground' });
-  const concrete = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(42, '#77756b', 0.6) }), { zone: true, season: 'ground' });
+  const asphalt = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(99, '#3b3e3a', 0.85) }), { zone: true, season: 'ground', surface: 'paving' });
+  const concrete = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(42, '#77756b', 0.6) }), { zone: true, season: 'ground', surface: 'paving' });
   group.add(tileOverlay(w, Ground.Asphalt, 0.03, asphalt));
   group.add(tileOverlay(w, Ground.Concrete, 0.04, concrete));
 
@@ -227,7 +227,8 @@ export function buildTerrain(w: World): THREE.Group {
 
 function bladeGeometry(): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
-  const bw = 0.07, h = 0.55;
+  // Pixel art: fewer, broader tufts (thin blades turn into noise at low resolution).
+  const bw = PIXEL ? 0.16 : 0.07, h = PIXEL ? 0.42 : 0.55;
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
     -bw, 0, 0, bw, 0, 0, -bw * 0.6, h * 0.5, 0.03, bw * 0.6, h * 0.5, 0.03, 0, h, 0.1,
   ]), 3));
@@ -262,7 +263,7 @@ function buildGrass(w: World): THREE.Group {
       const i = idx(w, tx, tz);
       if (w.blocked[i]) continue;
       const g = w.ground[i];
-      let k = density[g];
+      let k = density[g] * (PIXEL ? 0.45 : 1);
       const x0 = tx - w.w / 2, z0 = tz - w.h / 2;
       k *= 0.5 + fbm(x0 * 0.08, z0 * 0.08, 5, 2);
       const count = Math.floor(k) + (rand() < k % 1 ? 1 : 0);
@@ -294,7 +295,7 @@ function buildRocks(w: World): THREE.InstancedMesh {
   const rand = makeRand(33);
   const mesh = new THREE.InstancedMesh(
     soften(new THREE.DodecahedronGeometry(1, SOFT ? 1 : 0)),
-    enhance(new THREE.MeshLambertMaterial({ color: '#7d7b70', flatShading: !SOFT })),
+    enhance(new THREE.MeshLambertMaterial({ color: '#7d7b70', flatShading: !SOFT }), { surface: 'none' }),
     Math.max(1, w.rocks.length),
   );
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();

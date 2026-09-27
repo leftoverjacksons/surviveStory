@@ -24,7 +24,7 @@ export class Bushes {
     );
     this.berries = new THREE.InstancedMesh(
       new THREE.SphereGeometry(0.07, 5, 4),
-      enhance(new THREE.MeshLambertMaterial({ color: '#b3304a', emissive: '#3a0812' })),
+      enhance(new THREE.MeshLambertMaterial({ color: '#b3304a', emissive: '#3a0812' }), { surface: 'none' }),
       n * 5,
     );
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();

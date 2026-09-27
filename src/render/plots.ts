@@ -7,7 +7,7 @@ import { houseFloor, housePoint, plotPoint, type Plot, type YardItem } from '../
 import type { Village } from '../sim/buildings';
 import { heightAt, type World } from '../sim/world';
 import { box, cyl, mat } from './kit';
-import { makeRand } from './util';
+import { enhance, makeRand } from './util';
 import { mergeStatic } from './merge';
 
 const CLOTH = ['#e8e0cc', '#8aa0b8', '#c07a5a', '#d8c060', '#9ab08a'];
@@ -122,9 +122,72 @@ function skirt(world: World, plot: Plot, season: number, seed: number): THREE.Gr
       }
     }
   }
+  // Lived-in clutter: a rain barrel, a stack of crates, firewood by the hearth.
+  const wood = mat('#6b4e32'), dark = mat('#3d2f24'), logEnd = mat('#a07c52');
+  const away = doorX > 0 ? -1 : 1;
+  if (rand() < 0.75) {
+    const x = away * (W / 2 - 0.35), z = D / 2 + 0.42, y = gy(x, z);
+    g.add(cyl(0.26, 0.7, wood, x, y + 0.35, z, 10));
+    for (const hy of [0.15, 0.55]) g.add(cyl(0.275, 0.05, dark, x, y + hy, z, 10));
+  }
+  if (rand() < 0.6 && Math.abs(-away * (W / 2 - 0.3) - doorX) > 1.0) {
+    const x = -away * (W / 2 - 0.3), z = D / 2 + 0.4, y = gy(x, z);
+    const c1 = box(0.46, 0.4, 0.42, mat('#8a6a44'), x, y + 0.2, z);
+    c1.rotation.y = rand() * 0.4;
+    g.add(c1);
+    if (rand() < 0.6) { const c2 = box(0.4, 0.34, 0.38, mat('#7a5c3c'), x + 0.04, y + 0.57, z - 0.02); c2.rotation.y = rand() * 0.6; g.add(c2); }
+  }
+  if (!winter || rand() < 0.9) {
+    const x = chimney * (W / 2 + 0.34), z0 = -D / 2 + 0.3, len = Math.min(D - 0.8, 1.6), y = gy(x, z0 + len / 2);
+    const h = 0.55 + rand() * 0.35;
+    g.add(box(0.42, h, len, dark, x, y + h / 2, z0 + len / 2));
+    // Log ends facing out.
+    for (let r = 0; r < Math.floor(h / 0.17); r++) for (let c = 0; c < Math.floor(len / 0.19); c++) {
+      if (rand() < 0.2) continue;
+      g.add(cyl(0.075, 0.03, logEnd, x + chimney * 0.21, y + 0.09 + r * 0.17, z0 + 0.1 + c * 0.19, 6).rotateZ(Math.PI / 2));
+    }
+  }
   g.position.set(plot.hc.x, floor, plot.hc.z);
   g.rotation.y = plot.yaw;
   g.userData.ground = gy;
+  return g;
+}
+
+const FLAGS = ['#b8453a', '#e0b050', '#4f7fa8', '#f0e6cc', '#6f9a5a', '#a8608a'];
+
+interface Anchor { id: string; pts: THREE.Vector3[] }
+
+/** Strings of pennants between eaves (world coordinates). */
+function bunting(pairs: [THREE.Vector3, THREE.Vector3][]): THREE.Group {
+  const g = new THREE.Group();
+  const pos: number[] = [], col: number[] = [];
+  const line: number[] = [];
+  const c = new THREE.Color();
+  let k = 0;
+  for (const [p0, p1] of pairs) {
+    const len = p0.distanceTo(p1), sag = 0.1 * len;
+    const n = Math.max(2, Math.floor(len / 0.42));
+    const at = (t: number) => new THREE.Vector3().lerpVectors(p0, p1, t).add(new THREE.Vector3(0, -sag * 4 * t * (1 - t), 0));
+    for (let i = 0; i < n; i++) {
+      const a0 = at(i / n), a1 = at((i + 1) / n);
+      line.push(a0.x, a0.y, a0.z, a1.x, a1.y, a1.z);
+      // A pennant hanging from the middle of each span.
+      const m0 = at((i + 0.08) / n), m1 = at((i + 0.92) / n), tip = at((i + 0.5) / n).add(new THREE.Vector3(0, -0.36, 0));
+      pos.push(m0.x, m0.y, m0.z, m1.x, m1.y, m1.z, tip.x, tip.y, tip.z);
+      c.set(FLAGS[(k++) % FLAGS.length]);
+      for (let v = 0; v < 3; v++) col.push(c.r, c.g, c.b);
+    }
+  }
+  const fg = new THREE.BufferGeometry();
+  fg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  fg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  fg.computeVertexNormals();
+  const flags = new THREE.Mesh(fg, enhance(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { surface: 'none', season: 'none' }));
+  flags.castShadow = true;
+  flags.userData.keep = true;
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', new THREE.Float32BufferAttribute(line, 3));
+  g.add(flags, new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: '#3a3028' })));
   return g;
 }
 
@@ -331,6 +394,42 @@ export class PlotsView {
           return g;
         }, false);
       });
+    }
+    // Bunting between neighbouring houses and across the commons, eave to eave.
+    const groups: Anchor[] = [];
+    for (const b of this.village.buildings.filter((x) => x.kind === 'home')) {
+      const p = this.village.plots.find((q) => q.id === b.plot);
+      if (!p) continue;
+      const y = houseFloor(this.world, p) + p.house.wall + 0.2;
+      groups.push({ id: `h${p.id}`, pts: [-1, 1].map((sd) => { const q = housePoint(p.hc, p.yaw, sd * (p.house.W / 2 + 0.2), p.house.D / 2 + 0.25); return new THREE.Vector3(q.x, y, q.z); }) });
+    }
+    const S = this.village.site.shelter;
+    if (this.village.buildings.some((x) => x.kind === 'store' && x.level >= 2)) {
+      const y = heightAt(this.world, S.x, S.z) + Math.min(S.h, 3.2);
+      groups.push({ id: 'hall', pts: [[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => new THREE.Vector3(S.x + sx * S.w / 2, y, S.z + sz * S.d / 2)) });
+    }
+    if (this.village.buildings.some((x) => x.kind === 'kitchen')) {
+      const K = this.village.site.kitchen;
+      groups.push({ id: 'kitchen', pts: [new THREE.Vector3(K.x, heightAt(this.world, K.x, K.z) + 2.5, K.z)] });
+    }
+    const pairs: [THREE.Vector3, THREE.Vector3][] = [];
+    const used = new Map<string, number>();
+    const cands: [number, THREE.Vector3, THREE.Vector3, string, string][] = [];
+    for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++) {
+      let best: [number, THREE.Vector3, THREE.Vector3] | null = null;
+      for (const pa of groups[i].pts) for (const pb of groups[j].pts) { const d = pa.distanceTo(pb); if (!best || d < best[0]) best = [d, pa, pb]; }
+      if (best && best[0] > 3 && best[0] < 17) cands.push([best[0], best[1], best[2], groups[i].id, groups[j].id]);
+    }
+    cands.sort((x, y) => x[0] - y[0]);
+    for (const [, pa, pb, ia, ib] of cands) {
+      if ((used.get(ia) ?? 0) >= 2 || (used.get(ib) ?? 0) >= 2) continue;
+      pairs.push([pa, pb]);
+      used.set(ia, (used.get(ia) ?? 0) + 1); used.set(ib, (used.get(ib) ?? 0) + 1);
+    }
+    if (pairs.length) {
+      const key = pairs.map(([x, y]) => `${x.x.toFixed(1)},${x.z.toFixed(1)}-${y.x.toFixed(1)},${y.z.toFixed(1)}`).join(';');
+      live.add('bunting');
+      this.upsert('bunting', key, () => bunting(pairs), false);
     }
     for (const [id, e] of this.entries) if (!live.has(id)) { this.drop(e); this.entries.delete(id); }
   }

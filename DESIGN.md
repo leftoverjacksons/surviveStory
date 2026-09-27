@@ -775,3 +775,87 @@ Off by default.
   - Next if pursued: pixel-scale textures (cobbles, planks, shingles), fewer
     and chunkier grass tufts, rain drawn as pixel streaks, per-material
     outline colours, and fixed zoom steps.
+
+### Pixel art becomes the default look (art pass C3, part 1)
+The user's first reaction to the prototype was "this is better", and they
+asked to push it as close as possible to their reference: warm, tactile,
+detailed, a cosy isometric pixel-art town. `?smooth` brings back the soft
+look; `?pixel=N` sets the pixel size (default 3).
+- **Surface textures** (`enhance` option `surface`, pixel mode only):
+  pixel-scale detail computed in world space by the shader, with no texture
+  files.
+  - Walls: wood reads as planks with seams, staggered butt joints and grain;
+    grey surfaces read as coursed masonry.
+  - Slopes: staggered shingles with shadowed row edges.
+  - Flat tops: grit.
+  - Ground: loam blotches and grit.
+  - Asphalt and concrete: broken slabs with dark seams and moss.
+  - Foliage: leaf clumps, lit on their upper sides. This also breaks up the
+    contour banding that colour steps otherwise draw on smooth canopies.
+  - Excluded: trunks, stumps, rocks, crops, berries, people.
+  - Detail fades where a texel would be smaller than a screen pixel, to
+    avoid moiré.
+- **Light**:
+  - Crisp shadows (filter radius 0).
+  - A lower sun (0.7× height), giving long raking shadows.
+  - Sunlight warmed 28% toward #ffc98a in the day, with warm ground bounce.
+  - Exposure 1.22.
+  - Split toning 2.2× stronger, and warm highlights.
+- **Grass**: 45% of the density, with blades 2.3× wider and a little shorter,
+  so it reads as tufts rather than noise.
+- **Rain**: 500 short, faint streaks instead of 1,400 long ones.
+- **Props**:
+  - Houses get a rain barrel, stacked crates and a firewood pile with log
+    ends against the hearth wall.
+  - Bunting is strung between neighbouring houses, the hall and the kitchen,
+    within 17 units, at most two strings per building.
+
+## 18. Long-range plan from the user (after the pixel pass)
+Recorded as the user described it. None of this is built yet.
+
+### Houses: modern vernacular from salvage, not generic medieval
+The procedural houses are good, but they read as generic medieval. Target:
+buildings we recognise from the modern era, rebuilt by survivors. They
+should mix scrap from the old world with new timber: sheet-metal and
+car-hood roofing, road signs as cladding, pallet-wood walls, shipping
+containers and camper shells as rooms, uPVC windows salvaged from
+suburbs, satellite dishes as rain catchers, and solar panels. Reference:
+the TV series *Station Eleven*.
+- **Upgrade levels over time.** A house grows from a lean-to on a salvaged
+  frame to a patched, insulated home, then to a well-kept one with a
+  second storey, a porch, and a glasshouse on the side.
+- **Specific scrap with provenance.** No new resource categories for the
+  player. Instead, the generated world knows what each ruin is made of (a
+  motel: vinyl siding, doors, beds; a car park: car panels, glass; a
+  factory: corrugated steel, girders). Salvage is logged by source, and the
+  village's buildings are visibly made from what was actually salvaged
+  nearby. A house might wear the petrol station's canopy or the chapel's
+  pews. The inspector could say "walls of motel doors, roof from the
+  garage".
+- **Repurposed structures.** Communities convert whatever exists: a
+  shopping-centre atrium as a market hall, a school gym as a granary, a
+  bus as a bunkhouse. Alongside new building, reuse should be as common as
+  construction.
+- **Geodesic domes** as greenhouses (a strong *Station Eleven* image), built
+  from salvaged struts and glazing or plastic sheet.
+- **Car-chassis wagons** pulled by horses. Later: needs draught animals and
+  travel, which ties into expeditions.
+
+### A bigger, denser old world
+The map is small, and nearby ruins are bland. Target: survivors living in
+recognisable remains of the old world, much denser with buildings and
+closer in character to each starting site.
+- **Old-world districts** generated around and beyond the village:
+  suburban cul-de-sacs with houses and garages; a strip mall or shopping
+  centre with a car park; industrial estates with large factory floors and
+  loading bays; a school; a church; a petrol station; farmsteads; a rail
+  line.
+- **Districts match the starting site.** A motel start sits on a highway
+  edge with a strip mall; a chapel start sits by an old village centre; a
+  farm start sits among fields and barns; a glasshouse start sits by a
+  garden centre or research station.
+- **Ruins are useful**: salvage by type (see provenance above), shelter,
+  structures worth reclaiming, and places for expeditions and Veil events.
+- **Rendering**: needs instancing or merged chunks for ruin geometry, plus
+  the pixel-art textures (brick, siding, concrete, glass) so ruins read at a
+  glance.

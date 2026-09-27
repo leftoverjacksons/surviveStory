@@ -65,15 +65,16 @@ export function glowTexture(size = 128): THREE.Texture {
  * comparison.
  */
 /**
- * Pixel-art rendering (`?pixel` or `?pixel=4`): the scene is drawn at 1/PIXEL
+ * Pixel-art rendering (the default; `?pixel=4` for chunkier pixels, `?smooth`
+ * for the soft look): the scene is drawn at 1/PIXEL
  * of the screen's resolution and enlarged with hard pixels, outlined from
  * depth, with colour in steps. 0 = off.
  */
 export const PIXEL = (() => {
   if (typeof location === 'undefined') return 0;
-  const v = new URLSearchParams(location.search).get('pixel');
-  if (v === null) return 0;
-  return Math.max(2, Math.min(6, Number(v) || 3));
+  const q = new URLSearchParams(location.search);
+  if (q.has('smooth')) return 0;
+  return Math.max(2, Math.min(6, Number(q.get('pixel')) || 3));
 })();
 
 export const SOFT = typeof location === 'undefined' || !new URLSearchParams(location.search).has('hard');
@@ -143,7 +144,82 @@ export interface EnhanceOptions {
   shade?: number;
   /** Light the surface as if it faced straight up (grass blades lit like the ground they grow from). */
   upLit?: boolean;
+  /**
+   * Pixel-scale surface detail (pixel-art mode only): 'auto' reads walls,
+   * slopes and tops from the normal and wood from masonry by saturation;
+   * 'soil' and 'paving' are for the ground. Default: 'auto' for solid
+   * materials, 'soil' for ground, otherwise none.
+   */
+  surface?: 'auto' | 'soil' | 'paving' | 'leaf' | 'none';
 }
+
+const SURFACE_GLSL = `
+  float sh21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  // Pixel-scale surface detail in world space: planks and masonry on walls,
+  // shingles on slopes, slabs and grit on flat tops, loam or paving on the
+  // ground. Fades out where a texel would be smaller than a screen pixel.
+  vec3 surfaceTex(vec3 col, vec3 wp, vec3 wn, int kind) {
+    float fw = max(length(fwidth(wp)), 1e-4);
+    float fade = 1.0 - smoothstep(0.1, 0.24, fw);
+    if (fade <= 0.0) return col;
+    float T = 7.0;
+    float mx = max(col.r, max(col.g, col.b)), mn = min(col.r, min(col.g, col.b));
+    float sat = (mx - mn) / max(mx, 1e-3);
+    float k = 1.0;
+    vec3 tint = vec3(0.0);
+    if (kind == 4) {            // foliage: leaf clumps, lit on their upper sides, dark gaps between
+      vec3 q = wp * 4.5;
+      vec3 c = floor(q);
+      float h = sh21(c.xz + c.y * 17.3);
+      float up = dot(normalize(fract(q) - 0.5 + 1e-4), normalize(vec3(0.3, 1.0, 0.2)));
+      k = 0.78 + 0.34 * h + 0.14 * up;
+      k *= 0.9 + 0.2 * sh21(floor(wp.xz * T * 1.4) + floor(wp.y * T * 1.4));
+      fade = max(fade, 0.6);
+    } else if (kind == 2) {            // soil and turf: loam blotches, grit
+      k = (0.92 + 0.16 * sh21(floor(wp.xz * 1.3))) * (0.93 + 0.14 * sh21(floor(wp.xz * T)));
+    } else if (kind == 3) {     // paving: broken slabs, dark seams, moss in the cracks
+      vec2 g = wp.xz / 0.9;
+      float row = floor(g.y);
+      g.x += row * 0.5 + sh21(vec2(row, 7.0)) * 0.3;
+      vec2 cell = floor(g), f = fract(g);
+      k = (0.86 + 0.28 * sh21(cell)) * (0.94 + 0.12 * sh21(floor(wp.xz * T)));
+      float seam = step(f.x, 0.07) + step(f.y, 0.07);
+      if (seam > 0.0) { k *= 0.62; tint = sh21(cell + 3.1) < 0.4 ? vec3(-0.02, 0.03, -0.02) : vec3(0.0); }
+    } else {
+      vec3 an = abs(wn);
+      if (an.y < 0.35) {
+        vec2 t2 = normalize(vec2(-wn.z, wn.x) + 1e-5);
+        float u = dot(wp.xz, t2), v = wp.y;
+        if (sat < 0.14) {       // grey: masonry or block
+          float row = floor(v / 0.26);
+          float uu = u + row * 0.27;
+          float c = floor(uu / 0.52);
+          k = 0.9 + 0.2 * sh21(vec2(row, c));
+          if (fract(v / 0.26) < 0.15 || fract(uu / 0.52) < 0.07) k *= 0.74;
+        } else {                // wood: planks with seams, grain
+          float row = floor(v / 0.2);
+          float len = 0.9 + 0.8 * sh21(vec2(row, 2.0));
+          float seg = floor((u + sh21(vec2(row, 1.0)) * 3.0) / len);
+          k = 0.88 + 0.24 * sh21(vec2(row, seg));
+          if (fract(v / 0.2) < 0.16) k *= 0.7;
+          k *= 0.95 + 0.1 * sh21(floor(vec2(u * T * 2.0, v * T)));
+        }
+      } else if (an.y < 0.93) { // roof slope: staggered shingles
+        vec2 d = normalize(wn.xz + 1e-5);
+        float row = floor(wp.y / 0.11);
+        float u = dot(wp.xz, vec2(-d.y, d.x)) + row * 0.17;
+        float c = floor(u / 0.3);
+        k = 0.84 + 0.3 * sh21(vec2(row, c));
+        if (fract(wp.y / 0.11) < 0.3) k *= 0.72;
+        else if (fract(u / 0.3) < 0.08) k *= 0.85;
+      } else {                  // flat tops: grit
+        k = 0.93 + 0.14 * sh21(floor(wp.xz * T));
+      }
+    }
+    return mix(col, col * k + tint, fade);
+  }
+`;
+
 
 const SEASON_GLSL: Record<SeasonStyle, string> = {
   none: '',
@@ -186,6 +262,8 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
   const season = opts.season ?? 'solid';
   const shade = opts.shade ?? 0;
   const upLit = opts.upLit ?? false;
+  const surface = !PIXEL ? 'none' : opts.surface ?? (season === 'solid' ? 'auto' : season === 'ground' ? 'soil' : season === 'broadleaf' || season === 'conifer' ? 'leaf' : 'none');
+  const surfaceKind = { none: 0, auto: 1, soil: 2, paving: 3, leaf: 4 }[surface];
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, worldUniforms);
     let vs = shader.vertexShader.replace(
@@ -193,7 +271,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       `#include <common>
       uniform float uTime; uniform float uWind; uniform float uBare; uniform float uFogSize;
       uniform sampler2D uWearTex;
-      varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade;`,
+      varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;`,
     );
     vs = vs.replace(
       '#include <begin_vertex>',
@@ -229,7 +307,9 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       #endif
       fowWP = modelMatrix * fowWP;
       vFowXZ = fowWP.xz;
-      vUp = normalize(mat3(modelMatrix) * upN).y;`,
+      vWN = normalize(mat3(modelMatrix) * upN);
+      vUp = vWN.y;
+      vWP = fowWP.xyz;`,
     );
     shader.vertexShader = vs;
 
@@ -239,8 +319,13 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform sampler2D uZoneTex; uniform float uVeil;
       uniform float uFogSize; uniform float uTime; uniform float uZone;
       uniform float uSnow; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
-      varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade;`,
+      varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
+      ${surfaceKind ? SURFACE_GLSL : ''}`,
     );
+    if (surfaceKind) {
+      fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
+        diffuseColor.rgb = surfaceTex(diffuseColor.rgb, vWP, vWN, ${surfaceKind});`);
+    }
     if (season !== 'none') {
       fs = fs.replace(
         '#include <color_fragment>',
@@ -301,11 +386,11 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
     }
     shader.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => `enh-${wind}-${fog}-${zone}-${season}-${shade}-${upLit}`;
+  mat.customProgramCacheKey = () => `enh-${wind}-${fog}-${zone}-${season}-${shade}-${upLit}-${surfaceKind}`;
   return mat;
 }
 
 /** Wind-only helper kept for call sites that want the old behaviour. */
 export function addWind(mat: THREE.Material, strength = 0.12) {
-  return enhance(mat, { wind: strength });
+  return enhance(mat, { wind: strength, surface: 'none' });
 }

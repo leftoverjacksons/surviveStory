@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Crop, Zone, heightAt, type World } from '../sim/world';
-import { enhance, makeRand } from './util';
+import { PIXEL, enhance, makeRand } from './util';
 
 function furrowTexture(): THREE.Texture {
   const size = 64;
@@ -34,8 +34,8 @@ export class FieldsView {
   group = new THREE.Group();
   private soil: THREE.InstancedMesh | null = null;
   private crops: THREE.InstancedMesh | null = null;
-  private soilMat = enhance(new THREE.MeshLambertMaterial({ map: furrowTexture(), transparent: true }), { season: 'solid', zone: true });
-  private cropMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.25, season: 'solid' });
+  private soilMat = enhance(new THREE.MeshLambertMaterial({ map: furrowTexture(), transparent: true }), { season: 'solid', zone: true, surface: 'soil' });
+  private cropMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.25, season: 'solid', surface: 'none' });
   private cropGeo = new THREE.ConeGeometry(0.17, 0.7, 5).translate(0, 0.35, 0);
   private soilGeo = new THREE.PlaneGeometry(0.98, 0.98).rotateX(-Math.PI / 2);
   private key = '';
@@ -109,21 +109,23 @@ export class Precipitation {
   private snow: THREE.Points;
   private rainPos: Float32Array;
   private snowPos: Float32Array;
-  private readonly N = 1400;
+  private readonly N = PIXEL ? 500 : 1400;
   private readonly box = { w: 70, h: 30 };
   private rand = makeRand(99);
+  /** Streak length: short pixel dashes in pixel art. */
+  private readonly len = PIXEL ? 0.45 : 0.9;
 
   constructor() {
     this.rainPos = new Float32Array(this.N * 6);
     this.snowPos = new Float32Array(this.N * 3);
     for (let i = 0; i < this.N; i++) {
       const x = (this.rand() - 0.5) * this.box.w, y = this.rand() * this.box.h, z = (this.rand() - 0.5) * this.box.w;
-      this.rainPos.set([x, y, z, x - 0.08, y - 0.9, z], i * 6);
+      this.rainPos.set([x, y, z, x - 0.08, y - this.len, z], i * 6);
       this.snowPos.set([x, y, z], i * 3);
     }
     const rg = new THREE.BufferGeometry();
     rg.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
-    this.rain = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: '#b8c8d8', transparent: true, opacity: 0.35, depthWrite: false }));
+    this.rain = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: '#b8c8d8', transparent: true, opacity: PIXEL ? 0.28 : 0.35, depthWrite: false }));
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(this.snowPos, 3));
     this.snow = new THREE.Points(sg, new THREE.PointsMaterial({ color: '#ffffff', size: 0.16, transparent: true, opacity: 0.9, depthWrite: false }));
@@ -140,7 +142,7 @@ export class Precipitation {
         let y = p[i * 6 + 1] - dt * 26;
         if (y < 0) y += this.box.h;
         p[i * 6 + 1] = y;
-        p[i * 6 + 4] = y - 0.9;
+        p[i * 6 + 4] = y - this.len;
       }
       this.rain.geometry.attributes.position.needsUpdate = true;
     } else if (kind === 'snow') {

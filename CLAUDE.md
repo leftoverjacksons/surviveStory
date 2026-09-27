@@ -86,6 +86,13 @@ reference: Tiny Glade.
     `scripts/characters.mjs`, `src/assets/CREDITS.md`; DESIGN §17).
     The environment now has full network access; Quaternius packs download from
     Google Drive with `pip install gdown` (`gdown --folder <url>`).
+  - PIXEL ART IS NOW THE DEFAULT (user: "this is better"; `?smooth` for the
+    old look). World-space surface textures, golden light, props and bunting.
+    Reference: cosy isometric pixel-art town (t3ssel8r style). DESIGN §17.
+  - Long-range plan from the user in DESIGN §18: modern-vernacular salvage
+    houses with upgrade levels, scrap with provenance, repurposed structures,
+    geodesic dome greenhouses, a bigger and denser old world (suburbs, malls,
+    factories) matching the starting site. Station Eleven is the reference.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
   - Published: the artifact has the CC0 survivors and deer (commit c65e3cb, version 12).
