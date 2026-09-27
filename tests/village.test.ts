@@ -54,12 +54,18 @@ describe('village', () => {
     }
   });
 
-  it('builds in timber once someone has learned joinery and there is a workbench', () => {
+  it('builds in timber only when someone knows joinery and there is a workbench', () => {
+    expect(hasBuilt(v, 'workshop')).toBe(true);
+    const living = col.community.survivors.filter((s) => s.alive);
+    const saved = living.map((s) => s.skills);
+    for (const s of living) s.skills = {};
+    knowhowDaily(col);
+    expect(v.tier).toBe(0);
+    living[0].skills = { joinery: 0.6 };
+    knowhowDaily(col);
     expect(v.tier).toBe(1);
-    expect(knowers(col.community, 'joinery').length).toBeGreaterThan(0);
-    const early = createColony(generateWorld(31), createCommunity(31));
-    runDays(early, 3);
-    expect(early.village.tier).toBe(knowers(early.community, 'joinery').length && hasBuilt(early.village, 'workshop') ? 1 : 0);
+    living.forEach((s, i) => { s.skills = saved[i]; });
+    knowhowDaily(col);
   });
 
   it('forgets joinery if everyone who knew it is gone', () => {
