@@ -970,3 +970,26 @@ modern vernacular, built from what the village has actually salvaged.
   - Measured over 3 seeds: shacks patched by about day 24; the first
     glasshouse on day 36–48; 4 of 5 homes well kept by day 72.
 - **Inspector**: shows the home's state and what it is built from.
+
+### Playtest round 2 fixes (after version 13)
+The user found the pixel look far better ("adds charm and texture"). They
+flagged:
+- **Fog of war leaked detail.** The outline pass inked edges after the
+  fog, so trees and buildings showed through unexplored land.
+  - Fix: the pass rebuilds each pixel's world position from depth and
+    samples the exploration texture. No lines where unexplored, and they
+    fade in weather fog.
+  - The fog-of-war mist no longer carries the scene's brightness in pixel
+    mode.
+- **Weather fog was unplayable.** Foggy days pulled the fog to 45–110
+  units from a camera that sits 80 away. It now runs 90–170, so fog
+  softens the distance without hiding the village.
+- **Nights were too dark.** In pixel mode, night sky light rises by up to
+  70%, moonlight by up to 45%, and the sky light turns a moonlit blue.
+- **Fields looked like terraces.** Each tile was a flat quad at its centre
+  height. Fields are now one mesh draped over the terrain's own corner
+  heights, split along the terrain's diagonals, with furrows in world
+  space, so they run unbroken.
+- **Next, proposed by the user:** fields drawn as polygons (click points
+  until the shape closes) that follow the land and are eventually fenced,
+  instead of painted tiles.

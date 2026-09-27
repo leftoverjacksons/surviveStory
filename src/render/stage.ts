@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PIXEL, SOFT } from './util';
+import { PIXEL, SOFT, worldUniforms } from './util';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -48,16 +48,19 @@ const GradeShader = {
 class OutlinePass extends Pass {
   private quad: FullScreenQuad;
   private mat: THREE.ShaderMaterial;
-  constructor(private camera: THREE.OrthographicCamera) {
+  constructor(private camera: THREE.OrthographicCamera, private scene?: THREE.Scene) {
     super();
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: null }, tDepth: { value: null }, uRes: { value: new THREE.Vector2(1, 1) },
         uNear: { value: 0.1 }, uFar: { value: 400 }, uView: { value: new THREE.Vector2(1, 1) }, uDebug: { value: typeof location !== 'undefined' && location.search.includes('pixeldebug') ? 1 : 0 },
+        uCam: { value: new THREE.Matrix4() }, uFogTex: worldUniforms.uFogTex, uFogSize: worldUniforms.uFogSize,
+        uFogNear: { value: 115 }, uFogFar: { value: 230 },
       },
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
         uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform vec2 uView; uniform float uDebug;
+        uniform mat4 uCam; uniform sampler2D uFogTex; uniform float uFogSize; uniform float uFogNear; uniform float uFogFar;
         varying vec2 vUv;
         float lin(vec2 uv) { return uNear + texture2D(tDepth, uv).x * (uFar - uNear); }
         vec3 P(vec2 uv) { return vec3((uv - 0.5) * uView, -lin(uv)); }
@@ -88,6 +91,12 @@ class OutlinePass extends Pass {
           }
           vec3 c = src.rgb;
           if (d > uFar - 1.0) { gl_FragColor = src; return; }   // sky
+          // No lines where the land is unexplored or lost in fog: they would give it away.
+          vec3 wp = (uCam * vec4(P(vUv), 1.0)).xyz;
+          float seen = smoothstep(0.3, 0.8, texture2D(uFogTex, (wp.xz + uFogSize * 0.5) / uFogSize).r);
+          float clearAir = 1.0 - smoothstep(uFogNear, uFogFar, d);
+          float ink = seen * clearAir;
+          edge *= step(0.5, ink); crease *= ink;
           if (uDebug > 0.5) { gl_FragColor = vec4(edge, texture2D(tDepth, vUv).x * 20.0 - floor(texture2D(tDepth, vUv).x * 20.0), crease, 1.0); return; }
           if (edge > 0.0) c = c * 0.38 + vec3(0.025, 0.012, 0.03);          // ink: a deep warm violet-brown
           else if (crease > 0.0) c = c * (1.0 + 0.5 * clamp(crease * 2.0, 0.0, 1.0)) + 0.015;
@@ -103,6 +112,9 @@ class OutlinePass extends Pass {
     u.uRes.value.set(readBuffer.width, readBuffer.height);
     u.uNear.value = c.near; u.uFar.value = c.far;
     u.uView.value.set((c.right - c.left) / c.zoom, (c.top - c.bottom) / c.zoom);
+    u.uCam.value.copy(c.matrixWorld);
+    const fog = this.scene?.fog as THREE.Fog | undefined;
+    if (fog) { u.uFogNear.value = fog.near; u.uFogFar.value = fog.far; }
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
   }
@@ -289,8 +301,9 @@ export class Sky {
     if (snow > 0) this.background.lerp(cB.setRGB(0.78, 0.82, 0.88).multiplyScalar(0.3 + (1 - this.nightFor(h)) * 0.7), snow * 0.35);
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(this.background);
-    fog.near = 115 - fogginess * 70;
-    fog.far = 230 - fogginess * 120;
+    // Fog softens the distance; it shouldn't hide the village you're looking at.
+    fog.near = 115 - fogginess * 25;
+    fog.far = 230 - fogginess * 60;
 
     // Sun arc: rises east (+x), sets west (-x). At night the "sun" is the moon, opposite.
     const dayAngle = ((h - 6) / 12) * Math.PI;
@@ -308,6 +321,12 @@ export class Sky {
     this.sun.position.set(sx + az * 50, Math.max(elev, 0.15) * (PIXEL ? 38 : 55), sz + 22);
     this.sun.target.position.set(sx, 0, sz);
     this.night = this.nightFor(h);
+    if (PIXEL) {
+      // Pixel art compresses the darks: lift the night so the village still reads (a bright moon, blue sky-glow).
+      this.hemi.intensity *= 1 + 0.7 * this.night;
+      this.sun.intensity *= 1 + 0.45 * this.night;
+      this.hemi.color.lerp(cB.set('#8a9ad0'), 0.35 * this.night);
+    }
   }
 
   private nightFor(h: number) {
@@ -373,7 +392,7 @@ export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene
   peoplePass.clearDepth = false;
   composer.addPass(xray);
   composer.addPass(peoplePass);
-  const outline = PIXEL ? new OutlinePass(camera as THREE.OrthographicCamera) : null;
+  const outline = PIXEL ? new OutlinePass(camera as THREE.OrthographicCamera, scene) : null;
   if (outline) composer.addPass(outline);
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.7, 0.55, 1.05);
   composer.addPass(bloom);

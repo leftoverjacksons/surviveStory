@@ -23,6 +23,8 @@ function furrowTexture(): THREE.Texture {
   }
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  if (PIXEL) tex.magFilter = THREE.NearestFilter;
   return tex;
 }
 
@@ -32,12 +34,11 @@ function furrowTexture(): THREE.Texture {
  */
 export class FieldsView {
   group = new THREE.Group();
-  private soil: THREE.InstancedMesh | null = null;
+  private soil: THREE.Mesh | null = null;
   private crops: THREE.InstancedMesh | null = null;
-  private soilMat = enhance(new THREE.MeshLambertMaterial({ map: furrowTexture(), transparent: true }), { season: 'solid', zone: true, surface: 'soil' });
+  private soilMat = enhance(new THREE.MeshLambertMaterial({ map: furrowTexture(), transparent: true, vertexColors: true }), { season: 'solid', zone: true, surface: 'soil' });
   private cropMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.25, season: 'solid', surface: 'none' });
   private cropGeo = new THREE.ConeGeometry(0.17, 0.7, 5).translate(0, 0.35, 0);
-  private soilGeo = new THREE.PlaneGeometry(0.98, 0.98).rotateX(-Math.PI / 2);
   private key = '';
   private tiles: number[] = [];
   private tilesVersion = -1;
@@ -53,7 +54,7 @@ export class FieldsView {
     if (now - this.lastBuild < 1 && w.zoneVersion === this.tilesVersion) return;
     this.lastBuild = now;
     this.key = key;
-    if (this.soil) { this.group.remove(this.soil); this.soil.dispose(); }
+    if (this.soil) { this.group.remove(this.soil); this.soil.geometry.dispose(); }
     if (this.crops) { this.group.remove(this.crops); this.crops.dispose(); }
     if (this.tilesVersion !== w.zoneVersion) {
       this.tilesVersion = w.zoneVersion;
@@ -65,18 +66,30 @@ export class FieldsView {
 
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     const col = new THREE.Color();
-    this.soil = new THREE.InstancedMesh(this.soilGeo, this.soilMat, tiles.length);
+    // Soil draped over the terrain (each tile's corners at the ground's own
+    // heights), with furrows mapped in world space so they run on unbroken
+    // across the field instead of stepping tile by tile.
+    const S = w.w + 1;
+    const pos: number[] = [], uv: number[] = [], cols: number[] = [], index: number[] = [];
     const growing = tiles.filter((i) => w.cropState[i] >= Crop.Growing);
     this.crops = new THREE.InstancedMesh(this.cropGeo, this.cropMat, Math.max(1, growing.length * 4));
     let c = 0;
-    tiles.forEach((i, k) => {
-      const x = (i % w.w) - w.w / 2 + 0.5, z = Math.floor(i / w.w) - w.h / 2 + 0.5;
+    tiles.forEach((i) => {
+      const tx = i % w.w, tz = Math.floor(i / w.w);
+      const x = tx - w.w / 2 + 0.5, z = tz - w.h / 2 + 0.5;
       const y = heightAt(w, x, z) + 0.045;
-      m.compose(p.set(x, y, z), q.identity(), s.set(1, 1, 1));
-      this.soil!.setMatrixAt(k, m);
-      // Untilled field ground reads as pale, staked-out grass; tilled as dark furrows.
       const st = w.cropState[i];
-      this.soil!.setColorAt(k, col.set(st === Crop.Untilled ? '#c9c08a' : '#ffffff'));
+      col.set(st === Crop.Untilled ? '#c9c08a' : '#ffffff');
+      const base = pos.length / 3;
+      for (const [dx, dz] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
+        const vx = tx + dx, vz = tz + dz;
+        const wx = vx - w.w / 2, wz = vz - w.h / 2;
+        pos.push(wx, w.heights[vz * S + vx] + 0.05, wz);
+        uv.push(wx, wz);
+        cols.push(col.r, col.g, col.b);
+      }
+      // Split along the same diagonal as the terrain's own quads, so the soil never dips under it.
+      index.push(base, base + 3, base + 1, base + 1, base + 3, base + 2);
       if (st < Crop.Growing) return;
       const g = w.cropGrowth[i];
       const ripe = st === Crop.Ripe;
@@ -91,13 +104,19 @@ export class FieldsView {
       }
     });
     this.crops.count = c;
-    // Untilled tiles are drawn lighter and translucent via colour; tilled ones fully.
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    geo.setIndex(index);
+    geo.computeVertexNormals();
+    this.soil = new THREE.Mesh(geo, this.soilMat);
+    // Untilled tiles are drawn lighter via colour; tilled ones fully.
     this.soilMat.opacity = 0.9;
-    for (const im of [this.soil, this.crops]) {
-      im.receiveShadow = true;
-      im.computeBoundingSphere();
-      this.group.add(im);
-    }
+    this.soil.receiveShadow = this.crops.receiveShadow = true;
+    geo.computeBoundingSphere();
+    this.crops.computeBoundingSphere();
+    this.group.add(this.soil, this.crops);
     this.crops.castShadow = true;
   }
 }

@@ -392,7 +392,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
           float drift = sin(vFowXZ.x * 0.21 + uTime * 0.15) * sin(vFowXZ.y * 0.17 - uTime * 0.11) * 0.08;
           float k = smoothstep(0.25, 0.75, seen + drift);
           float lum = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
-          vec3 mist = vec3(0.045, 0.06, 0.07) + lum * 0.08;
+          vec3 mist = vec3(0.045, 0.06, 0.07) + lum * ${PIXEL ? '0.0' : '0.08'};
           gl_FragColor.rgb = mix(mist, gl_FragColor.rgb, k);
         }
         #include <fog_fragment>`,
