@@ -22,8 +22,12 @@ function dropAnimation(a) {
   a.dispose();
 }
 
-const src = process.argv[2];
-if (!src) throw new Error('usage: node scripts/characters.mjs <packs dir>');
+// `--figures <dir>`: the survivors are our own Blender figures
+// (scripts/blender/survivor.py output) instead of the Quaternius outfits.
+const FIG = process.argv.indexOf('--figures');
+const figures = FIG >= 0 ? process.argv[FIG + 1] : null;
+const src = process.argv.find((a, i) => i >= 2 && !a.startsWith('--') && i !== FIG + 1);
+if (!src && !figures) throw new Error('usage: node scripts/characters.mjs [<packs dir>] [--figures <dir>]');
 const OUT = 'src/assets/people';
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -66,7 +70,22 @@ async function write(doc, file) {
   console.log(file, (fs.statSync(file).size / 1024).toFixed(0), 'KB');
 }
 
-for (const [pack, name, out] of OUTFITS) {
+if (figures) {
+  for (const f of fs.readdirSync(OUT)) if (f.endsWith('.glb')) fs.unlinkSync(path.join(OUT, f));
+  for (const f of fs.readdirSync(figures).filter((f) => f.endsWith('.glb'))) {
+    const doc = await io.read(path.join(figures, f));
+    if (f === 'anims.glb') {
+      await doc.transform(resample(), dedup(), prune({ keepLeaves: true }), quantize());
+    } else {
+      for (const a of doc.getRoot().listAnimations()) dropAnimation(a);
+      slotify(doc);
+      await doc.transform(weld(), dedup(), prune(), quantize({ pattern: /^(JOINTS|WEIGHTS)/ }));
+    }
+    await write(doc, path.join(OUT, f));
+  }
+}
+
+for (const [pack, name, out] of src ? OUTFITS : []) {
   const doc = await io.read(path.join(src, pack, 'Individual Characters', 'glTF', `${name}.gltf`));
   for (const a of doc.getRoot().listAnimations()) dropAnimation(a);
   slotify(doc);
@@ -82,7 +101,7 @@ const ANIMALS = ['Deer', 'Stag'];
 const ANIMAL_CLIPS = ['Idle', 'Eating', 'Walk', 'Gallop'];
 const AOUT = 'src/assets/animals';
 fs.mkdirSync(AOUT, { recursive: true });
-for (const name of ANIMALS) {
+for (const name of src ? ANIMALS : []) {
   const doc = await io.read(path.join(src, 'animals', 'glTF', `${name}.gltf`));
   for (const a of doc.getRoot().listAnimations()) if (!ANIMAL_CLIPS.includes(a.getName())) dropAnimation(a);
   slotify(doc);
@@ -91,7 +110,7 @@ for (const name of ANIMALS) {
 }
 
 // One copy of the clips (every outfit shares the skeleton): no meshes.
-{
+if (src && !figures) {
   const doc = await io.read(path.join(src, 'men', 'Individual Characters', 'glTF', 'Worker.gltf'));
   for (const a of doc.getRoot().listAnimations()) if (!CLIPS.includes(a.getName())) dropAnimation(a);
   for (const n of doc.getRoot().listNodes()) if (n.getMesh()) { n.getMesh().dispose(); n.setMesh(null); n.setSkin(null); }

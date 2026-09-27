@@ -725,3 +725,27 @@ look for comparison):
 - **Grass speckle.** Each blade had its own lighting, so neighbouring blades
   alternated light and dark. Blades are now lit as if facing up (`enhance`
   `upLit`), with a darker root and lighter tip.
+
+### Our own survivor figures (Blender, from code)
+The user disliked the Quaternius people and rejected Kenney's minis, so the
+survivors are now built in Blender from `scripts/blender/survivor.py`
+(`pip install bpy`; Mesa's `libegl1` is needed for headless rendering).
+- **Style**: soft, rounded figurines like clay toys, with a large head
+  (about 1:5.3), two dark eyes and a small nose.
+  - Layered, mended clothes: tunic or coat, trousers, boots, belt, cuffs,
+    collar, and optional scarf, hood, brimmed hat, beanie and backpack.
+  - Hair: bowl, bun, ponytail or long.
+- **Build**: the body grows from a stick figure (Skin modifier plus
+  subdivision), and clothing is assigned by body region. Bands (belt, cuffs,
+  boot tops, collar) cover the seams between garments.
+- **Rig**: one shared joint table drives both the mesh and the bones. Bone
+  weights come from distance to each bone. Bone and clip names match the
+  game's character code, so the figures drop in.
+- **Clips**: Idle, Idle_Neutral, Walk, Run, Interact, Sword_Slash (chop),
+  Punch_Right (hammer) and Wave, keyframed in the script.
+- **Outfits**: six, as `man_*`/`woman_*` so the game's pools pick them up.
+  The game recolours skin, hair and cloth per survivor; boots, straps,
+  packs and hats keep their own colours.
+- **Size**: about 80–90 KB per figure plus 94 KB of clips.
+- **Rebuild**: `python scripts/blender/survivor.py <dir> [--preview]`,
+  then `node scripts/characters.mjs --figures <dir>`.

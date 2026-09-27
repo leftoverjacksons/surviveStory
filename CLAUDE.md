@@ -77,7 +77,12 @@ reference: Tiny Glade.
     rejected terrain flattening). DESIGN §17 "Buildings on slopes".
   - Expeditions (milestone D) proposed; user said to hold off for now.
   - Trees v2 done (species silhouettes, limbs, jagged pines; DESIGN §17).
-  - CC0 characters and animals done (Quaternius; `src/render/characters.ts`,
+  - Soft look done (MSAA, soft shadows, smooth organic shading, calm grass; `?hard`).
+  - Survivors are now OUR OWN Blender figures (`scripts/blender/survivor.py`,
+    then `node scripts/characters.mjs --figures <dir>`; DESIGN §17). The user
+    disliked the Quaternius people and rejected Kenney's minis. Iterate on
+    these with the user. Deer are still Quaternius. NOT published.
+  - Earlier: CC0 characters and animals (Quaternius; `src/render/characters.ts`,
     `scripts/characters.mjs`, `src/assets/CREDITS.md`; DESIGN §17).
     The environment now has full network access; Quaternius packs download from
     Google Drive with `pip install gdown` (`gdown --folder <url>`).

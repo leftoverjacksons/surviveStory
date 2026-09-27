@@ -1,11 +1,13 @@
 # Asset credits
 
-All third-party assets here are CC0 1.0 (public domain dedication). Credit
+The third-party assets here are CC0 1.0 (public domain dedication). Credit
 is not required, but given gladly.
 
-- `people/*.glb`: survivors, from **Ultimate Modular Men** and **Ultimate
-  Modular Women** by Quaternius (https://quaternius.com). Everyday outfits
-  only; animations are merged into `anims.glb`.
+- `people/*.glb`: survivors. These are our own figures, modelled, rigged and
+  animated in code by `scripts/blender/survivor.py` (Blender's Python module)
+  and compressed by `scripts/characters.mjs --figures <dir>`. An earlier
+  build used Quaternius's Ultimate Modular Men/Women (CC0), and
+  `scripts/characters.mjs <packs dir>` can still rebuild from them.
 - `animals/*.glb`: deer and stag, from the **Ultimate Animated Animal Pack**
   by Quaternius (https://quaternius.com).
 

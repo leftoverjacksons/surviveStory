@@ -150,7 +150,7 @@ export function makeCharacter(outfit: Outfit, seed: { skin: number; hair: number
     const c = new THREE.Color();
     if (/^skin/i.test(name)) c.set(SKIN[seed.skin % SKIN.length]);
     else if (/hair|eyebrow|moustache|beard/i.test(name)) c.set(HAIR[seed.hair % HAIR.length]);
-    else if (/^eye$/i.test(name)) c.setRGB(base[0], base[1], base[2], THREE.LinearSRGBColorSpace);
+    else if (/^eye$/i.test(name) || /boot|strap|pack|roll|hat/i.test(name)) c.setRGB(base[0], base[1], base[2], THREE.LinearSRGBColorSpace);
     else clothing(base, seed.hue, i, c);
     return c;
   });
