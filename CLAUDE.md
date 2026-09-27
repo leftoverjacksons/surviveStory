@@ -73,5 +73,4 @@ reference: Tiny Glade.
   - Performance pass 1 done (`src/render/merge.ts`; draw calls −73%, DESIGN §17).
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
-  - Published: the artifact has the balance-pass and fishing build (commit 4f765d7).
-    The performance pass is committed but NOT published (user is testing).
+  - Published: the artifact has the performance-pass build (commit 998993c, version 10).
