@@ -103,7 +103,8 @@ reference: Tiny Glade.
     are now drawn as outlines and fenced (`sim/fields.ts`; DESIGN §17). NOT published.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
-  - Published: version 15 (the Folk's first mound, fields as outlines, playtest 2 fixes).
+  - Published: version 17 (everything through §19.11: the Folk, haunted districts
+    and clearing, playtest round 3).
   - NEW PLAN, under discussion: DESIGN §19. Haunted districts are cleared by a small
     turn-based team (Sight = fog of war, Nerve not HP, convert/lay to rest/banish),
     and the Folk are a second society (mounds, Folk paths, the Wild, Standing).
@@ -114,4 +115,7 @@ reference: Tiny Glade.
   - Haunted districts + clearing slice BUILT (§19.10): `sim/haunt.ts` (rosters,
     encounter engine, taken), `sim/clearbot.ts` (test bot), `render/clearing.ts`,
     `ui/clearing.ts`, district card in hud.ts, veil mode in main.ts
-    (`__game.veilStart('suburb')`, `__game.veilTurns(n)`). NOT published.
+    (`__game.veilStart('suburb')`, `__game.veilTurns(n)`).
+  - Playtest round 3 done (§19.11): Veil lights only at the Ring/hill/paths,
+    electric lanterns and string lights, Ring on any bearing at the edge, hill
+    beyond it, roof ivy on the pitch.
