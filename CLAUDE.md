@@ -69,5 +69,4 @@ reference: Tiny Glade.
   - Next: a balance pass once the user reports back (life is now
     comfortable, and Influence saturates); performance (merge house
     meshes); the C3 art pass.
-  - Not yet republished: the artifact still has the homes-and-purpose
-    build the user is playing. Publish only when they ask.
+  - Published: the artifact has the starting-sites build (commit 8cf1f15).
