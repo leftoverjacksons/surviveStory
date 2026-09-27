@@ -103,11 +103,11 @@ reference: Tiny Glade.
     are now drawn as outlines and fenced (`sim/fields.ts`; DESIGN §17). NOT published.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
-  - Published: version 14 (fields as outlines + playtest 2 fixes).
+  - Published: version 15 (the Folk's first mound, fields as outlines, playtest 2 fixes).
   - NEW PLAN, under discussion: DESIGN §19. Haunted districts are cleared by a small
     turn-based team (Sight = fog of war, Nerve not HP, convert/lay to rest/banish),
     and the Folk are a second society (mounds, Folk paths, the Wild, Standing).
     Decisions in §19.7–19.8: taken (time-dilated, return changed), never killed;
     the Folk are a second planned society; clearing is optional, direct turn-based
     control on a zoomed district. The Folk's first mound is BUILT (§19.9:
-    `sim/folk.ts`, `render/folk.ts`, `Zone.Wild`, Folk card). NOT published.
+    `sim/folk.ts`, `render/folk.ts`, `Zone.Wild`, Folk card). Published in version 15.
