@@ -111,3 +111,7 @@ reference: Tiny Glade.
     the Folk are a second planned society; clearing is optional, direct turn-based
     control on a zoomed district. The Folk's first mound is BUILT (§19.9:
     `sim/folk.ts`, `render/folk.ts`, `Zone.Wild`, Folk card). Published in version 15.
+  - Haunted districts + clearing slice BUILT (§19.10): `sim/haunt.ts` (rosters,
+    encounter engine, taken), `sim/clearbot.ts` (test bot), `render/clearing.ts`,
+    `ui/clearing.ts`, district card in hud.ts, veil mode in main.ts
+    (`__game.veilStart('suburb')`, `__game.veilTurns(n)`). NOT published.

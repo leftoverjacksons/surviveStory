@@ -108,7 +108,7 @@
   .label { position: absolute; transform: translate(-50%, -100%); font: 600 11px var(--f-body); color: var(--ink); text-shadow: 0 1px 3px #000, 0 0 8px #000; white-space: nowrap; }
 
   /* village plans */
-  #village { top: calc(env(safe-area-inset-top, 0px) + 108px); left: 16px; width: 280px; padding: 10px 12px; display: grid; gap: 8px; max-height: 40vh; overflow-y: auto; }
+  #village { top: calc(env(safe-area-inset-top, 0px) + 108px); left: 16px; width: 280px; padding: 10px 12px; display: grid; gap: 8px; max-height: 50vh; overflow-y: auto; }
   #village h2 { margin: 0; font: 400 16px var(--f-display); letter-spacing: 0.03em; display: flex; justify-content: space-between; align-items: baseline; }
   #village h2 span { font: 11px var(--f-mono); color: var(--ink-dim); letter-spacing: 0; }
   .proj { display: grid; gap: 3px; }
@@ -164,6 +164,35 @@
   #inspect .row button[aria-pressed="true"] { background: #50c8aa; color: #0b1210; border-color: #50c8aa; font-weight: 700; }
   #inspect .folk-news p { margin: 2px 0; font-size: 11.5px; color: var(--ink-dim); }
   #inspect .folk-news .d { opacity: 0.6; margin-right: 6px; }
+  #inspect .row .st { font-size: 11.5px; color: var(--ink-dim); align-self: center; }
+  #inspect button.primary:not([disabled]) { background: #8a5ad0; color: #fff; border-color: #8a5ad0; }
+  /* In the Veil: the village HUD steps aside for the clearing panel. */
+  body.in-veil .hud { display: none !important; }
+  #clearing { position: absolute; right: 16px; top: 16px; bottom: 16px; width: min(380px, calc(100% - 32px)); padding: 12px 14px; overflow-y: auto; z-index: 4; display: flex; flex-direction: column; gap: 8px; border-color: #6b4fa0; }
+  #clearing[hidden] { display: none; }
+  #clearing h3 { margin: 0; font: 400 19px var(--f-display); color: #e8dcff; }
+  #clearing .sub { font-size: 11.5px; color: var(--ink-dim); }
+  #clearing .h { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+  #clearing .team { display: grid; gap: 4px; }
+  #clearing .unit { display: grid; grid-template-columns: 1fr 90px 44px; gap: 8px; align-items: center; text-align: left; padding: 5px 8px; }
+  #clearing .unit.sel { border-color: #e8dcff; background: rgba(138, 90, 208, 0.25); }
+  #clearing .unit i { font-style: normal; font-size: 10.5px; color: var(--ink-dim); }
+  #clearing .unit.fled, #clearing .unit.taken { opacity: 0.5; }
+  #clearing .nerve { height: 6px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; }
+  #clearing .nerve b { display: block; height: 100%; background: #8af0c8; }
+  #clearing .nerve b.mid { background: #ffd06a; } #clearing .nerve b.low { background: #ff7a6a; }
+  #clearing .ap { font-size: 11px; color: #ffd06a; text-align: right; }
+  #clearing .who { font-size: 12.5px; }
+  #clearing .target { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 4px; }
+  #clearing .tn { font-size: 12.5px; margin-bottom: 4px; } #clearing .tn span { color: var(--ink-dim); font-size: 11px; }
+  #clearing .verbs { display: flex; flex-wrap: wrap; gap: 4px; }
+  #clearing .verbs button { font-size: 11.5px; padding: 3px 7px; }
+  #clearing .known { margin: 0; padding-left: 16px; font-size: 12px; } #clearing .known .done { color: var(--ink-dim); text-decoration: line-through; } #clearing .known .unknown { color: var(--ink-dim); font-style: italic; }
+  #clearing .clog { font-size: 12px; color: #d8d0ee; border-top: 1px solid var(--line); padding-top: 6px; } #clearing .clog p { margin: 3px 0; }
+  #clearing .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  #clearing button.primary { background: #8a5ad0; border-color: #8a5ad0; color: #fff; font-weight: 700; }
+  #clearing button.good { background: #50c8aa; border-color: #50c8aa; color: #0b1210; font-weight: 700; }
+  #clearing .result { font-size: 13px; display: grid; gap: 6px; } #clearing .result p { margin: 0; }
 
   /* the council */
   #council-bar { top: calc(env(safe-area-inset-top, 0px) + 84px); left: 50%; transform: translateX(-50%); z-index: 4; }
@@ -241,6 +270,7 @@
 
 <section id="log" class="hud panel" aria-live="polite"></section>
 <section id="inspect" class="hud panel" hidden aria-live="polite"></section>
+<section id="clearing" class="panel" hidden aria-live="polite"></section>
 
 <footer id="controls" class="hud panel">
   <div class="grp">

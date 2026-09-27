@@ -22,7 +22,7 @@ import { addFae, changeStanding } from './folk';
 import type { District, DistrictKind, Ruin } from './oldworld';
 import { Rng } from './rng';
 import { disturb, nurture, resonanceAt } from './veil';
-import { Ground, Zone, idx, inBounds, tileX, tileZ, toTileX, toTileZ, type World } from './world';
+import { Ground, Zone, idx, inBounds, reveal, tileX, tileZ, toTileX, toTileZ, type World } from './world';
 
 // ---------- data ----------
 
@@ -167,6 +167,7 @@ function markHaunted(w: World, d: District, v: 0 | 1) {
     if (!inBounds(w, tx, tz) || Math.hypot(dx, dz) > HAUNT_RADIUS) continue;
     w.haunted![idx(w, tx, tz)] = v;
   }
+  w.zoneVersion++;
 }
 
 /** Ground a clearing team can cross: anything but water, standing trees and wrecks; ruins can be walked through. */
@@ -368,6 +369,8 @@ export function startClearing(col: Colony, hauntIdx: number, team: number[]): Cl
     units.push({ id: s.id, name: first(s), tx: at.tx, tz: at.tz, nerve: maxNerve, maxNerve, ap: AP_PER_TURN, sight: s.sight, anchor: s.sight < 30, state: 'in', lured: false });
   }
   h.attempts++;
+  // Walking in, they see the whole of it.
+  reveal(w, d.x, d.z, HAUNT_RADIUS);
   const cl: Clearing = {
     haunt: hauntIdx, turn: 1, maxTurns: 12, units, wards: [], wardsLeft: 2, log: [], outcome: null,
     rng: (w.seed ^ (h.district * 7919) ^ (col.community.day * 104729) ^ h.attempts) >>> 0, spent: { food: 0, glimmer: 0 },

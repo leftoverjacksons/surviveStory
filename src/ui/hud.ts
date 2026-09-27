@@ -7,6 +7,17 @@ import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../s
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
 import { landWanted, standingWord, type FolkFocus } from '../sim/folk';
+import { FOLK_SUITED, canClear } from '../sim/haunt';
+import type { DistrictKind } from '../sim/oldworld';
+
+const DISTRICT_BLURB: Record<DistrictKind, string> = {
+  suburb: 'A close of houses round a turning circle. Doors open, gardens gone to meadow.',
+  strip: 'A row of shops round a car park, the signs still up.',
+  works: 'A works yard and a steel shed full of pigeons.',
+  farmstead: 'A barn and a silo, the fields long since hedges.',
+  oldtown: 'An old high street and a chapel, ivy to the gutters.',
+  garden: 'A garden centre, its glasshouses run wild.',
+};
 import { bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project } from '../sim/buildings';
 import { LORE, communitySight, growthFactor, healFactor, homeResonance } from '../sim/veil';
 import { ASPIRATIONS, SKILLED, knowers, skill } from '../sim/purpose';
@@ -48,6 +59,8 @@ export interface HudActions {
   onCalm(): void;
   onOmen(): void;
   onFolkFocus(focus: FolkFocus): void;
+  onClear(haunt: number, team: number[]): void;
+  onGive(district: number, to: 'village' | 'folk'): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -69,7 +82,10 @@ export class Hud {
   private councilKey = '';
   private councilOpen = false;
   private loreOpen = false;
-  private inspecting: { building?: number; project?: number; folk?: boolean } | null = null;
+  private inspecting: { building?: number; project?: number; folk?: boolean; district?: number } | null = null;
+  /** The team being chosen for a clearing. */
+  private team = new Set<number>();
+  private teamFor = -1;
 
   constructor(private col: Colony, act: HudActions) {
     $('rot-l').addEventListener('click', () => act.onRotate(-1));
@@ -117,6 +133,16 @@ export class Hud {
       if ((e.target as HTMLElement).closest('#inspect-close')) this.inspect(null);
       const fb = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-focus]');
       if (fb) act.onFolkFocus(fb.dataset.focus as FolkFocus);
+      const pick = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-pick]');
+      if (pick) {
+        const id = Number(pick.dataset.pick);
+        if (this.team.has(id)) this.team.delete(id); else if (this.team.size < 4) this.team.add(id);
+        this.renderInspect();
+      }
+      const go = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-clear]');
+      if (go && !go.disabled) act.onClear(Number(go.dataset.clear), [...this.team]);
+      const give = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-give]');
+      if (give) act.onGive(Number(give.dataset.district), give.dataset.give as 'village' | 'folk');
     });
     $('council-open').addEventListener('click', () => { this.councilOpen = true; this.councilKey = ''; this.renderCouncil(); });
     $('council').addEventListener('click', (e) => {
@@ -312,7 +338,7 @@ export class Hud {
 
   setVeilView(on: boolean) { this.veilView = on; }
 
-  inspect(target: { building?: number; project?: number; folk?: boolean } | null) {
+  inspect(target: { building?: number; project?: number; folk?: boolean; district?: number } | null) {
     this.inspecting = target;
     this.renderInspect();
   }
@@ -384,6 +410,8 @@ export class Hud {
         <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>`;
     } else if (t.folk) {
       html = this.folkCard();
+    } else if (t.district !== undefined) {
+      html = this.districtCard(t.district);
     } else if (t.project !== undefined) {
       const p = col.village.projects.find((x) => x.id === t.project);
       if (!p || p.done) { this.inspecting = null; el.hidden = true; return; }
@@ -394,6 +422,49 @@ export class Hud {
     if (el.innerHTML !== html) el.innerHTML = html;
     el.hidden = false;
   }
+  private districtCard(id: number): string {
+    const col = this.col, d = col.world.districts[id];
+    const hi = col.haunts.findIndex((x) => x.district === id);
+    const h = col.haunts[hi];
+    if (!d || !h) return '';
+    const facts: [string, string][] = [];
+    const suits = FOLK_SUITED.includes(d.kind) ? 'The Folk would love it (quiet, green, old).' : 'Better suited to the village: roofs and salvage.';
+    const known = h.spirits.filter((s) => s.known >= 1);
+    const unknownN = h.spirits.length - known.length;
+    if (h.state === 'unknown') facts.push(['What lives here', 'Nobody has been close enough to feel it.']);
+    else if (h.state === 'cleared') facts.push(['State', h.owner === 'folk' ? 'Quiet, and left to the Folk.' : h.owner === 'village' ? 'Quiet, and the village\'s.' : 'Quiet. Who should have it?']);
+    else {
+      facts.push(['What lives here', [...known.map((s) => `${cap(s.name)}${s.fate !== 'present' ? ` (${s.fate === 'rested' ? 'at rest' : s.fate === 'unravelled' ? 'unravelled' : s.fate === 'banished' ? 'banished' : s.fate === 'invited' ? 'came home' : 'with the Folk'})` : ''}`), unknownN ? `${unknownN} ${unknownN === 1 ? 'presence' : 'presences'} nobody has made out yet` : ''].filter(Boolean).join('; ')]);
+      facts.push(['Effect', 'Nothing can be zoned here; salvage near them is left alone.']);
+    }
+    facts.push(['Suits', suits]);
+    let body = '';
+    if (h.state === 'cleared' && !h.owner) {
+      body = `<div class="h" style="margin-top:8px">Who should have it</div><div class="row">
+        <button type="button" data-give="village" data-district="${id}">The village</button>
+        <button type="button" data-give="folk" data-district="${id}">The Folk</button></div>`;
+    } else if (h.state !== 'cleared') {
+      const why = canClear(col, h);
+      if (this.teamFor !== id) {
+        // Suggest two who see and two who don't: seers to read the spirits, anchors to hold.
+        this.teamFor = id;
+        const by = [...alive(col.community)].sort((a, b) => b.sight - a.sight);
+        this.team = new Set([by[0], by[1], by[by.length - 1], by[by.length - 2]].filter(Boolean).map((s) => s.id));
+      }
+      const people = alive(col.community).map((s) => {
+        const tag = s.sight >= 40 ? 'Seer' : s.sight < 30 ? 'Anchor' : '';
+        return `<button type="button" data-pick="${s.id}" aria-pressed="${this.team.has(s.id)}" title="Sight ${Math.round(s.sight)} · morale ${Math.round(s.morale)}">${esc(s.name.split(' ')[0])}${tag ? ` · ${tag}` : ''}</button>`;
+      }).join('');
+      body = `<div class="h" style="margin-top:8px">Send a team into the Veil (up to four)</div>
+        <div class="what" style="font-size:12px">Seers (high Sight) can see and speak with what lives here, but it frightens them. Anchors (low Sight) barely feel it, and steady the others. No time passes at home while they are gone. Nobody dies in the Veil, but people can be rattled, or taken.</div>
+        <div class="row">${people}</div>
+        <div class="row"><button type="button" class="primary" data-clear="${hi}" ${why || !this.team.size ? 'disabled' : ''} title="${esc(why ?? '')}">Into the Veil${this.team.size ? ` · ${this.team.size}` : ''}</button>${why ? `<span class="st">${esc(why)}</span>` : ''}</div>`;
+    }
+    return `<h3>${esc(d.name)}<button type="button" id="inspect-close">Close</button></h3>
+      <div class="what">${esc(DISTRICT_BLURB[d.kind])}</div>
+      <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>${body}`;
+  }
+
   private folkCard(): string {
     const col = this.col, f = col.folk, m = col.world.folk.mound;
     const word = standingWord(f.standing);

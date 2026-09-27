@@ -1363,3 +1363,118 @@ Built before any clearing mechanics, at the user's request.
 - **Next** (§19.6 steps 5 and 1–2): pixie-led searches and rules that can
   be broken, emissaries at council, then occupied districts and the
   clearing slice.
+
+### 19.10 Haunted districts and the clearing slice: as built
+- **Occupants** (`sim/haunt.ts#createHaunts`, seeded from the world).
+  - Rosters by district kind:
+    - suburb: 2 remnants, a hedge-spirit, a lamp, a Hollow;
+    - strip: remnant, lamp, hedge, Hollow;
+    - works: remnant, lamp, Hollow;
+    - farmstead: 2 hedges, a remnant;
+    - old town: 2 remnants, hedge, Hollow;
+    - garden centre: 2 hedges, a lamp.
+  - Remnants live in a named ruin ("the woman who waits at 5 Heron
+    Close") and need an object, company or light. Hedges want food or
+    glimmer. Lamps want glimmer. A Hollow sits under the biggest building,
+    with a hold of 5–7.
+  - Depths: remnant 20, hedge 30, lamp 35, Hollow 5.
+- **At home.**
+  - Within 22 of a haunted district nothing can be zoned. The boundary is
+    drawn in violet.
+  - Salvage within 5 of a spirit (9 of a Hollow) is left alone. That is
+    about half the map's scrap. It did not slow the first year: buildings
+    and homes by day 48 were the same or higher on seeds 1–4, because the
+    village salvages near home first.
+  - Whoever discovers a district senses what lives there (a log line
+    depending on their Sight).
+  - At night, the spirits of sensed districts show as faint lights, at
+    most luminous, to whoever could perceive them.
+  - Click a found district for its card: what lives there, what it
+    suits, and a team picker. It suggests two Seers and two Anchors, up to
+    four people.
+- **The clearing** (turn-based; home time frozen, the view forced to night
+  and the Veil view).
+  - The team enters along the road from home.
+  - **Actions:** 2 a turn. A move is up to 4 steps per action. Ruins can
+    be walked through; trees, wrecks and water block.
+  - **Nerve:** 8, +3 brave, +2 stoic, −3 skittish, ±1 per 20 morale
+    above or below 50.
+  - **Anchor:** Sight below 30. **Seer:** Sight 40 or more (a label only).
+  - **Perception:** each person reads each spirit within 10 paces by
+    Sight + Resonance × 40 − depth (+10 Orb-Touched).
+    - Nothing shows below −10; a cold spot below 10; a shape of light
+      below 35; named above that.
+    - Its name shows once it is known.
+  - **Verbs:**
+    - *Listen* (range 5; only while there is more to learn, or a remnant
+      wants company): +1 knowledge, +2 when coherent. At 2 you know its
+      need; at 3, how it could find peace. Listening to a Hollow costs 1
+      Nerve.
+    - *Offer* food (2), glimmer (1), or *give back their things*: needs
+      salvage the village took from that remnant's own house, and isn't
+      used up. The right offering gives +2 calm, the wrong one +1.
+    - *Lay to rest*: calm 2, known 2.
+    - *Ask them home*: calm 3, known 3. They become a hearth spirit,
+      +0.8 comfort in a home.
+    - *Befriend*: a hedge at calm 2 or a lamp at calm 3. It joins the
+      Folk: one more of them, +3 standing.
+    - *Ward* (two lanterns): radius 2. Lures fail inside; dread is
+      halved.
+    - *Steady*: +2 Nerve, +3 from an Anchor.
+    - *Unravel* (2 actions): 1 damage, +1 inside a ward, +1 for an
+      Anchor. Costs 2 Nerve (Anchors 1).
+    - *Banish* (2 actions): always works. Resonance −0.08; Folk standing
+      −6 for wild spirits, −2 for remnants.
+  - **The spirits' turn:**
+    - A Hollow's dread reaches 4: −2 Nerve, −1 for Anchors, +1 from turn
+      7 as the night deepens.
+    - A remnant not at peace weeps: −1 to non-Anchors within 2.
+    - A hedge swaps two people (40%) or tugs one a step, −1 each.
+    - A lamp pulls the lowest-Nerve person within 8 two steps, −1 Nerve.
+      Adjacent with Nerve 3 or less, they are *taken*.
+    - Nerve at 0 means they flee (rattled: −12 morale). If they were
+      lured that turn, they are taken.
+  - **Ending:** twelve turns until dawn.
+    - The district is *quiet* when no Hollow remains and every remaining
+      spirit is at peace (calm 2). Quiet spirits stay as residents.
+    - Then "It's quiet: come home" clears it. Withdrawing, or dawn
+      without quiet, leaves the spirits stirred for 3 days, with their
+      calm halved; knowledge is kept.
+- **Taken.**
+  - Survivor `taken`: not alive, not dead. Households keep them; no
+    mourning, no gravestone. The HUD log shows "Taken, and waited for".
+  - They come back in 3–10 days, or 12–30 (a season or more) with 30%
+    chance.
+  - Meanwhile, each day, anyone close to them loses 1.5 morale and
+    sometimes sets a place at supper or calls for them at the district's
+    edge.
+  - They return at dusk asking what day it is ("for them it had been one
+    night").
+    - Always: Sight +15.
+    - One change: white hair; knows the Folk (met, a name learned); a
+      gift of 5 glimmer; or a lost bond (−30 with the closest).
+    - Those close to them get +12 morale.
+- **After a clearing.**
+  - Cleared districts go to *the village* (zoning allowed; the ruins are
+    ready for §18 repurposing, not yet built) or *the Folk*.
+  - Giving it to the Folk makes Wild within 14. Paving greens to grass.
+    Standing +10 if Folk-suited (farmstead, garden centre), +4 otherwise.
+  - Giving a Folk-suited district to the village costs −2 standing.
+- **Measured.** A simple bot (`sim/clearbot.ts`) on suburbs, 16 seeds:
+
+  | Team | Cleared | Rattled | Taken |
+  |---|---|---|---|
+  | 4 (2 Seers + 2 Anchors) | 15/16 | 4 | 0 |
+  | 3 | 5/16 | 11 | 2 |
+  | 2 | 2/16 | 12 | 2 |
+
+  A careful player (wards, knowing needs, bringing back objects) should do
+  better than the bot.
+- **Known gaps and next steps.**
+  - No Folk companions in teams yet.
+  - Only four spirit kinds.
+  - Repurposing cleared ruins (§18) is still to come.
+  - The taken don't yet trigger search expeditions.
+  - A full team of four costs nothing but risk, since no time passes;
+    the design may want a cost (Influence, or the Veil only opening on
+    some nights).

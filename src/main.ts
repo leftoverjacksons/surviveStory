@@ -3,7 +3,7 @@ import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
 import { createCommunity, killSurvivor, log, recruit, setRole } from './sim/community';
 import { SITE_KINDS, type SiteKind } from './sim/sites';
 import { generateWorld, siteKindFor } from './sim/worldgen';
-import { Zone, heightAt, paintZone, reveal } from './sim/world';
+import { Zone, heightAt, paintZone, reveal, tileX, tileZ, toTileX, toTileZ } from './sim/world';
 import { createField, deleteField, fieldAtPoint } from './sim/fields';
 import { daylightHours, seasonLook } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
@@ -19,6 +19,10 @@ import { obstacleKey, obstaclesFor } from './render/clearance';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
 import { FolkView } from './render/folk';
+import { ClearingView } from './render/clearing';
+import { ClearingPanel } from './ui/clearing';
+import { playTurn } from './sim/clearbot';
+import { act as veilAct, endTurn, finish, giveDistrict, moveUnit, reachable, startClearing, type Clearing } from './sim/haunt';
 import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
@@ -137,6 +141,8 @@ const phenomena = new PhenomenaView(colony, document.getElementById('labels')!);
 scene.add(phenomena.group);
 const folkView = new FolkView(colony, document.getElementById('labels')!);
 scene.add(folkView.group);
+const clearingView = new ClearingView(colony, document.getElementById('labels')!);
+scene.add(clearingView.group);
 let veilView = false;
 let omenMode = false;
 const people = new People(world);
@@ -214,6 +220,12 @@ const hud = new Hud(colony, {
   },
   onOmen() { setZoneTool(null); setOmen(!omenMode); },
   onFolkFocus(focus) { colony.folk.focus = focus; colony.folk.version++; hud.render(); },
+  onClear(haunt, team) {
+    const r = startClearing(colony, haunt, team);
+    if (typeof r === 'string') { community.log.push({ day: community.day, text: r, tone: 'info' }); hud.render(); return; }
+    enterVeil(r);
+  },
+  onGive(district, to) { giveDistrict(colony, district, to); hud.render(); },
 });
 
 const roofBtn = document.getElementById('roof-btn')!;
@@ -332,6 +344,69 @@ function setFollow(on: boolean) {
 }
 hud.render();
 
+// ---------- the Veil: clearing a haunted district ----------
+interface VeilMode { follow: boolean; cl: Clearing; sel: number; saved: Map<number, { x: number; z: number }>; hover: { tx: number; tz: number } | null; camera: { x: number; z: number; zoom: number } }
+let veil: VeilMode | null = null;
+const veilPanel = new ClearingPanel(colony, {
+  onSelect(id) { if (veil) { veil.sel = id; veil.follow = true; renderVeil(); } },
+  onAct(by, verb, target) {
+    if (!veil) return;
+    const err = veilAct(colony, veil.cl, by, verb, target);
+    if (err) veil.cl.log.push(err);
+    afterVeilAction();
+  },
+  onEndTurn() { if (veil) { endTurn(colony, veil.cl); afterVeilAction(); } },
+  onLeave() { if (veil) { finish(colony, veil.cl, 'cleared'); afterVeilAction(); } },
+  onWithdraw() { if (veil) { finish(colony, veil.cl, 'withdrew'); afterVeilAction(); } },
+  onReturn() { exitVeil(); },
+});
+function renderVeil() { if (veil) veilPanel.render(veil.cl, veil.sel); }
+function afterVeilAction() {
+  if (!veil) return;
+  const u = veil.cl.units.find((x) => x.id === veil!.sel && x.state === 'in' && x.ap > 0) ?? veil.cl.units.find((x) => x.state === 'in' && x.ap > 0);
+  if (u) veil.sel = u.id;
+  renderVeil();
+}
+function enterVeil(cl: Clearing) {
+  setZoneTool(null); setOmen(false); hud.inspect(null); select(0); setFollow(false);
+  const saved = new Map<number, { x: number; z: number }>();
+  for (const u of cl.units) {
+    const a = colony.agents.find((x) => x.id === u.id);
+    if (a) { saved.set(u.id, { x: a.x, z: a.z }); a.x = tileX(world, u.tx); a.z = tileZ(world, u.tz); }
+  }
+  const d = world.districts[colony.haunts[cl.haunt].district];
+  veil = { follow: true, cl, sel: cl.units[0]?.id ?? 0, saved, hover: null, camera: { x: iso.target.x, z: iso.target.z, zoom: iso.zoomGoal } };
+  iso.target.x = d.x - (d.x / Math.hypot(d.x, d.z)) * 6; iso.target.z = d.z - (d.z / Math.hypot(d.x, d.z)) * 6;
+  iso.zoomGoal = 1.9;
+  renderVeil();
+}
+function exitVeil() {
+  if (!veil) return;
+  for (const [id, p] of veil.saved) { const a = colony.agents.find((x) => x.id === id); if (a) { a.x = p.x; a.z = p.z; } }
+  iso.target.x = veil.camera.x; iso.target.z = veil.camera.z; iso.zoomGoal = veil.camera.zoom;
+  const cl = veil.cl;
+  veil = null;
+  veilPanel.hide();
+  syncAgents(colony, true);
+  syncScene();
+  hud.render();
+  if (cl.outcome === 'cleared') hud.inspect({ district: colony.haunts[cl.haunt].district });
+}
+function veilClick(cx: number, cy: number) {
+  if (!veil || veil.cl.outcome) return;
+  const g = groundAt(cx, cy);
+  if (!g) return;
+  const tx = toTileX(world, g.x), tz = toTileZ(world, g.z);
+  const mine = veil.cl.units.find((u) => u.state === 'in' && u.tx === tx && u.tz === tz);
+  if (mine) { veil.sel = mine.id; renderVeil(); return; }
+  const u = veil.cl.units.find((x) => x.id === veil!.sel && x.state === 'in');
+  if (u && reachable(colony, veil.cl, u).has(`${tx},${tz}`)) {
+    const err = moveUnit(colony, veil.cl, u.id, tx, tz);
+    if (err) veil.cl.log.push(err);
+    afterVeilAction();
+  }
+}
+
 // ---------- input ----------
 const canvas = renderer.domElement;
 const pointers = new Map<number, { x: number; y: number; button: number; sx: number; sy: number }>();
@@ -352,6 +427,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 canvas.addEventListener('pointermove', (e) => {
   if (zoneTool === 'field' && draft.length) drawDraft(groundAt(e.clientX, e.clientY));
+  if (veil) { const g = groundAt(e.clientX, e.clientY); veil.hover = g ? { tx: toTileX(world, g.x), tz: toTileZ(world, g.z) } : null; }
   const p = pointers.get(e.pointerId);
   if (!p) return;
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -381,6 +457,10 @@ canvas.addEventListener('pointerup', (e) => {
   const p = pointers.get(e.pointerId);
   pointers.delete(e.pointerId);
   pinchDist = 0;
+  if (veil) {
+    if (p?.button === 0 && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) <= 6) veilClick(e.clientX, e.clientY);
+    return;
+  }
   if (zoneTool === 'field' && p?.button === 0) {
     if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) <= 6) fieldClick(e.clientX, e.clientY);
     return;
@@ -408,6 +488,10 @@ canvas.addEventListener('pointerup', (e) => {
   if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
     const m = world.folk.mound;
     if (Math.hypot(hitPoint.x - m.x, hitPoint.z - m.z) < m.r + 1) { hud.inspect({ folk: true }); return; }
+    // A district of the old world?
+    const d = world.districts.find((x) => Math.hypot(hitPoint.x - x.x, hitPoint.z - x.z) < 20
+      && world.pois.some((q) => q.kind === 'ruin' && q.name === x.name && q.discovered));
+    if (d) { hud.inspect({ district: d.id }); return; }
   }
   // Not a person: a building?
   const bh = raycaster.intersectObjects([villageView.group, plotsView.group, station.group], true)[0];
@@ -541,16 +625,43 @@ function frame() {
   worldUniforms.uBlossom.value = look.blossom;
   const gloom = weather === 'rain' ? 1 : weather === 'snow' ? 0.7 : weather === 'overcast' ? 0.6 : weather === 'fog' ? 0.4 : 0;
   sky.follow(iso.target);
-  sky.setHour(hour, daylightHours(dayFrac), gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, look.snow);
+  sky.setHour(veil ? 23.4 : hour, daylightHours(dayFrac), veil ? 0 : gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, look.snow);
   precip.update(dt, t, iso.target, weather === 'rain' ? 'rain' : weather === 'snow' ? 'snow' : null);
   // Seeing through their eyes: a selected survivor's Sight tints the world and reveals the Veil.
   const viewer = people.selected ? community.survivors.find((s) => s.id === people.selected) : undefined;
   const sightK = viewer ? viewer.sight / 100 : 0;
-  worldUniforms.uVeil.value += ((veilView ? 1 : sightK * 0.6) - worldUniforms.uVeil.value) * Math.min(1, dt * 3);
+  worldUniforms.uVeil.value += ((veilView || veil ? 1 : sightK * 0.6) - worldUniforms.uVeil.value) * Math.min(1, dt * 3);
   vignette.style.opacity = viewer ? (0.1 + sightK * 0.75).toFixed(2) : '0';
   resonance.sync(t);
   phenomena.update(t, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   folkView.update(t, sky.night, people.selected, iso.camera, view.clientWidth, view.clientHeight);
+  if (veil) {
+    // The team stands where they stand in the Veil.
+    const w = world;
+    for (const u of veil.cl.units) {
+      const a = colony.agents.find((x) => x.id === u.id);
+      if (!a) continue;
+      if (u.state !== 'in') { const o = veil.saved.get(u.id)!; a.x = o.x; a.z = o.z; continue; }
+      const tx = tileX(w, u.tx), tz = tileZ(w, u.tz);
+      const dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz);
+      if (d > 0.05) { const step = Math.min(d, dt * 6); a.x += (dx / d) * step; a.z += (dz / d) * step; a.facing = Math.atan2(dx, dz); a.anim = 'walk'; }
+      else a.anim = 'idle';
+      a.indoors = false; a.afloat = false;
+    }
+    // Keep the chosen one in view.
+    const su = veil.cl.units.find((x) => x.id === veil!.sel && x.state === 'in');
+    if (su && !pointers.size) {
+      const fx = tileX(w, su.tx), fz = tileZ(w, su.tz);
+      if (Math.hypot(fx - iso.target.x, fz - iso.target.z) > 7) veil.follow = true;
+      if (veil.follow) {
+        iso.target.x += (fx - iso.target.x) * Math.min(1, dt * 2.5);
+        iso.target.z += (fz - iso.target.z) * Math.min(1, dt * 2.5);
+        if (Math.hypot(fx - iso.target.x, fz - iso.target.z) < 0.3) veil.follow = false;
+      }
+    }
+  }
+  clearingView.updateAmbient(t, veil ? 0 : sky.night, people.selected, iso.camera, view.clientWidth, view.clientHeight);
+  clearingView.updateArena(t, veil?.cl ?? null, veil?.sel ?? 0, veil?.hover ?? null, iso.camera, view.clientWidth, view.clientHeight);
   wear.sync(t);
   fog.sync();
   zoneTex.sync();
@@ -669,4 +780,18 @@ async function addModel(url: string, x: number, z: number, height = 1.7, clip = 
 }
 const debugMixers: THREE.AnimationMixer[] = [];
 
-Object.assign(window, { __game: { stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });
+const veilDebug = {
+  /** Start a clearing on the first district of a kind, with the suggested team. */
+  veilStart(kind = 'suburb') {
+    for (const p of world.pois) p.discovered = true;
+    const hi = colony.haunts.findIndex((h) => world.districts[h.district].kind === kind);
+    const by = [...colony.community.survivors.filter((x) => x.alive)].sort((a, b) => b.sight - a.sight);
+    const team = [...new Set([by[0], by[1], by[by.length - 1], by[by.length - 2]].filter(Boolean).map((x) => x.id))];
+    const r = startClearing(colony, hi, team);
+    if (typeof r !== 'string') enterVeil(r);
+    return r;
+  },
+  veilTurns(n: number) { for (let i = 0; i < n && veil && !veil.cl.outcome; i++) playTurn(colony, veil.cl); afterVeilAction(); },
+  veil: () => veil,
+};
+Object.assign(window, { __game: { ...veilDebug, stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });

@@ -47,6 +47,8 @@ export const ZONE_COLORS: Record<number, [number, number, number]> = {
   [Zone.Wild]: [80, 200, 170],
 };
 
+const HAUNTED: [number, number, number] = [120, 80, 170];
+
 export class ZoneTexture {
   texture: THREE.DataTexture;
   private data: Uint8Array;
@@ -65,7 +67,8 @@ export class ZoneTexture {
     const d = this.data;
     for (let i = 0; i < w.zone.length; i++) {
       // Fields are drawn by their own outline and fence, not the tile grid.
-      const c = w.zone[i] === Zone.Field ? undefined : ZONE_COLORS[w.zone[i]];
+      // Haunted ground shows its edge, so it's clear where nothing can be zoned.
+      const c = w.zone[i] === Zone.Field ? undefined : ZONE_COLORS[w.zone[i]] ?? (w.haunted?.[i] ? HAUNTED : undefined);
       if (c) { d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
       else d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = d[i * 4 + 3] = 0;
     }
