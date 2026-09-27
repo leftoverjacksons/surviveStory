@@ -1504,3 +1504,57 @@ Built before any clearing mechanics, at the user's request.
   the slab's centre height, so it cut through both slopes. It is now
   sampled in the slab's own frame (`station.ts#slabSurface`) and lies on
   the pitch.
+
+## 20. Backlog from the user (after version 17)
+Recorded as the user gave it, to be scheduled.
+
+### 20.1 The Veil's price
+- **Built:** entering the Veil costs 10 Influence (`haunt.ts#VEIL_COST`),
+  checked before a team can go in.
+- **To do:** free on full moons and at festivals. The calendar needs a moon
+  phase, and the council's festivals are already dated.
+
+### 20.2 More life in the village: motives, trades, places
+The user: "we need a lot more motives for people and buildings.
+Socializing, entertainment. We need people who make tools, clothes, who
+process food. We need taverns, and solar panels on houses."
+- **Motives.** More needs and reasons to act than food, rest and company:
+  - entertainment and fun;
+  - comfort and beauty;
+  - purpose and pride in work;
+  - faith and the Veil;
+  - romance and family.
+  These should drive where people spend free time, and what the village
+  asks the council to build.
+- **Trades** (production chains, learned by doing like joinery; §17
+  know-how):
+  - *Toolmaker* (smithing from salvaged steel): tools raise work rates
+    and wear out.
+  - *Tailor* (cloth from salvaged textiles, later flax or wool): clothes
+    for warmth in winter, and for comfort.
+  - *Cook / food processor:* a kitchen turns raw food into meals
+    (better morale, less spoilage). Preserving (smoking, drying,
+    pickling) extends winter stores.
+  - Other candidates: brewer (for the tavern), herbalist (medicine),
+    potter.
+- **Places.**
+  - A *tavern / commons* for evenings: drink, music, stories. It is the
+    social heart after the fire.
+  - Workshops for each trade.
+  - Solar panels on more houses, not only at upgrade level 2, and a small
+    village grid. Electric light already exists in lanterns and string
+    lights (§19.11); this extends it to evenings indoors, and maybe power
+    for a workshop.
+- Open questions for scheduling:
+  - How many new needs before the HUD gets noisy?
+  - Do trades become roles in the role list or specialisations within
+    roles?
+  - How does this interact with salvage provenance (cloth from a
+    specific ruin)?
+
+### 20.3 Order of work agreed after version 17
+1. Repurposing cleared ruins (§18; the payoff of clearing).
+2. The Folk together (§19.6 step 5): Folk companions in clearings,
+   pixie-led searches, rules that can be broken, emissaries.
+3. Folk-suited districts (churchyard, park, flooded car park, quarry pond).
+4. §20.2 motives, trades and places. This is large; propose a plan first.

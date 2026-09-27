@@ -11,6 +11,7 @@ function ready(seed: number) {
   for (const p of col.world.pois) p.discovered = true;
   col.community.resources.food += 60;
   col.community.resources.glimmer += 10;
+  col.veil.influence += 40;
   return col;
 }
 
@@ -31,8 +32,14 @@ describe('haunted districts', () => {
   it('stops time at home while a team is in the Veil', () => {
     const col = ready(4);
     const team = alive(col.community).slice(0, 3).map((s) => s.id);
+    // Opening the way costs Influence.
+    const inf = col.veil.influence;
+    col.veil.influence = 5;
+    expect(typeof startClearing(col, 0, team)).toBe('string');
+    col.veil.influence = inf;
     const cl = startClearing(col, 0, team);
     expect(typeof cl).not.toBe('string');
+    expect(col.veil.influence).toBe(inf - 10);
     const m = col.minute;
     tick(col, 120);
     expect(col.minute).toBe(m);

@@ -103,6 +103,10 @@ reference: Tiny Glade.
     are now drawn as outlines and fenced (`sim/fields.ts`; DESIGN §17). NOT published.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
+  - Entering the Veil costs 10 Influence (free on full moons/festivals: TO DO).
+  - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
+    (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
+    in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.
   - Published: version 17 (everything through §19.11: the Folk, haunted districts
     and clearing, playtest round 3).
   - NEW PLAN, under discussion: DESIGN §19. Haunted districts are cleared by a small

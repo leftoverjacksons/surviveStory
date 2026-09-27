@@ -216,6 +216,10 @@ export function senseDistrict(col: Colony, d: District, s: Survivor) {
   log(col.community, s.sight >= 40
     ? `${n} came back from ${d.name} very quiet. "It isn't empty. There are people still living there who aren't people${hollow ? ", and something under it all that's wrong" : ''}."`
     : `${n} came back from ${d.name} and wouldn't go near it again. "Cold spots. Doors that close by themselves. Leave it be."`, 'strange');
+  if (!col.hints.has('clearing')) {
+    col.hints.add('clearing');
+    log(col.community, `(Click ${d.name} on the map to see what lives there, and to send a team into the Veil to settle it.)`, 'info');
+  }
 }
 
 /** Daily: the taken come home when their time is up; the ones who love them keep a place for them. */
@@ -324,6 +328,9 @@ export const cheb = (a: { tx: number; tz: number }, b: { tx: number; tz: number 
 export function clearingHaunt(col: Colony, cl: Clearing): Haunt { return col.haunts[cl.haunt]; }
 export function clearingDistrict(col: Colony, cl: Clearing): District { return col.world.districts[col.haunts[cl.haunt].district]; }
 
+/** Influence it takes to open the way into the Veil (later: free on full moons and festivals). */
+export const VEIL_COST = 10;
+
 /** Can a team go in now? Returns a reason if not. */
 export function canClear(col: Colony, h: Haunt): string | null {
   const d = col.world.districts[h.district];
@@ -332,6 +339,7 @@ export function canClear(col: Colony, h: Haunt): string | null {
   if (!poi?.discovered) return 'Nobody has found it yet. Send a scout.';
   if (col.clearing) return 'A team is already in the Veil.';
   if (col.community.day < h.stirredUntil) return `The spirits there are stirred up. Wait until day ${h.stirredUntil}.`;
+  if (col.veil.influence < VEIL_COST) return `Opening the way takes ${VEIL_COST} Influence (you have ${Math.floor(col.veil.influence)}).`;
   return null;
 }
 
@@ -369,6 +377,7 @@ export function startClearing(col: Colony, hauntIdx: number, team: number[]): Cl
     units.push({ id: s.id, name: first(s), tx: at.tx, tz: at.tz, nerve: maxNerve, maxNerve, ap: AP_PER_TURN, sight: s.sight, anchor: s.sight < 30, state: 'in', lured: false });
   }
   h.attempts++;
+  col.veil.influence -= VEIL_COST;
   // Walking in, they see the whole of it.
   reveal(w, d.x, d.z, HAUNT_RADIUS);
   const cl: Clearing = {

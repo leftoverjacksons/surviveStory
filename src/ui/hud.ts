@@ -7,7 +7,7 @@ import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../s
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
 import { landWanted, standingWord, type FolkFocus } from '../sim/folk';
-import { FOLK_SUITED, canClear } from '../sim/haunt';
+import { FOLK_SUITED, VEIL_COST, canClear } from '../sim/haunt';
 import type { DistrictKind } from '../sim/oldworld';
 
 const DISTRICT_BLURB: Record<DistrictKind, string> = {
@@ -458,7 +458,7 @@ export class Hud {
       body = `<div class="h" style="margin-top:8px">Send a team into the Veil (up to four)</div>
         <div class="what" style="font-size:12px">Seers (high Sight) can see and speak with what lives here, but it frightens them. Anchors (low Sight) barely feel it, and steady the others. No time passes at home while they are gone. Nobody dies in the Veil, but people can be rattled, or taken.</div>
         <div class="row">${people}</div>
-        <div class="row"><button type="button" class="primary" data-clear="${hi}" ${why || !this.team.size ? 'disabled' : ''} title="${esc(why ?? '')}">Into the Veil${this.team.size ? ` · ${this.team.size}` : ''}</button>${why ? `<span class="st">${esc(why)}</span>` : ''}</div>`;
+        <div class="row"><button type="button" class="primary" data-clear="${hi}" ${why || !this.team.size ? 'disabled' : ''} title="${esc(why ?? '')}">Into the Veil${this.team.size ? ` · ${this.team.size}` : ''} · ${VEIL_COST} Influence</button>${why ? `<span class="st">${esc(why)}</span>` : ''}</div>`;
     }
     return `<h3>${esc(d.name)}<button type="button" id="inspect-close">Close</button></h3>
       <div class="what">${esc(DISTRICT_BLURB[d.kind])}</div>
