@@ -859,3 +859,74 @@ closer in character to each starting site.
 - **Rendering**: needs instancing or merged chunks for ruin geometry, plus
   the pixel-art textures (brick, siding, concrete, glass) so ruins read at a
   glance.
+
+### The old world, phase 1: districts, ruins, provenance (DESIGN §18)
+- **Districts** (`sim/oldworld.ts`): three near the village, 40–60 units
+  out, chosen by starting site, plus the four road-end sites (which replace
+  the old wall-stub ruins).
+
+  | Starting site | Near districts |
+  |---|---|
+  | station | suburb, strip, works |
+  | chapel | old town, suburb, farmstead |
+  | motel | strip, suburb, works |
+  | farm | farmstead, suburb, works |
+  | glasshouse | garden centre, suburb, strip |
+
+  - **Suburb**: a cul-de-sac with a turning circle, 5–7 houses facing it,
+    driveways, garages, and cars on the drives.
+  - **Strip**: a car park with wrecks, 4–5 shop units with fascia signs, and
+    a superstore with an entrance canopy.
+  - **Works**: a yard, a corrugated warehouse with a loading dock, and a
+    shed.
+  - **Farmstead**: a barn, a silo and a brick farmhouse.
+  - **Old town**: a high street of brick terraces with a chapel and spire.
+  - **Garden centre**: two glasshouses and a shop.
+  - Each district gets its own access road and a POI with its name
+    ("Rowan Close", "Harrow Retail Park", "Kiln Works").
+  - Each ruin has an address ("14 Maple Close", "Harrow Retail Park,
+    unit 3"), a decay level from 0 to 1 and a material list.
+  - Result: 29–38 ruins per map.
+- **Provenance**: salvage heaps sit at ruin doors, each with a source ruin
+  and a material:
+  - **Houses**: vinyl siding, roof shingles, window glass, interior doors,
+    copper pipe.
+  - **Garages**: garage doors, car panels.
+  - **Shops**: shop shelving, plate glass, shop signs.
+  - **Works**: corrugated steel, girders, pallets.
+  - **Farms**: barn boards, fence wire.
+  - **Terraces**: bricks, slates.
+  - **Chapels**: pews.
+  - **Garden centres**: greenhouse glass, aluminium frame.
+
+  Salvaging logs the first haul from each place ("Rue brought back car
+  panels from the garage at 3 Rowan Close."), tallies `village.salvaged`
+  by material and source, and the hall's card lists the top five ("vinyl
+  siding (36, mostly from 5 Rowan Close)"). The player still sees one scrap
+  total.
+- **Rendering** (`render/ruins.ts`):
+  - Walls are built from columns that crumble with decay, with breaches;
+    windows are dark glass, gone, or boarded.
+  - Gable roofs are built in strips that fall away to bare rafters. Flat
+    roofs have panels, holes, a parapet, and rooftop plant (air handlers,
+    skylights, vents) with moss.
+  - Materials: vinyl siding (planks), brick (a new brick texture),
+    corrugated steel (a new ribbed texture with rust streaks), and slate
+    and shingle roofs.
+  - Shop fascias carry faded block lettering.
+  - Ivy grows on walls and scrub grows inside; protected trees grow up
+    through roofless shells.
+  - Each district merges into a few meshes: all seven districts cost 18
+    draw calls.
+  - Trees are thinned to 22% within 26 units of a district centre, so
+    streets stay legible.
+- **Cars**: sedan, hatchback, van or pickup, with faded paint, rust on the
+  sills, glass, bumpers, lights, flat tyres with hubs, and sometimes a
+  sprung bonnet or open door. Wheels, doors and bonnet go first as a car
+  is stripped.
+- **Salvage piles** are coloured by material.
+- **Checks**: two fishing tests were made robust to a Veil event (the
+  lights under the water can refill a pond); behaviour is unchanged. The
+  balance probe shows no deaths and normal morale. Influence capped on 2 of
+  6 seeds, both with 14 survivors; probably run-to-run variation, but worth
+  watching.

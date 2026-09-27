@@ -150,7 +150,7 @@ export interface EnhanceOptions {
    * 'soil' and 'paving' are for the ground. Default: 'auto' for solid
    * materials, 'soil' for ground, otherwise none.
    */
-  surface?: 'auto' | 'soil' | 'paving' | 'leaf' | 'none';
+  surface?: 'auto' | 'soil' | 'paving' | 'leaf' | 'brick' | 'corrugated' | 'none';
 }
 
 const SURFACE_GLSL = `
@@ -167,7 +167,21 @@ const SURFACE_GLSL = `
     float sat = (mx - mn) / max(mx, 1e-3);
     float k = 1.0;
     vec3 tint = vec3(0.0);
-    if (kind == 4) {            // foliage: leaf clumps, lit on their upper sides, dark gaps between
+    if (kind == 5 || kind == 6) {
+      vec2 t2 = normalize(vec2(-wn.z, wn.x) + 1e-5);
+      float u = abs(wn.y) > 0.6 ? wp.x : dot(wp.xz, t2), v = abs(wn.y) > 0.6 ? wp.z : wp.y;
+      if (kind == 5) {          // brick: small courses, lighter mortar
+        float row = floor(v / 0.09);
+        float uu = u + mod(row, 2.0) * 0.12;
+        float c = floor(uu / 0.24);
+        k = 0.86 + 0.26 * sh21(vec2(row, c));
+        if (fract(v / 0.09) < 0.22 || fract(uu / 0.24) < 0.1) { k = 1.18; }
+      } else {                  // corrugated steel: ribs, streaks of rust
+        k = fract(u / 0.14) < 0.5 ? 1.08 : 0.86;
+        float rust = smoothstep(0.55, 0.85, sh21(floor(vec2(u * 1.2, v * 0.6))) * 0.6 + sh21(floor(vec2(u * 5.0, v * 2.0))) * 0.4);
+        tint = (vec3(0.42, 0.22, 0.1) - col) * rust * 0.7;
+      }
+    } else if (kind == 4) {            // foliage: leaf clumps, lit on their upper sides, dark gaps between
       vec3 q = wp * 4.5;
       vec3 c = floor(q);
       float h = sh21(c.xz + c.y * 17.3);
@@ -263,7 +277,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
   const shade = opts.shade ?? 0;
   const upLit = opts.upLit ?? false;
   const surface = !PIXEL ? 'none' : opts.surface ?? (season === 'solid' ? 'auto' : season === 'ground' ? 'soil' : season === 'broadleaf' || season === 'conifer' ? 'leaf' : 'none');
-  const surfaceKind = { none: 0, auto: 1, soil: 2, paving: 3, leaf: 4 }[surface];
+  const surfaceKind = { none: 0, auto: 1, soil: 2, paving: 3, leaf: 4, brick: 5, corrugated: 6 }[surface];
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, worldUniforms);
     let vs = shader.vertexShader.replace(

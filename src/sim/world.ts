@@ -1,3 +1,4 @@
+import type { District, Material, Ruin } from './oldworld';
 import type { Site } from './sites';
 
 /**
@@ -58,7 +59,11 @@ export interface Bush {
 export interface Rock { tx: number; tz: number; size: number }
 
 /** Salvage: a wrecked car or a heap of debris that yields scrap. */
-export interface Heap { id: number; tx: number; tz: number; kind: 'car' | 'pile'; scrap: number; max: number; rot: number; reserved: number }
+export interface Heap {
+  id: number; tx: number; tz: number; kind: 'car' | 'pile'; scrap: number; max: number; rot: number; reserved: number;
+  /** Provenance: the ruin it came from (index into `ruins`) and what it is. */
+  source?: number; material?: Material;
+}
 export interface WallBlock { tx: number; tz: number; h: number }
 
 export type PoiKind = 'ruin' | 'ring' | 'pond';
@@ -88,6 +93,9 @@ export interface World {
   rocks: Rock[];
   heaps: Heap[];
   walls: WallBlock[];
+  /** The old world: ruined buildings, grouped into districts (see oldworld.ts). */
+  ruins: Ruin[];
+  districts: District[];
   /** Painted zones (see Zone). Home is where the community may build. */
   zone: Uint8Array;
   zoneVersion: number;

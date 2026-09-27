@@ -966,6 +966,29 @@ export class VillageView {
 
 // ---------- salvage heaps ----------
 
+const PILE_TONES: Record<string, string[]> = {
+  'vinyl siding': ['#b9c79a', '#c9b98e', '#9ab5bf', '#d1c29a', '#6b5a44'],
+  'roof shingles': ['#5a5652', '#4a4e52', '#6a5a4e'],
+  'window glass': ['#7fa0a4', '#9ec4bf', '#6a5a44'],
+  'interior doors': ['#c8b890', '#a88a64', '#e0d8c4'],
+  'copper pipe': ['#b8743a', '#8a5a34', '#6a6a66'],
+  'garage doors': ['#d8d4c4', '#b8b4a8'],
+  'car panels': ['#8a5a4a', '#5a7078', '#7a4428', '#a8b0a8'],
+  'shop shelving': ['#9a9c98', '#c8c8c0', '#6a6a66'],
+  'plate glass': ['#7fa0a4', '#9ec4bf'],
+  'shop signs': ['#c8503a', '#3a6a9a', '#d8a040', '#e8dcc0'],
+  'corrugated steel': ['#8a9296', '#7a4428', '#94877a'],
+  'steel girders': ['#5a5a58', '#7a4428'],
+  'pallets': ['#b8a070', '#9a8058'],
+  'barn boards': ['#8a3a2e', '#7a4a34'],
+  'fence wire': ['#6a6a66', '#8a8a86'],
+  'bricks': ['#8a4a3a', '#96583f', '#c8c0b0'],
+  'roof slates': ['#3e4448', '#4a4a4e'],
+  'pews': ['#6b4f33', '#8a6a44'],
+  'greenhouse glass': ['#9ec4bf', '#a8aca8'],
+  'aluminium frame': ['#a8aca8', '#c8ccc8'],
+};
+
 export class HeapsView {
   group = new THREE.Group();
   private views = new Map<number, { g: THREE.Group; cabin?: THREE.Object3D; parts: THREE.Object3D[]; last: number }>();
@@ -984,30 +1007,75 @@ export class HeapsView {
     }
   }
 
+  /**
+   * A wrecked car: one of a sedan, hatchback, van or pickup, in faded paint
+   * with rust, flat tyres and dark glass. Wheels, doors and bonnet go as it is
+   * stripped; the cabin last.
+   */
   private car(h: Heap) {
     const rand = makeRand(h.id * 31 + 7);
     const g = new THREE.Group();
-    const body = mat(['#6d4a36', '#5a6068', '#7a5a3a', '#4e5f55'][h.id % 4], true, 'heap');
+    const PAINT = ['#8a5a4a', '#5a7078', '#b8a88a', '#6a7a5a', '#8a8a86', '#4a5a78', '#9a6a3a', '#a8b0a8'];
+    const paint = mat(PAINT[(h.id * 7 + (h.source ?? 0)) % PAINT.length], true, 'heap');
+    const rust = mat('#7a4428', true, 'heap'), glass = mat('#1f2a2e', true, 'heap'), dark = mat('#2a2826', true, 'heap');
+    const trim = mat('#5a5a58', true, 'heap');
+    const type = ['sedan', 'hatch', 'van', 'pickup'][(h.id * 13 + 5) % 4];
     const parts: THREE.Object3D[] = [];
-    g.add(box(4.0, 0.7, 1.75, body, 0, 0.5, 0));
-    const cabin = new THREE.Group();
-    cabin.add(box(2.1, 0.65, 1.55, body, -0.3, 1.15, 0));
-    cabin.add(box(1.9, 0.45, 1.57, mat('#1d2527', true, 'heap'), -0.3, 1.18, 0));
-    g.add(cabin);
-    for (const [x, z] of [[-1.3, 0.85], [1.3, 0.85], [-1.3, -0.85], [1.3, -0.85]]) {
-      if (rand() < 0.4) continue;
-      const w = cyl(0.3, 0.2, mat('#2a2826', true, 'heap'), x, 0.2, z, 8);
-      w.rotation.x = Math.PI / 2;
-      g.add(w);
-      parts.push(w);
+    const L = type === 'van' ? 4.4 : 4.1, Wd = 1.75;
+    // Sits low on flat tyres, a little down at one corner.
+    g.add(box(L, 0.55, Wd, paint, 0, 0.5, 0));
+    g.add(box(L + 0.1, 0.16, Wd - 0.1, trim, 0, 0.32, 0)); // bumpers and sills
+    for (const s of [-1, 1]) {
+      g.add(box(0.05, 0.1, 0.3, mat('#d8d0b0', true, 'heap'), s * (L / 2 + 0.02), 0.62, 0.55));
+      g.add(box(0.05, 0.1, 0.3, mat('#d8d0b0', true, 'heap'), s * (L / 2 + 0.02), 0.62, -0.55));
     }
-    const hood = box(1.2, 0.05, 1.6, body, 1.5, 0.95, 0);
-    hood.rotation.z = -0.5;
-    g.add(hood);
-    parts.push(hood);
+    // Rust along the sills and wheel arches.
+    for (let k = 0; k < 5; k++) {
+      const s = rand() < 0.5 ? -1 : 1;
+      g.add(box(0.3 + rand() * 0.6, 0.16 + rand() * 0.2, 0.02, rust, (rand() - 0.5) * L * 0.9, 0.35 + rand() * 0.3, s * (Wd / 2 + 0.01)));
+    }
+    const cabin = new THREE.Group();
+    const cab = (x: number, len: number, hgt: number) => {
+      cabin.add(box(len, hgt, Wd - 0.14, paint, x, 0.78 + hgt / 2, 0));
+      cabin.add(box(len - 0.3, hgt * 0.62, Wd - 0.1, glass, x, 0.78 + hgt * 0.5, 0));
+      cabin.add(box(len + 0.02, 0.07, Wd - 0.12, paint, x, 0.78 + hgt, 0));
+    };
+    if (type === 'sedan') cab(-0.2, 2.0, 0.62);
+    else if (type === 'hatch') cab(-0.5, 2.3, 0.66);
+    else if (type === 'van') cab(-0.4, 3.3, 1.05);
+    else {
+      cab(0.7, 1.4, 0.66);
+      // The bed, with junk in it.
+      for (const s of [-1, 1]) cabin.add(box(1.9, 0.35, 0.06, paint, -1.0, 0.95, s * (Wd / 2 - 0.05)));
+      cabin.add(box(0.8, 0.3, 0.7, mat('#6a5a44', true, 'heap'), -1.2, 0.93, 0.2));
+    }
+    g.add(cabin);
+    for (const [x, z] of [[-1.3, 0.82], [1.3, 0.82], [-1.3, -0.82], [1.3, -0.82]]) {
+      const wh = new THREE.Group();
+      const tyre = cyl(0.32, 0.22, dark, 0, 0, 0, 10);
+      tyre.rotation.x = Math.PI / 2;
+      const hub = cyl(0.15, 0.24, mat('#8a8a86', true, 'heap'), 0, 0, 0, 8);
+      hub.rotation.x = Math.PI / 2;
+      wh.add(tyre, hub);
+      wh.position.set(x, 0.24, z);
+      wh.scale.y = 0.8; // flat
+      g.add(wh);
+      parts.push(wh);
+    }
+    // Bonnet (sometimes already sprung) and doors: what gets taken first.
+    const bonnet = box(1.1, 0.06, Wd - 0.2, paint, L / 2 - 0.6, 0.8, 0);
+    if (rand() < 0.4) { bonnet.rotation.z = -0.6; bonnet.position.y += 0.25; }
+    g.add(bonnet);
+    parts.push(bonnet);
+    for (const s of [-1, 1]) {
+      const door = box(0.9, 0.5, 0.05, paint, 0.1, 0.72, s * (Wd / 2 + 0.03));
+      if (rand() < 0.3) { door.rotation.y = s * 0.7; door.position.x += 0.3; door.position.z += s * 0.3; }
+      g.add(door);
+      parts.push(door);
+    }
     const x = tileX(this.world, h.tx), z = tileZ(this.world, h.tz);
-    g.position.set(x, heightAt(this.world, x, z) - 0.1, z);
-    g.rotation.set(0, h.rot, (rand() - 0.5) * 0.08);
+    g.position.set(x, heightAt(this.world, x, z) - 0.06, z);
+    g.rotation.set(0, h.rot, (rand() - 0.5) * 0.06);
     return { g, cabin, parts, last: -1 };
   }
 
@@ -1015,8 +1083,10 @@ export class HeapsView {
     const rand = makeRand(h.id * 17 + 3);
     const g = new THREE.Group();
     const parts: THREE.Object3D[] = [];
+    // Coloured by what it is, where it is known (siding, brick, steel, glass...).
+    const tones = h.material ? PILE_TONES[h.material] ?? PANELS : PANELS;
     for (let i = 0; i < 8; i++) {
-      const m = mat(PANELS[Math.floor(rand() * PANELS.length)], true, 'heap');
+      const m = mat(tones[Math.floor(rand() * tones.length)], true, 'heap');
       const b = rand() < 0.3
         ? cyl(0.25, 0.7, m, (rand() - 0.5) * 1.2, 0.3, (rand() - 0.5) * 1.2)
         : box(0.3 + rand() * 0.8, 0.08 + rand() * 0.3, 0.3 + rand() * 0.7, m, (rand() - 0.5) * 1.3, 0.1 + rand() * 0.4, (rand() - 0.5) * 1.3);

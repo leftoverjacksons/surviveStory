@@ -12,6 +12,7 @@ import { buildVines } from './render/station';
 import { buildSite } from './render/sites';
 import { mergeStatic } from './render/merge';
 import { TreeField } from './render/trees';
+import { buildRuins as buildOldWorld } from './render/ruins';
 import { loadAnimals, loadCharacters } from './render/characters';
 import { obstacleKey, obstaclesFor } from './render/clearance';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
@@ -89,6 +90,9 @@ scene.add(bushes.group);
 const ruinsGroup = buildRuins(world);
 ruinsGroup.name = 'ruins';
 scene.add(ruinsGroup);
+const oldWorld = buildOldWorld(world);
+oldWorld.name = 'oldworld';
+scene.add(oldWorld);
 
 const mushroomGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color('#b9fff0'), toneMapped: false });
 scene.add(buildFairyRing(world, mushroomGlow));

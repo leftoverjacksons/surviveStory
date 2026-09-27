@@ -32,7 +32,7 @@ import { councilDaily, createCouncil, maybeConvene, type Council } from './counc
 import { findPath } from './path';
 import {
   Crop, Ground, LANE_WEAR, PATH_WEAR, Zone, findNearest, idx, isExplored, passable, reveal, tileX, tileZ, toTileX, toTileZ,
-  type Point, type Tree, type World,
+  type Heap, type Point, type Tree, type World,
 } from './world';
 
 export const MIN_PER_DAY = 1440;
@@ -329,7 +329,16 @@ function checkDiscoveries(col: Colony, s: Survivor) {
   for (const p of col.world.pois) {
     if (p.discovered || !isExplored(col.world, p.tx, p.tz)) continue;
     p.discovered = true;
-    const what = p.kind === 'ruin' ? 'roofless houses swallowed by ivy' : p.kind === 'pond' ? 'a still pond full of sky' : 'something';
+    const d = p.kind === 'ruin' ? col.world.districts.find((x) => x.name === p.name) : undefined;
+    const RUIN_SAYS: Record<string, string> = {
+      suburb: 'a close of houses, doors open, gardens gone to meadow',
+      strip: 'a row of shops round a car park, signs still up, the cars where they were left',
+      works: 'a works yard and a steel shed full of pigeons',
+      farmstead: 'a barn and a silo, the fields long since hedges',
+      oldtown: 'an old high street and a chapel, ivy to the gutters',
+      garden: 'a garden centre, the glasshouses run wild',
+    };
+    const what = p.kind === 'ruin' ? RUIN_SAYS[d?.kind ?? ''] ?? 'roofless houses swallowed by ivy' : p.kind === 'pond' ? 'a still pond full of sky' : 'something';
     log(col.community, `${first(s)} found ${p.name}: ${what}.`, 'good');
     remember(s, col.community.day, `Found ${p.name}.`);
     col.events.push({ type: 'discovered', poi: p.id });
@@ -530,6 +539,18 @@ function pickBuild(col: Colony, a: Agent): Task | null {
     if (setDest(col, a, spot.x, spot.z)) return { kind: 'build', project: p.id, stage: 'go' };
   }
   return null;
+}
+
+/** Record what was salvaged and where from; the first haul from each place is news. */
+function noteSalvage(col: Colony, s: Survivor, h: Heap, take: number) {
+  const w = col.world, v = col.village;
+  const ruin = h.source !== undefined ? w.ruins[h.source] : undefined;
+  const material = h.material ?? (h.kind === 'car' ? 'car panels' : 'odds and ends');
+  const from = ruin?.name ?? (h.kind === 'car' ? 'a wreck on the road' : 'a junk heap');
+  const key = `${material}|${from}`;
+  const isFirst = !Object.keys(v.salvaged).some((k) => k.endsWith(`|${from}`));
+  v.salvaged[key] = (v.salvaged[key] ?? 0) + take;
+  if (isFirst && ruin) log(col.community, `${first(s)} brought back ${material} from ${from}.`);
 }
 
 function pickSalvage(col: Colony, a: Agent): Task | null {
@@ -1428,6 +1449,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         if (t.t >= 30) {
           const take = Math.min(6, h.scrap);
           h.scrap -= take;
+          noteSalvage(col, s, h, take);
           disturb(col, tileX(w, h.tx), tileZ(w, h.tz), 0.015);
           h.reserved = 0;
           a.carry = { kind: 'scrap', amount: take };

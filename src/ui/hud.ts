@@ -338,6 +338,21 @@ export class Hud {
       if (b.kind === 'store') {
         facts.push(['State', ['Derelict', 'Cleared', 'Roof patched', 'Hall'][b.level] ?? '']);
         facts.push(['This place', col.village.site.perk]);
+        // What the scrap pile actually is, and where it came from.
+        const byMat = new Map<string, { n: number; from: Map<string, number> }>();
+        for (const [k, n] of Object.entries(col.village.salvaged)) {
+          const [m, from] = k.split('|');
+          const e = byMat.get(m) ?? { n: 0, from: new Map() };
+          e.n += n; e.from.set(from, (e.from.get(from) ?? 0) + n);
+          byMat.set(m, e);
+        }
+        const top = [...byMat.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 5);
+        if (top.length) {
+          facts.push(['Salvage brought in', top.map(([m, e]) => {
+            const src = [...e.from.entries()].sort((a, b) => b[1] - a[1])[0][0];
+            return `${m} (${e.n}, mostly from ${src})`;
+          }).join('; ')]);
+        }
       }
       if (b.kind === 'home') {
         const plot = col.village.plots.find((p) => p.id === b.plot);

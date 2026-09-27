@@ -24,7 +24,10 @@ describe('world generation', () => {
     expect(count(Ground.Water)).toBeGreaterThan(100);
     expect(world.trees.length).toBeGreaterThan(3000);
     expect(world.bushes.length).toBeGreaterThan(100);
-    expect(world.pois.filter((p) => p.kind === 'ruin').length).toBe(4);
+    // One POI per old-world district: near ones by site, plus the road ends.
+    expect(world.pois.filter((p) => p.kind === 'ruin').length).toBeGreaterThanOrEqual(5);
+    expect(world.ruins.length).toBeGreaterThan(15);
+    expect(world.heaps.some((h) => h.source !== undefined && h.material)).toBe(true);
   });
 
   it('keeps the camp and stockpile reachable from the station', () => {
@@ -42,7 +45,8 @@ describe('world generation', () => {
       const i = idx(world, t.tx, t.tz);
       expect(world.ground[i]).not.toBe(Ground.Water);
       expect(world.ground[i]).not.toBe(Ground.Asphalt);
-      expect(world.blocked[i]).toBe(0);
+      // Old trees may stand inside ruined shells (they grew up through them).
+      if (world.blocked[i]) expect(t.protected && world.ruins.some((r) => Math.hypot(r.x - (t.tx - world.w / 2 + 0.5), r.z - (t.tz - world.h / 2 + 0.5)) < 1.5)).toBe(true);
     }
   });
 

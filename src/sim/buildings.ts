@@ -84,6 +84,11 @@ export interface Village {
   projects: Project[];
   nextId: number;
   craftXp: number;
+  /**
+   * Provenance of salvage brought home: "material|source" → amount. The
+   * player sees one scrap total; this says what it is and where it came from.
+   */
+  salvaged: Record<string, number>;
   tier: Tier;
   /** The starting site (same object as the world's). */
   site: Site;
@@ -125,7 +130,7 @@ const zero = (): Cost => c(0, 0, 0);
 
 export function createVillage(w: World): Village {
   const v: Village = {
-    buildings: [], projects: [], nextId: 1, craftXp: 0, tier: 0, site: w.site,
+    buildings: [], projects: [], nextId: 1, craftXp: 0, salvaged: {}, tier: 0, site: w.site,
     households: [], plots: [], plotAt: new Int32Array(w.w * w.h), homeQueue: [], fisheries: [],
   };
   // The found shelter is there from the start: derelict, no beds yet.

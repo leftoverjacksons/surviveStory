@@ -1,10 +1,11 @@
 import { Rng } from './rng';
+import { layOldWorld, type Material } from './oldworld';
 import { fbm, smoothstep } from './noise';
 import { HIGHWAY_Z } from './layout';
 import { SITE_KINDS, siteOf, type SiteKind } from './sites';
 import {
   Ground, Zone, idx, inBounds, reveal, tileX, tileZ, toTileX, toTileZ,
-  type Bush, type Rect, type Tree, type TreeKind, type World,
+  type Bush, type Heap, type Rect, type Tree, type TreeKind, type World,
 } from './world';
 
 export const MAP_SIZE = 256;
@@ -15,7 +16,6 @@ export function highwayZ(x: number): number {
   return HIGHWAY_Z + smoothstep(28, 70, Math.abs(x)) * Math.sin(x * 0.028) * 14;
 }
 
-const RUIN_NAMES = ['Pell Street', 'the Motor Court', 'Harrow Farm', 'the Relay Station', 'Old Ashby', 'the Clinic Row'];
 
 /** Which found structure a map starts at: chosen by the seed unless given. */
 export function siteKindFor(seed: number): SiteKind {
@@ -35,7 +35,7 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     fogVersion: 0,
     trees: [], treeAt: new Int32Array(n).fill(-1),
     bushes: [], bushAt: new Int32Array(n).fill(-1),
-    rocks: [], heaps: [], walls: [], pois: [],
+    rocks: [], heaps: [], walls: [], ruins: [], districts: [], pois: [],
     ponds: [], pondAt: new Int32Array(n).fill(-1), deck: new Uint8Array(n), deckY: new Float32Array(n),
     zone: new Uint8Array(n), zoneVersion: 0,
     wear: new Float32Array(n), wearVersion: 0,
@@ -114,29 +114,20 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     }
   }
 
-  // --- ruins ---
+  // --- the old world: districts of ruins around the village and at the road ends ---
   let poiId = 1;
-  sites.forEach((site, si) => {
-    const houses = rng.int(3, 6);
-    for (let hIdx = 0; hIdx < houses; hIdx++) {
-      const bw = rng.int(5, 9), bd = rng.int(4, 7);
-      const ox = Math.round(site.x + rng.range(-14, 14)), oz = Math.round(site.z + rng.range(-12, 12));
-      const tx0 = toTileX(w, ox), tz0 = toTileZ(w, oz);
-      for (let dz = 0; dz < bd; dz++) for (let dx = 0; dx < bw; dx++) {
-        const tx = tx0 + dx, tz = tz0 + dz;
-        if (!inBounds(w, tx, tz)) continue;
-        const i = idx(w, tx, tz);
-        w.ground[i] = Ground.Concrete;
-        const edge = dx === 0 || dz === 0 || dx === bw - 1 || dz === bd - 1;
-        const door = (dz === bd - 1 && dx === Math.floor(bw / 2)) || (dx === 0 && dz === Math.floor(bd / 2));
-        if (edge && !door && rng.chance(0.72)) {
-          w.blocked[i] = 1;
-          w.walls.push({ tx, tz, h: rng.range(0.6, 3.0) });
-        }
-      }
-    }
-    w.pois.push({ id: poiId++, kind: 'ruin', tx: toTileX(w, site.x), tz: toTileZ(w, site.z), name: RUIN_NAMES[si % RUIN_NAMES.length], discovered: false });
+  const siteRect = (x: number, z: number) => site.blockers.some((b) => inRect(x, z, b, 3)) || site.paved.some((p) => inRect(x, z, p.rect, 2));
+  const oldHeaps = layOldWorld(w, rng, site.kind, sites, {
+    drawRoad, highwayZ,
+    clear: (x, z) => {
+      if (Math.hypot(x, z) < 30 || siteRect(x, z)) return false;
+      const tx = toTileX(w, x), tz = toTileZ(w, z);
+      return inBounds(w, tx, tz) && w.ground[idx(w, tx, tz)] !== Ground.Water && Math.abs(x) < size / 2 - 6 && Math.abs(z) < size / 2 - 6;
+    },
   });
+  for (const d of w.districts) {
+    w.pois.push({ id: poiId++, kind: 'ruin', tx: toTileX(w, d.x), tz: toTileZ(w, d.z), name: d.name, discovered: false });
+  }
 
   // --- fairy ring: a clearing within sight of home ---
   const ringA = rng.range(3.4, 4.2); // roughly north-west
@@ -198,7 +189,9 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 4.5) continue;
     const g = w.ground[i];
     const edge = smoothstep(HOME_CLEAR, HOME_CLEAR + 12, Math.hypot(x, z)); // thin near home
-    const p = (g === Ground.Forest ? 0.42 : g === Ground.Grass ? 0.035 : g === Ground.Meadow ? 0.008 : 0) * (0.3 + 0.7 * edge);
+    // Old streets are overgrown but still open: fewer trees among the ruins.
+    const inTown = w.districts.some((d) => Math.hypot(x - d.x, z - d.z) < 26) ? 0.22 : 1;
+    const p = (g === Ground.Forest ? 0.42 : g === Ground.Grass ? 0.035 : g === Ground.Meadow ? 0.008 : 0) * (0.3 + 0.7 * edge) * inTown;
     if (rng.chance(p)) addTree(tx, tz, kindAt(x, z), rng.range(0.75, 1.45));
   }
   // The old tree at the site. Nobody will cut it.
@@ -206,6 +199,13 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     const ot = w.treeAt[idx(w, toTileX(w, site.oldTree.x), toTileZ(w, site.oldTree.z))];
     if (ot >= 0) { w.trees[ot].felled = true; w.treeAt[idx(w, toTileX(w, site.oldTree.x), toTileZ(w, site.oldTree.z))] = -1; }
     addTree(toTileX(w, site.oldTree.x), toTileZ(w, site.oldTree.z), site.kind === 'chapel' ? 'pine' : 'oak', 1.35, true);
+  }
+
+  // Trees growing up through the most ruined shells (left standing: nobody fells them).
+  for (const r of w.ruins) {
+    if (r.decay < 0.72 || r.kind === 'silo' || r.kind === 'glasshouse' || r.w * r.d < 30) continue;
+    const tx = toTileX(w, r.x), tz = toTileZ(w, r.z);
+    if (w.treeAt[idx(w, tx, tz)] < 0) addTree(tx, tz, kindAt(r.x, r.z), rng.range(1.0, 1.4), true);
   }
 
   // --- berry bushes ---
@@ -274,13 +274,15 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
   }
 
   // --- salvage: wrecks along the highway, debris in the ruins, the station's own car ---
-  const addHeap = (x: number, z: number, kind: 'car' | 'pile', scrap: number, rot: number) => {
+  const addHeap = (x: number, z: number, kind: 'car' | 'pile', scrap: number, rot: number, source?: number, material?: Material) => {
     const tx = toTileX(w, x), tz = toTileZ(w, z);
     if (!inBounds(w, tx, tz)) return;
     const i = idx(w, tx, tz);
     if (w.blocked[i] && kind !== 'car') return;
     if (w.treeAt[i] >= 0) { w.trees[w.treeAt[i]].felled = true; w.treeAt[i] = -1; }
-    w.heaps.push({ id: w.heaps.length, tx, tz, kind, scrap, max: scrap, rot, reserved: 0 });
+    const h: Heap = { id: w.heaps.length, tx, tz, kind, scrap, max: scrap, rot, reserved: 0 };
+    if (source !== undefined && source >= 0) { h.source = source; h.material = material; }
+    w.heaps.push(h);
     w.blocked[i] = 1;
     if (kind === 'car') {
       // A car is about three tiles long: block along its axis.
@@ -300,9 +302,7 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     const side = rng.chance(0.5) ? 1 : -1;
     addHeap(x, highwayZ(x) + side * rng.range(1, 2.5), 'car', rng.int(10, 16), rng.range(-0.4, 0.4) + (rng.chance(0.5) ? Math.PI : 0));
   }
-  for (const site of sites) {
-    for (let k = 0; k < 3; k++) addHeap(site.x + rng.range(-12, 12), site.z + rng.range(-10, 10), 'pile', rng.int(6, 10), rng.range(0, 6));
-  }
+  for (const h of oldHeaps) addHeap(h.x, h.z, h.kind, h.scrap, h.rot, h.source, h.material);
   for (const j of site.junk) addHeap(j.x, j.z, 'pile', j.scrap, 0.4 + j.x);
   // Wrecks that never made it past the station, just up the road each way.
   addHeap(-19, highwayZ(-19) - 1.6, 'car', 12, 0.1);
