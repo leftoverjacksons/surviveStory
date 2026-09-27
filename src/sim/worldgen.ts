@@ -36,6 +36,7 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     trees: [], treeAt: new Int32Array(n).fill(-1),
     bushes: [], bushAt: new Int32Array(n).fill(-1),
     rocks: [], heaps: [], walls: [], pois: [],
+    ponds: [], pondAt: new Int32Array(n).fill(-1), deck: new Uint8Array(n), deckY: new Float32Array(n),
     zone: new Uint8Array(n), zoneVersion: 0,
     wear: new Float32Array(n), wearVersion: 0,
     cropState: new Uint8Array(n), cropGrowth: new Float32Array(n), cropVersion: 0,
@@ -237,13 +238,38 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     }
   }
 
+  // Water bodies: flood-fill, and give each a fish stock by size.
+  const POND_NAMES = ['Still Water', 'the Mirror Pond', 'Heron Pool', 'Reed Mere', 'the Black Tarn', 'Willow Pool', 'Carp Water', 'the Long Pond', 'Otter Pool', 'Moth Water'];
+  for (let i0 = 0; i0 < n; i0++) {
+    if (w.ground[i0] !== Ground.Water || w.pondAt[i0] >= 0) continue;
+    const id = w.ponds.length;
+    const stack = [i0];
+    w.pondAt[i0] = id;
+    let count = 0, sx = 0, sz = 0;
+    while (stack.length) {
+      const i = stack.pop()!;
+      const tx = i % size, tz = (i / size) | 0;
+      count++; sx += tx; sz += tz;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x2 = tx + dx, z2 = tz + dz;
+        if (!inBounds(w, x2, z2)) continue;
+        const j = idx(w, x2, z2);
+        if (w.ground[j] === Ground.Water && w.pondAt[j] < 0) { w.pondAt[j] = id; stack.push(j); }
+      }
+    }
+    const max = Math.round(Math.min(220, 20 + count * 0.6));
+    w.ponds.push({ id, tiles: count, cx: tileX(w, sx / count), cz: tileZ(w, sz / count), stock: max, max, name: POND_NAMES[id % POND_NAMES.length] });
+  }
+
   // Ponds big enough to name become points of interest.
   let pondPois = 0;
   for (let tries = 0; tries < 400 && pondPois < 3; tries++) {
     const tx = rng.int(20, size - 20), tz = rng.int(20, size - 20);
     if (w.ground[idx(w, tx, tz)] !== Ground.Water) continue;
     if (w.pois.some((p) => Math.hypot(p.tx - tx, p.tz - tz) < 40)) continue;
-    w.pois.push({ id: poiId++, kind: 'pond', tx, tz, name: ['Still Water', 'the Mirror Pond', 'Heron Pool'][pondPois], discovered: false });
+    const pond = w.ponds[w.pondAt[idx(w, tx, tz)]];
+    if (w.pois.some((p) => p.kind === 'pond' && p.name === pond.name)) continue;
+    w.pois.push({ id: poiId++, kind: 'pond', tx, tz, name: pond.name, discovered: false });
     pondPois++;
   }
 

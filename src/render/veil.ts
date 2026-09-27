@@ -133,6 +133,16 @@ export class PhenomenaView {
       const h = halo(color, strong ? 9 : 6, 0.8);
       h.position.copy(core.position);
       g.add(core, h);
+    } else if (p.kind === 'drowned_lights') {
+      // Lights below the surface, drifting like slow fish.
+      for (let i = 0; i < (strong ? 9 : 5); i++) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), additive(new THREE.Color(color).multiplyScalar(3), 0.9));
+        m.userData.drift = i;
+        g.add(m);
+        const h = halo(color, 1.4, 0.55);
+        h.userData.drift = i;
+        g.add(h);
+      }
     } else if (p.kind === 'choir') {
       for (let i = 0; i < (strong ? 12 : 7); i++) {
         const m = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), additive(new THREE.Color(color).multiplyScalar(4), 1));
@@ -207,6 +217,11 @@ export class PhenomenaView {
           const i = c.userData.orbit as number;
           const a = t * 0.8 + (i / 12) * Math.PI * 2;
           c.position.set(Math.cos(a) * 2.2, 1.2 + Math.sin(t * 2 + i) * 0.4, Math.sin(a) * 2.2);
+        }
+        if (c.userData.drift !== undefined) {
+          const i = c.userData.drift as number;
+          const a = t * 0.25 + i * 1.7;
+          c.position.set(Math.cos(a) * (1.5 + (i % 3)), 0.35 + Math.sin(t * 0.9 + i) * 0.08, Math.sin(a * 1.3) * (1.2 + (i % 2)));
         }
         if (c.userData.wing) c.rotation.y = (c.userData.wing as number) * (0.5 + Math.sin(t * 5 + v!.phase) * 0.25);
         if (c.userData.lamp) (c as THREE.Sprite).material.opacity = 0.7 + Math.sin(t * 7 + v!.phase) * 0.2;

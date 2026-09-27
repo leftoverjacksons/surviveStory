@@ -121,7 +121,7 @@
   .zone button { display: inline-flex; align-items: center; gap: 5px; }
   .zone button[aria-pressed="true"] { background: var(--ink); color: #0b1210; border-color: var(--ink); font-weight: 700; }
   .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-  .sw.home { background: #ffe88c; } .sw.field { background: #f09632; } .sw.woodlot { background: #6ed75a; } .sw.sacred { background: #c382ff; }
+  .sw.home { background: #ffe88c; } .sw.field { background: #f09632; } .sw.woodlot { background: #6ed75a; } .sw.sacred { background: #c382ff; } .sw.fishing { background: #5abee6; }
   /* winter readiness */
   #winter { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
   #winter .h { font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: 0.09em; color: var(--ink-dim); }
@@ -255,6 +255,7 @@
     <button data-zone="field" type="button" title="Fields: sown in spring, harvested in autumn" aria-pressed="false"><i class="sw field"></i>Field</button>
     <button data-zone="woodlot" type="button" title="Woodlot: cut here and replant" aria-pressed="false"><i class="sw woodlot"></i>Woodlot</button>
     <button data-zone="sacred" type="button" title="Sacred ground: never cut, never built on" aria-pressed="false"><i class="sw sacred"></i>Sacred</button>
+    <button data-zone="fishing" type="button" title="Fishing grounds: mark a pond's shore for a jetty, hut and fishers" aria-pressed="false"><i class="sw fishing"></i>Fishing</button>
     <button data-zone="erase" type="button" title="Erase any zone" aria-pressed="false">Erase</button>
   </div>
   <div class="grp">

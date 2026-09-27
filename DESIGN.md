@@ -553,3 +553,30 @@ night went straight back to sleep (sleep was checked before food, and the
 night interrupt cancelled meals). Regression test: nobody reaches zero
 food while the stores hold 3+ days for everyone.
 
+### Fishing grounds (after balance pass 1)
+
+User asked for a fishing zone with docks and huts as a food source.
+
+- **Fishing zone** (5th zone): painted on a pond's shore or shallows,
+  anywhere explored (ponds lie 40–75 tiles out: the first outpost).
+- **Fishery**, one per marked pond, built in order: plank jetty (4 tiles
+  over the water, walkable decking) → fishing hut with drying racks
+  (smokehouse in timber; +50 food storage because smoked fish keeps) →
+  net shed → rowing boat (needs joinery).
+- **Fisher role.** When the hut is finished, someone volunteers if nobody
+  fishes. Fishers walk out at dawn, fish from the jetty end (or the boat,
+  ×1.3), eat smoked fish by the hut, and carry the catch home at 16:30. In
+  heavy rain they mend nets in the shed.
+- **Catch**: 0.65 food/hour × (stock/max)^0.7 × season (spring and autumn
+  1.15, summer 1, winter 0.45 through the ice) × net-mending (1.5 with a
+  shed) × boat × work rate. That's about 6 food a day in season and 3–4.5 in
+  winter.
+- **Stocks**: max = 20 + 0.6 × pond tiles (up to 220), logistic regrowth
+  12%/day. One fisher holds a pond at about 60–75%; three fishers push it
+  to 20–35% (the log warns and the Veil thins there) for 1.45× the food.
+- **Net-mending**: know-how, learned on the water (faster beside someone
+  who knows it) and in the net shed; a former deckhand arrives knowing it.
+- **Veil**: *the lights under the water* appear at night off the jetty
+  (Resonance ≥ 0.4). Truly seen, they drive fish to the jetty (+25% stock)
+  and may give a fragment of lore.
+

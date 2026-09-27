@@ -22,7 +22,7 @@ npm run build:single  # one self-contained HTML file in dist-single/
 - Click a survivor or their card: select · F: follow selected · Esc: deselect
 - Drag: pan · Right-drag / Ctrl-drag / Q,E: rotate · Wheel / pinch: zoom
 - WASD / arrows: pan · Space: pause · 1/2/3: speed · L: toggle names
-- Zones (bottom bar): Home, Field, Woodlot, Sacred, Erase. Click and drag to paint; Esc to stop
+- Zones (bottom bar): Home, Field, Woodlot, Sacred, Fishing (a pond shore), Erase. Click and drag to paint; Esc to stop
 - R: look inside (roofs shown → hidden → walls cut away); hidden people show as silhouettes
 - V: Veil view (Resonance on the land) · Calm and Omen in the Veil panel · the council banner opens proposals
 

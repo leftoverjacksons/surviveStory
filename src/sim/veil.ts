@@ -65,7 +65,7 @@ export const LORE: string[] = [
 export const growthFactor = (res: number) => 0.75 + 0.5 * res;
 export const healFactor = (res: number) => 0.5 + res;
 
-export type PhenomKind = 'moth_woman' | 'lantern_man' | 'stag' | 'choir' | 'shade' | 'hollow' | 'orb';
+export type PhenomKind = 'moth_woman' | 'lantern_man' | 'stag' | 'choir' | 'shade' | 'hollow' | 'orb' | 'drowned_lights';
 export type Reading = 'none' | 'chill' | 'luminous' | 'coherent';
 
 export interface Witness { id: number; reading: Reading }
@@ -140,6 +140,12 @@ export const PHENOMENA: Record<PhenomKind, PhenomDef> = {
     chill: 'The air over the Ring pressed on {a}\'s ears, like before a storm.',
     luminous: '{a} saw the Orb come down low over the Ring, silent.',
     coherent: 'The Orb came down to the Ring. {a} says it was listening, and that something listened back.',
+  },
+  drowned_lights: {
+    name: 'the lights under the water', depth: 40, night: true, minRes: 0.4, maxRes: 1, color: '#9fe8ff',
+    chill: ['{a} felt the jetty go cold under their hands, all at once.', '{a} heard something like singing come up through the planks.'],
+    luminous: ['{a} saw lights moving under the water, slow as fish.', 'The pond lit up from below for a moment. {a} saw it; nobody else did.'],
+    coherent: ['{a} watched the lights under the water gather the fish toward the jetty, like a shepherd with sheep.', 'The lights under the water spelled out a shape {a} knew from a dream.'],
   },
   hollow: {
     name: 'a Hollow', depth: 10, night: false, minRes: 0, maxRes: 0.3, color: '#3a2a4a',
@@ -394,7 +400,14 @@ function place(col: Colony, rng: Rng, kind: PhenomKind): Point | null {
   const w = col.world;
   switch (kind) {
     case 'choir': case 'orb': return { x: w.fairyRing.x + rng.range(-2, 2), z: w.fairyRing.z + rng.range(-2, 2) };
-    case 'shade': return { x: -7.4 + rng.range(-1, 1), z: -3.6 + rng.range(-1, 1) };
+    case 'shade': return { x: col.world.site.memorial.x + rng.range(-1, 1), z: col.world.site.memorial.z + rng.range(-1, 1) };
+    case 'drowned_lights': {
+      // Only where people fish, just off the jetty.
+      const f = col.village.fisheries.find((x) => x.jetty > 0);
+      if (!f) return null;
+      const end = f.jettyTiles[f.jettyTiles.length - 1];
+      return { x: tileX(w, end % w.w) + rng.range(-3, 3), z: tileZ(w, (end / w.w) | 0) + rng.range(-3, 3) };
+    }
     default: {
       // Things show themselves at the edge of where people are: just past the
       // firelight, beyond the field, along the road someone is walking.
@@ -423,7 +436,7 @@ function spawnPhenomena(col: Colony, rng: Rng, hour: number, night: boolean) {
     if (!at) continue;
     const res = kind === 'hollow' ? hr : resonanceAt(col, at.x, at.z);
     if (res < def.minRes || res > def.maxRes) continue;
-    const chance = kind === 'hollow' ? 0.06 : kind === 'orb' ? 0.004 : kind === 'shade' ? 0.08 : 0.012 + (res - def.minRes) * 0.04;
+    const chance = kind === 'hollow' ? 0.06 : kind === 'orb' ? 0.004 : kind === 'shade' ? 0.08 : kind === 'drowned_lights' ? 0.02 : 0.012 + (res - def.minRes) * 0.04;
     if (!rng.chance(chance)) continue;
     const p: Phenomenon = {
       id: v.nextId++, kind, x: at.x, z: at.z, until: col.minute + rng.range(3, 8) * 60, witnesses: [], logged: 0,
@@ -511,6 +524,16 @@ function experience(col: Colony, rng: Rng, s: Survivor, p: Phenomenon, reading: 
         col.veil.requests.push({ kind: 'offering', from: 'lantern_man', x: p.x, z: p.z, by: s.id });
         bump(3);
         if (rng.chance(0.4)) learnLore(col, s, 'asked the Lantern Man where he was going. He answered');
+        break;
+      }
+      case 'drowned_lights': {
+        // The lights drive fish toward the jetty: the pond's stock recovers.
+        for (const f of col.village.fisheries) {
+          const pond = col.world.ponds[f.pond];
+          if (Math.hypot(pond.cx - p.x, pond.cz - p.z) < 60) pond.stock = Math.min(pond.max, pond.stock + pond.max * 0.25);
+        }
+        bump(5);
+        if (rng.chance(0.4)) learnLore(col, s, 'came back from the jetty soaked to the knees and said one thing');
         break;
       }
       case 'moth_woman':

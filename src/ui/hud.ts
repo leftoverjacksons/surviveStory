@@ -10,6 +10,7 @@ import { bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type 
 import { LORE, communitySight, growthFactor, healFactor, homeResonance } from '../sim/veil';
 import { ASPIRATIONS, SKILLED, knowers, skill } from '../sim/purpose';
 import { YARD, homeComfort, householdName, householdOf, waitingHouseholds } from '../sim/homes';
+import { fisheryOf } from '../sim/fishing';
 import { CALM_COST, DREAM_COST, OMEN_COST, resolvable } from '../sim/council';
 
 /** What each kind of building is for, in plain words. */
@@ -24,9 +25,13 @@ const BUILDING_INFO: Record<string, string> = {
   lantern: 'A wisp lantern. Lights the dark between houses (a little morale each) and thins the Veil nearby.',
   cellar: 'A root cellar. Keeps food from spoiling: more room in the stores.',
   shrine: 'A shrine. Raises Resonance around it; a place to leave things for the unseen.',
+  jetty: 'A jetty out over the pond. Fishers sit at its end; in winter they cut holes in the ice beside it.',
+  fishhut: 'The fishing hut, with racks for drying and smoking the catch: smoked fish keeps (more room in the stores). Fishers eat here instead of walking home.',
+  netshed: 'The net shed, where nets are mended. Fishers who know net-mending catch half again as much once there is one. In heavy rain they work here.',
+  boat: 'A rowing boat. Out in the middle is where the big ones are: a third more catch, except in winter.',
 };
 
-export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'erase';
+export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'fishing' | 'erase';
 
 export interface HudActions {
   onKill(id: number): void;
@@ -268,7 +273,11 @@ export class Hud {
     const active = v.projects.filter((p) => !p.done);
     const joiners = knowers(this.col.community, 'joinery').map((s) => s.name.split(' ')[0]);
     const tier = `<span class="tier t${v.tier}" title="What they know how to build with. Joinery is learned by building, fastest beside someone who knows it, and lost if everyone who knows it is gone.">${
-      v.tier === 1 ? `Joinery · ${esc(joiners.join(', '))}` : joiners.length ? `Joinery · ${esc(joiners.join(', '))} (needs a workbench)` : 'Salvage only'}</span>`;
+      v.tier === 1 ? `Joinery · ${esc(joiners.join(', '))}` : joiners.length ? `Joinery · ${esc(joiners.join(', '))} (needs a workbench)` : 'Salvage only'}</span>`
+      + (() => {
+        const nets = knowers(this.col.community, 'netmending').map((s) => s.name.split(' ')[0]);
+        return nets.length ? `<span class="tier t1" title="Net-mending: fishers who know it catch half again as much, once there is a net shed.">Nets · ${esc(nets.join(', '))}</span>` : '';
+      })();
     const built = v.buildings.filter((b) => b.kind !== 'store').length;
     const html = (active.length
       ? active.map((p) => {
@@ -317,6 +326,15 @@ export class Hud {
       if (heatNeed(b)) facts.push(['Winter firewood', `${heatNeed(b)} a day when occupied`]);
       if (b.kind === 'cellar') facts.push(['Stores keep', `${Math.floor(storageCapacity(col.village))} food in all`]);
       if (b.kind === 'garden') facts.push(['Tended today', b.tended >= 60 ? 'Yes' : 'Not yet']);
+      const fishery = fisheryOf(col.village, b);
+      if (fishery) {
+        const pond = col.world.ponds[fishery.pond];
+        const pct = Math.round((pond.stock / pond.max) * 100);
+        facts.push(['Pond', `${pond.name}: fish stock ${pct}%${pct < 30 ? ' (fished thin; it needs a rest)' : pct < 60 ? ' (being fished hard)' : ''}`]);
+        const fishers = alive(col.community).filter((s) => s.role === 'fisher').map((s) => s.name.split(' ')[0]);
+        facts.push(['Fishers', fishers.length ? fishers.join(', ') : 'Nobody yet (set someone\'s role to Fisher)']);
+        facts.push(['Caught this year', `${Math.round(col.ledger.fishing ?? 0)} food`]);
+      }
       if (b.kind === 'store') {
         facts.push(['State', ['Derelict', 'Cleared', 'Roof patched', 'Hall'][b.level] ?? '']);
         facts.push(['This place', col.village.site.perk]);
@@ -470,9 +488,11 @@ export class Hud {
   private hopeLine(s: Survivor): string {
     const parts: string[] = [];
     if (s.aspiration) parts.push(`Hopes for <em>${esc(ASPIRATIONS[s.aspiration.kind].want)}</em>`);
-    const j = skill(s, 'joinery');
-    if (j >= SKILLED) parts.push('Knows joinery');
-    else if (j > 0.05) parts.push(`Learning joinery · ${Math.round((j / SKILLED) * 100)}%`);
+    for (const [craft, name] of [['joinery', 'joinery'], ['netmending', 'net-mending']] as const) {
+      const j = skill(s, craft);
+      if (j >= SKILLED) parts.push(`Knows ${name}`);
+      else if (j > 0.05) parts.push(`Learning ${name} · ${Math.round((j / SKILLED) * 100)}%`);
+    }
     return parts.length ? `<br>${parts.join(' · ')}` : '';
   }
 

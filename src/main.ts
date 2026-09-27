@@ -3,7 +3,7 @@ import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
 import { createCommunity, killSurvivor, recruit, setRole } from './sim/community';
 import { SITE_KINDS, type SiteKind } from './sim/sites';
 import { generateWorld, siteKindFor } from './sim/worldgen';
-import { Zone, heightAt, paintZone } from './sim/world';
+import { Zone, heightAt, paintZone, reveal } from './sim/world';
 import { daylightHours, seasonLook } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
 import { FogTexture, WearTexture, ZoneTexture, buildTerrain } from './render/terrain';
@@ -205,7 +205,7 @@ function setOmen(on: boolean) {
 }
 
 let zoneTool: ZoneTool | null = null;
-const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, erase: Zone.None };
+const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, fishing: Zone.Fishing, erase: Zone.None };
 function setZoneTool(mode: ZoneTool | null) {
   zoneTool = mode;
   hud.setZoneMode(mode);
@@ -451,6 +451,10 @@ function frame() {
   for (const a of colony.agents) if (a.indoors && a.inside) occupied.add(a.inside);
   plotsView.update(t);
   villageView.update(sky.night, occupied, t);
+  villageView.updateBoats(colony.agents.filter((a) => a.afloat && a.task?.kind === 'fish').map((a) => {
+    const f = colony.village.fisheries.find((x) => a.task?.kind === 'fish' && x.id === a.task.fishery);
+    return { x: a.x, z: a.z, facing: a.facing, boatId: f?.boat ?? 0 };
+  }));
   mushroomGlow.color.setRGB(0.5, 1.2, 1.0).multiplyScalar(0.4 + sky.night * 1.6);
   bloom.strength = 0.45 + sky.night * 0.5;
 
@@ -490,4 +494,4 @@ requestAnimationFrame(() => {
 });
 
 // Exposed for automated checks and debugging.
-Object.assign(window, { __game: { colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });
+Object.assign(window, { __game: { colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });

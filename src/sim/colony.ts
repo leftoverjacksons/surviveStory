@@ -22,7 +22,8 @@ import {
   type Plot,
 } from './homes';
 import { bedSpot, seatSpot } from './sites';
-import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill } from './purpose';
+import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill, type Craft } from './purpose';
+import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pondOf } from './fishing';
 import { highwayZ } from './worldgen';
 import {
   PSI_SIGHT, createVeil, disturb, growthFactor, healFactor, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil,
@@ -40,7 +41,7 @@ export const WOOD_TARGET = 30;      // spare wood kept on hand beyond projects a
 export const FIRE_WOOD_PER_DAY = 2;  // the fire; more in winter (see fireWood)
 export const START_MINUTE = 7 * 60; // day 1, 07:00
 
-export type Anim = 'idle' | 'walk' | 'chop' | 'build' | 'carry' | 'forage' | 'sleep' | 'sit' | 'eat' | 'look';
+export type Anim = 'idle' | 'walk' | 'chop' | 'build' | 'carry' | 'forage' | 'sleep' | 'sit' | 'eat' | 'look' | 'fish';
 export type ItemKind = 'wood' | 'food' | 'scrap' | 'glimmer';
 export const MAX_POP = 14;
 
@@ -55,6 +56,7 @@ export type Task =
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench'; building: number }
   | { kind: 'yard'; plot: number; item: number; stage: 'go' | 'work'; t: number }
   | { kind: 'practice'; building: number; stage: 'go' | 'work'; t: number }
+  | { kind: 'fish'; fishery: number; stage: 'go' | 'fish' | 'deliver'; t: number; boat: boolean; catch: number }
   | { kind: 'leisure'; what: 'fish' | 'cards' | 'herbs'; stage: 'go' | 'do'; t: number }
   | { kind: 'scout'; stage: 'go' | 'look'; t: number }
   | { kind: 'attune'; stage: 'go' | 'sit'; t: number }
@@ -91,6 +93,8 @@ export interface Agent {
   door: Point | null;
   /** Building they are inside, if indoors (0 = none). */
   inside: number;
+  /** Out on the water in the boat (their `door` is where they climbed in). */
+  afloat: boolean;
   sleptIndoors: boolean;
 }
 
@@ -169,7 +173,7 @@ function makeAgent(col: Colony, s: Survivor, i: number): Agent {
     id: s.id, x: seat.x, z: seat.z, facing: 0, path: [], pathI: 0, task: null,
     needs: { food: 70 + (s.id * 7) % 25, rest: 80, social: 60 },
     carry: null, anim: 'idle', activity: 'Waking up', lastTile: -1, lookAt: null,
-    indoors: false, door: null, inside: 0, sleptIndoors: false,
+    indoors: false, door: null, inside: 0, afloat: false, sleptIndoors: false,
   };
 }
 
@@ -210,6 +214,7 @@ export function replan(col: Colony) {
       return bedsTotal(v) + pending < pop;
     };
     if (store(v).level >= 1) while (planHome(col, rng, leadName(col), urgent())) { /* up to two homes at once */ }
+    if (store(v).level >= 1) planFishery(col, rng, leadName(col));
     while (plan(col.world, col.village, col.community, rng, leadName(col), seasonIndex(dayOf(col)))) { /* fill up to the active limit */ }
   });
 }
@@ -681,6 +686,13 @@ function mealPlace(col: Colony, a: Agent, s: Survivor): { place: MealPlace; buil
     if (!(hallOpen(col) && sociable && habit(col, s.id + 7) < 50)) return { place: 'home', building: home.id, spot: home.door };
   }
   if (hallOpen(col) && supper) return { place: 'hall', building: st.id, spot: st.door };
+  // Fishers out at the pond eat smoked fish by the hut rather than walk home.
+  if (s.role === 'fisher') {
+    for (const f of v.fisheries) {
+      const hut = v.buildings.find((b) => b.id === f.hut);
+      if (hut && Math.hypot(hut.door.x - a.x, hut.door.z - a.z) < 30) return { place: 'fire', building: 0, spot: hut.door };
+    }
+  }
   if (hasBuilt(v, 'kitchen')) return { place: 'kitchen', building: 0, spot: { x: v.site.kitchen.x - 3.5 + (col.agents.indexOf(a) % 8), z: v.site.kitchen.z } };
   return { place: 'fire', building: 0, spot: seatOf(col, a) };
 }
@@ -756,10 +768,16 @@ function pickYard(col: Colony, a: Agent, s: Survivor): Task | null {
   return null;
 }
 
-/** Practise joints at the workbench (learning joinery), if there is one. */
-function pickPractice(col: Colony, a: Agent, s: Survivor): Task | null {
-  if (knows(s, 'joinery') && skill(s, 'joinery') >= 0.95) return null;
-  const bench = col.village.buildings.find((b) => b.kind === 'workshop');
+/** What each practice place teaches. */
+const PRACTICE: Record<string, { craft: Craft; doing: string; done: string }> = {
+  workshop: { craft: 'joinery', doing: 'Practising joints at the workbench', done: 'Cutting joints at the workbench, for the love of it' },
+  netshed: { craft: 'netmending', doing: 'Mending nets in the net shed', done: 'Mending nets in the net shed, quick as anything' },
+};
+
+/** Practise a craft where it's taught (joinery at the workbench, nets in the net shed). */
+function pickPractice(col: Colony, a: Agent, s: Survivor, where: 'workshop' | 'netshed' = 'workshop'): Task | null {
+  if (skill(s, PRACTICE[where].craft) >= 0.95) return null;
+  const bench = col.village.buildings.find((b) => b.kind === where);
   if (!bench) return null;
   const c = footCenter(col.world, bench.foot);
   if (!setDest(col, a, c.x + ((a.id % 3) - 1) * 0.8, c.z + 0.2)) return null;
@@ -791,6 +809,24 @@ function pickLeisure(col: Colony, a: Agent, s: Survivor): Task | null {
   const st = store(col.village);
   const spot = hallOpen(col) && (season === 'winter' || col.weather === 'rain') ? st.door : seatOf(col, a);
   return setDest(col, a, spot.x, spot.z) ? { kind: 'leisure', what: 'cards', stage: 'go', t: 0 } : null;
+}
+
+const fisheryById = (col: Colony, id: number) => col.village.fisheries.find((f) => f.id === id);
+const hasBuilding = (col: Colony, id: number) => id > 0 && col.village.buildings.some((b) => b.id === id);
+
+/** A fisher's day: out to the jetty (or the boat), fish, carry the catch home. */
+function pickFish(col: Colony, a: Agent): Task | null {
+  const h = hourOf(col);
+  if (h >= 16) return null; // too late to walk out and back
+  const f = col.village.fisheries.filter((x) => hasBuilding(col, x.jetty))
+    .sort((p, q) => col.agents.filter((o) => o.task?.kind === 'fish' && o.task.fishery === p.id).length
+      - col.agents.filter((o) => o.task?.kind === 'fish' && o.task.fishery === q.id).length)[0];
+  if (!f) return null;
+  const others = col.agents.filter((o) => o !== a && o.task?.kind === 'fish' && o.task.fishery === f.id);
+  const boat = hasBuilding(col, f.boat) && seasonNow(col) !== 'winter' && !others.some((o) => o.task?.kind === 'fish' && o.task.boat);
+  const spot = fishingSpot(col, f, others.length, false);
+  if (!setDest(col, a, spot.x, spot.z)) return null;
+  return { kind: 'fish', fishery: f.id, stage: 'go', t: 0, boat, catch: 0 };
 }
 
 /** Free time goes to what someone hopes for. */
@@ -877,6 +913,11 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
         ?? (seasonNow(col) === 'winter' ? pickTree(col, a) : null) ?? pickHaul(col, a);
       break;
     case 'scout': t = pickScout(col, a); break;
+    case 'fisher':
+      // In heavy rain, mend nets in the shed; otherwise out on the water.
+      t = (col.weather === 'rain' ? pickPractice(col, a, s, 'netshed') : null) ?? pickFish(col, a)
+        ?? pickPractice(col, a, s, 'netshed') ?? pickHaul(col, a);
+      break;
     case 'attune': {
       const r = col.world.fairyRing;
       const ang = (s.id * 1.3) % (Math.PI * 2);
@@ -916,9 +957,14 @@ function endTask(col: Colony, a: Agent) {
     if (p) p.incoming[t.mat] = Math.max(0, p.incoming[t.mat] - pending);
     if (a.carry && t.stage === 'deliver') { col.community.resources[t.mat] += a.carry.amount; a.carry = null; }
   }
-  if (a.indoors && a.door) {
+  if ((a.indoors || a.afloat) && a.door) {
     a.x = a.door.x; a.z = a.door.z;
     a.indoors = false;
+    a.afloat = false;
+  }
+  if (t?.kind === 'fish' && t.catch >= 0.5 && t.stage !== 'deliver') {
+    // Cut short with fish in the basket: it's not wasted.
+    gainFood(col, 'fishing', t.catch);
   }
   a.inside = 0;
   releaseClaims(col, a.id, t?.kind);
@@ -1136,22 +1182,77 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       }
       return;
     }
-    case 'practice': {
+    case 'fish': {
+      const f = fisheryById(col, t.fishery);
+      if (!f || !hasBuilding(col, f.jetty)) return endTask(col, a);
+      const pond = pondOf(w, f);
       if (t.stage === 'go') {
-        a.anim = 'walk'; a.activity = 'Heading to the workbench to practise';
+        a.anim = 'walk'; a.activity = `Walking out to ${pond.name} to fish`;
+        if (walk(col, a, dt)) {
+          t.stage = 'fish';
+          if (t.boat) {
+            const out = fishingSpot(col, f, 0, true);
+            a.door = { x: a.x, z: a.z };
+            a.x = out.x; a.z = out.z;
+            a.afloat = true;
+          }
+        }
+        return;
+      }
+      if (t.stage === 'fish') {
+        const season = seasonNow(col);
+        const [dx, dz] = [[0, 1], [1, 0], [0, -1], [-1, 0]][f.facing];
+        a.facing = Math.atan2(dx, dz);
+        a.anim = 'fish';
+        const rate = catchRate(col, f, s, t.boat, season) * workRate(s, 'fisher', col);
+        const got = Math.min(pond.stock, (dt / 60) * rate);
+        pond.stock -= got;
+        t.catch += got;
+        t.t += dt;
+        a.activity = `${season === 'winter' ? 'Fishing through the ice' : t.boat ? 'Out in the boat' : 'Fishing off the jetty'} at ${pond.name} · ${Math.floor(t.catch)} caught`;
+        // Net-mending comes with time on the water, faster beside someone who knows it.
+        if (!knows(s, 'netmending')) {
+          const teacher = col.agents.some((o) => o !== a && o.task?.kind === 'fish' && o.task.fishery === f.id && knows(survivorOf(col, o.id), 'netmending'));
+          if (learn(s, 'netmending', dt * (0.00003 + (teacher ? 0.00008 : 0)))) {
+            log(col.community, `${first(s)} has learned to mend and set nets properly. The catch will show it.`, 'good');
+            remember(s, col.community.day, 'Learned to mend nets.');
+          }
+        }
+        if (hourOf(col) >= 16.5 || t.catch >= 12 || a.needs.food < 20) {
+          if (a.afloat && a.door) { a.x = a.door.x; a.z = a.door.z; a.afloat = false; }
+          a.carry = { kind: 'food', amount: Math.round(t.catch * 10) / 10 };
+          if (!deliver(col, a)) { gainFood(col, 'fishing', t.catch); t.catch = 0; a.carry = null; return endTask(col, a); }
+          t.stage = 'deliver';
+        }
+        return;
+      }
+      a.anim = 'carry'; a.activity = `Carrying the catch home from ${pond.name}`;
+      if (walk(col, a, dt)) {
+        if (a.carry) gainFood(col, 'fishing', a.carry.amount);
+        a.carry = null;
+        t.catch = 0;
+        endTask(col, a);
+      }
+      return;
+    }
+    case 'practice': {
+      const b = buildingById(col, t.building);
+      if (!b) return endTask(col, a);
+      const P = PRACTICE[b.kind] ?? PRACTICE.workshop;
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = b.kind === 'netshed' ? 'Heading to the net shed' : 'Heading to the workbench to practise';
         if (walk(col, a, dt)) t.stage = 'work';
         return;
       }
-      const b = buildingById(col, t.building);
-      if (!b) return endTask(col, a);
       face(a, footCenter(w, b.foot));
-      a.anim = 'build';
-      const teacher = col.agents.find((o) => o !== a && o.task?.kind === 'practice' && o.task.building === t.building && knows(survivorOf(col, o.id), 'joinery'));
-      a.activity = knows(s, 'joinery') ? 'Cutting joints at the workbench, for the love of it'
-        : `Practising joints at the workbench · ${Math.round((skill(s, 'joinery') / SKILLED) * 100)}%`;
-      if (learn(s, 'joinery', dt * (0.00006 + (teacher ? 0.0001 : 0)) * (s.traits.includes('tinkerer') ? 1.8 : 1))) {
-        log(col.community, `${first(s)} has the knack of joinery now, from evenings at the workbench.`, 'good');
-        remember(s, col.community.day, 'Learned to joint timber.');
+      a.anim = b.kind === 'netshed' ? 'sit' : 'build';
+      const teacher = col.agents.find((o) => o !== a && o.task?.kind === 'practice' && o.task.building === t.building && knows(survivorOf(col, o.id), P.craft));
+      a.activity = knows(s, P.craft) ? P.done : `${P.doing} · ${Math.round((skill(s, P.craft) / SKILLED) * 100)}%`;
+      const knack = P.craft === 'joinery' ? (s.traits.includes('tinkerer') ? 1.8 : 1) : (s.traits.includes('stoic') ? 1.4 : 1);
+      if (learn(s, P.craft, dt * (0.00006 + (teacher ? 0.0001 : 0)) * knack)) {
+        log(col.community, P.craft === 'joinery' ? `${first(s)} has the knack of joinery now, from evenings at the workbench.`
+          : `${first(s)} can mend a net as fast as they can talk now.`, 'good');
+        remember(s, col.community.day, P.craft === 'joinery' ? 'Learned to joint timber.' : 'Learned to mend nets.');
       }
       t.t += dt;
       if (t.t >= 90) endTask(col, a);
@@ -1269,6 +1370,10 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       a.activity = `${p.kind === 'clear_store' || p.kind === 'patch_roof' ? p.name : `Building: ${p.name.toLowerCase()}`} · ${Math.min(99, Math.round((p.work / p.workNeeded) * 100))}%`;
       if (p.work >= p.workNeeded) {
         completeProject(w, col.village, col.community, p);
+        if (p.fishery) {
+          const b = col.village.buildings[col.village.buildings.length - 1];
+          if (b && b.kind === p.kind) onFisheryBuilt(col, b, p.fishery);
+        }
         if (p.kind === 'home') {
           const b = col.village.buildings.find((x) => x.kind === 'home' && x.plot === p.plot);
           if (b) onHomeBuilt(col, b);
@@ -1656,6 +1761,7 @@ function daily(col: Colony) {
     log(c, 'The cellar is running low. Meals are cut to half rations until spring.', 'bad');
   }
   veilDaily(col, { cold, rationing: rationing(col) });
+  fishingDaily(col, (x, z, amt) => disturb(col, x, z, amt, 2));
   councilDaily(col);
   departures(col);
   dailyRollover(c);
@@ -1772,6 +1878,8 @@ function arrivals(col: Colony) {
 function neededRole(col: Colony): RoleId {
   const count = (r: RoleId) => alive(col.community).filter((s) => s.role === r).length;
   if (fieldTiles(col).length > 20 * Math.max(1, count('farmer'))) return 'farmer';
+  const huts = col.village.fisheries.filter((f) => hasBuilding(col, f.hut)).length;
+  if (huts > 0 && count('fisher') < huts) return 'fisher';
   if (count('builder') < 2) return 'builder';
   if (count('forager') < 1) return 'forager';
   if (count('farmer') < 1) return 'farmer';

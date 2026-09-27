@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Agent } from '../sim/colony';
 import type { Survivor } from '../sim/community';
-import { heightAt, type World } from '../sim/world';
+import { WATER_Y, heightAt, standHeight, type World } from '../sim/world';
 import { lambert } from './util';
 
 export const CLOTH = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a', '#6b5a7a', '#8a7a6a'];
@@ -19,6 +19,7 @@ interface Rig {
   log: THREE.Object3D;
   basket: THREE.Object3D;
   sheet: THREE.Object3D;
+  rod: THREE.Object3D;
   ring: THREE.Mesh;
   phase: number;
   fade: number;           // >0 while fading out after death
@@ -92,6 +93,19 @@ export class People {
     sheet.rotation.set(0.3, 0, 0.5);
     body.add(sheet);
 
+    // A fishing rod, held out over the water, with a line hanging from its tip.
+    const rod = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.025, 2.2, 5), lambert('#6a5a3a'));
+    pole.position.y = -1.1;
+    const line = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 1.4, 3), lambert('#d8d0c0'));
+    line.position.set(0, -2.2, 0.0);
+    line.rotation.x = 0;
+    rod.add(pole, line);
+    rod.position.set(0, -0.55, 0.05);
+    rod.rotation.x = Math.PI / 2 + 0.5;
+    rod.visible = false;
+    armR.add(rod);
+
     body.add(hipL, hipR, torso, head, armL, armR);
     body.traverse((o) => { o.castShadow = true; o.receiveShadow = true; o.layers.set(1); });
 
@@ -104,7 +118,7 @@ export class People {
     root.add(ring);
     root.userData.survivorId = s.id;
     body.userData.survivorId = s.id;
-    return { root, body, torso, head, hipL, hipR, armL, armR, axe, log, basket, sheet, ring, phase: s.id * 1.7, fade: 0 };
+    return { root, body, torso, head, hipL, hipR, armL, armR, axe, log, basket, sheet, rod, ring, phase: s.id * 1.7, fade: 0 };
   }
 
   sync(survivors: Survivor[], agents: Agent[]) {
@@ -165,7 +179,7 @@ export class People {
       const k = 1 - Math.exp(-dt * 14);
       root.position.x += (a.x - root.position.x) * k;
       root.position.z += (a.z - root.position.z) * k;
-      root.position.y = heightAt(this.world, root.position.x, root.position.z);
+      root.position.y = a.afloat ? WATER_Y + 0.12 : standHeight(this.world, root.position.x, root.position.z);
       let dYaw = (a.anim === 'sleep' ? 0 : a.facing) - root.rotation.y;
       dYaw = Math.atan2(Math.sin(dYaw), Math.cos(dYaw));
       root.rotation.y += dYaw * Math.min(1, dt * 10);
@@ -193,6 +207,7 @@ export class People {
     r.head.rotation.set(0, 0, 0);
     r.torso.scale.y = 1 + Math.sin(ph * 1.6) * 0.02;
     r.axe.visible = false;
+    r.rod.visible = a.anim === 'fish';
     r.log.visible = a.carry?.kind === 'wood';
     r.basket.visible = a.carry?.kind === 'food' || a.carry?.kind === 'glimmer' || a.anim === 'forage';
     r.sheet.visible = a.carry?.kind === 'scrap';
@@ -240,6 +255,15 @@ export class People {
         r.hipL.rotation.x = -1.1; r.hipR.rotation.x = -0.6;
         r.armR.rotation.x = -1.2 + Math.sin(ph * 4) * 0.3;
         r.armL.rotation.x = -0.9;
+        break;
+      }
+      case 'fish': {
+        // Sitting on the jetty's edge (or in the boat), rod out, the odd twitch.
+        r.body.position.y = -0.42;
+        r.hipL.rotation.x = -1.45; r.hipR.rotation.x = -1.45;
+        r.armR.rotation.x = -1.25 + Math.sin(ph * 0.7) * 0.05 + (Math.sin(ph * 0.23) > 0.97 ? -0.3 : 0);
+        r.armL.rotation.x = -1.0;
+        r.head.rotation.x = 0.15;
         break;
       }
       case 'sit':

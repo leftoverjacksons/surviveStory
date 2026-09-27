@@ -7,13 +7,16 @@ import { alive, log, type Community } from './community';
 import type { Site } from './sites';
 import type { Rng } from './rng';
 import type { Household, Plot } from './homes';
+import type { Fishery } from './fishing';
 import {
   Ground, LANE_WEAR, PATH_WEAR, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
   type Point, type World,
 } from './world';
 
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine';
-export type ProjectKind = 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'upgrade';
+export type FisheryKind = 'jetty' | 'fishhut' | 'netshed' | 'boat';
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | FisheryKind;
+export type ProjectKind = 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'upgrade' | FisheryKind;
+export const FISHERY_KINDS: FisheryKind[] = ['jetty', 'fishhut', 'netshed', 'boat'];
 export type Tier = 0 | 1;
 
 export interface Cost { wood: number; scrap: number; glimmer: number }
@@ -63,6 +66,8 @@ export interface Project {
   /** Tree ids that must be felled before building can start. */
   clearTrees: number[];
   done: boolean;
+  /** Fishery projects: which fishery they belong to. */
+  fishery?: number;
   /** Homes: plot, household, the tiles the house covers, and its door and heading. */
   plot?: number;
   household?: number;
@@ -88,6 +93,8 @@ export interface Village {
   plotAt: Int32Array;
   /** Households whose petition for a home the council approved. */
   homeQueue: number[];
+  /** Fishing outposts on marked shores. */
+  fisheries: Fishery[];
   /** Last day a household found no room for a plot, and the land it searched. */
   noPlotDay?: number;
   noPlotKey?: string;
@@ -98,7 +105,7 @@ export interface Village {
 interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]; work: [number, number]; beds?: [number, number] }
 const c = (wood: number, scrap: number, glimmer = 0): Cost => ({ wood, scrap, glimmer });
 
-export const DEFS: Record<Exclude<ProjectKind, 'upgrade' | 'clear_store' | 'patch_roof' | 'home'>, Def> = {
+export const DEFS: Record<Exclude<ProjectKind, 'upgrade' | 'clear_store' | 'patch_roof' | 'home' | FisheryKind>, Def> = {
   annex:    { name: ['Lean-to', 'Lean-to'], w: 3, d: 5, cost: [c(18, 6), c(18, 6)], work: [600, 600], beds: [2, 2] },
   hut:      { name: ['Bunk shack', 'Bunkhouse'], w: 3, d: 3, cost: [c(14, 8), c(34, 2)], work: [600, 900], beds: [2, 3] },
   garden:   { name: ['Tire garden', 'Fenced garden'], w: 4, d: 3, cost: [c(6, 4), c(18, 0)], work: [300, 420] },
@@ -119,7 +126,7 @@ const zero = (): Cost => c(0, 0, 0);
 export function createVillage(w: World): Village {
   const v: Village = {
     buildings: [], projects: [], nextId: 1, craftXp: 0, tier: 0, site: w.site,
-    households: [], plots: [], plotAt: new Int32Array(w.w * w.h), homeQueue: [],
+    households: [], plots: [], plotAt: new Int32Array(w.w * w.h), homeQueue: [], fisheries: [],
   };
   // The found shelter is there from the start: derelict, no beds yet.
   const S = w.site.shelter;
@@ -223,7 +230,9 @@ export function heatNeed(b: Building): number {
 
 /** Food that keeps; anything above this slowly spoils. */
 export function storageCapacity(v: Village): number {
-  return 40 + v.buildings.filter((b) => b.kind === 'cellar').reduce((n, b) => n + (b.tier === 0 ? 100 : 160), 0);
+  // Cellars keep roots and grain; the fishing hut's racks keep smoked fish.
+  return 40 + v.buildings.filter((b) => b.kind === 'cellar').reduce((n, b) => n + (b.tier === 0 ? 100 : 160), 0)
+    + v.buildings.filter((b) => b.kind === 'fishhut').length * 50;
 }
 
 export type SiteKind = 'hut' | 'garden' | 'workshop' | 'lantern' | 'cellar' | 'shrine';
@@ -483,8 +492,18 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
       log(com, `${p.name} is finished.`, 'good');
       break;
     }
+    case 'jetty': case 'fishhut': case 'netshed': case 'boat': {
+      const b: Building = {
+        id: v.nextId++, kind: p.kind, tier: p.tier, foot: p.foot, facing: p.facing, door: doorOf(w, p.foot, p.facing),
+        inside: footCenter(w, p.foot), beds: 0, level: 0, tended: 0, growth: 0, name: p.name,
+      };
+      v.buildings.push(b);
+      if (p.kind === 'fishhut' || p.kind === 'netshed') block(p.foot);
+      log(com, `${p.name} finished.`, 'good');
+      break;
+    }
     default: {
-      const kind = p.kind as Exclude<BuildingKind, 'store' | 'home'>;
+      const kind = p.kind as Exclude<BuildingKind, 'store' | 'home' | FisheryKind>;
       const def = DEFS[kind];
       const cen = footCenter(w, p.foot);
       const b: Building = {

@@ -5,7 +5,7 @@ import {
 import { CAR } from '../sim/layout';
 import type { Site } from '../sim/sites';
 import type { Building } from '../sim/buildings';
-import { heightAt, tileX, tileZ, type Heap, type World } from '../sim/world';
+import { WATER_Y, heightAt, tileX, tileZ, type Heap, type World } from '../sim/world';
 import type { StoreParts } from './station';
 import { homeLayout, housePoint } from '../sim/homes';
 import { buildHouse } from './house';
@@ -323,6 +323,148 @@ function leanTo(W: number, D: number, p: number, glow: THREE.Mesh[]): THREE.Grou
 }
 
 /** Mending the part of the shelter's roof that fell in: scaffold first, then the patch. */
+// ---------- the fishery ----------
+
+/** A plank jetty running out over the water (+z), from a little way up the bank. */
+function jetty(D: number, tier: number, p: number): THREE.Group {
+  const g = new THREE.Group();
+  const plank = mat(tier === 0 ? '#8a7458' : '#7a5a3a'), post = mat('#4f3f30');
+  const z0 = -D / 2 - 0.9, z1 = D / 2 + 0.3;
+  const len = z1 - z0;
+  const n = Math.round(len / 0.3);
+  const posts = Math.ceil(len / 1.2) + 1;
+  for (let i = 0; i < posts; i++) {
+    if (i / posts > p * 1.3) break;
+    const z = z0 + (len * i) / (posts - 1);
+    for (const x of [-0.62, 0.62]) g.add(cyl(0.08, 1.4, post, x, -0.6, z, 6));
+  }
+  for (let i = 0; i < n; i++) {
+    if (i / n > p) break;
+    const pl = box(1.35, 0.06, 0.26, plank, 0, 0.02, z0 + 0.15 + i * 0.3);
+    pl.rotation.y = ((i * 37) % 7 - 3) * 0.006;
+    g.add(pl);
+  }
+  if (p >= 1) {
+    // Rails along the landward half, a bollard and a lantern post at the end.
+    for (const x of [-0.62, 0.62]) g.add(box(0.06, 0.06, len * 0.45, post, x, 0.55, z0 + len * 0.22));
+    for (let z = z0; z < z0 + len * 0.45; z += 1.2) for (const x of [-0.62, 0.62]) g.add(box(0.07, 0.55, 0.07, post, x, 0.28, z));
+    g.add(cyl(0.09, 0.35, mat('#3a3a38'), 0.45, 0.2, z1 - 0.25, 7));
+    g.add(box(0.08, 1.6, 0.08, post, -0.55, 0.8, z1 - 0.2));
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), GLOW);
+    lamp.position.set(-0.55, 1.62, z1 - 0.2);
+    g.add(lamp);
+  }
+  return g;
+}
+
+/** The fishing hut: a board shack facing the water, drying racks hung with fish. Tier 1 adds a smoker. */
+function fishHut(W: number, D: number, tier: number, p: number, glow: THREE.Mesh[]): THREE.Group {
+  const g = new THREE.Group();
+  const board = mat(tier === 0 ? '#7a6a58' : '#6b5236'), dark = mat('#4a3a2a');
+  const H = 2.2;
+  const k = smooth(0.1, 0.7, p);
+  g.add(box(W, 0.12, D, mat('#6b5236'), 0, 0.06, 0));
+  if (k > 0) {
+    const h = H * k;
+    g.add(box(W, h, 0.1, board, 0, h / 2, -D / 2));
+    for (const s of [-1, 1]) g.add(box(0.1, h, D, board, s * W / 2, h / 2, 0));
+    for (const s of [-1, 1]) g.add(box(W * 0.32, h, 0.1, board, s * W * 0.34, h / 2, D / 2));
+    for (let x = -W / 2 + 0.2; x < W / 2; x += 0.45) g.add(box(0.03, h, 0.02, dark, x, h / 2, D / 2 + 0.06));
+  }
+  if (p > 0.72) {
+    const roof = box(W + 0.6, 0.08, D + 0.9, mat(tier === 0 ? '#6f7a7a' : '#5f4a3e'), 0, H + 0.35, 0.15);
+    roof.rotation.x = -0.28;
+    g.add(roof);
+  }
+  if (p >= 1) {
+    g.add(box(0.8, 1.8, 0.05, mat('#4f6f8a'), 0, 0.95, D / 2 + 0.04));
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.35), GLOW);
+    win.position.set(W / 2 + 0.06, 1.4, 0);
+    win.rotation.y = Math.PI / 2;
+    win.visible = false;
+    g.add(win);
+    glow.push(win);
+    // Drying racks beside the hut, hung with split fish.
+    const pole = mat('#5b4330'), fish = mat('#b8c0c0'), fish2 = mat('#9aa6a2');
+    for (const rx of [-W / 2 - 0.9]) {
+      for (const dz of [-0.9, 0.9]) g.add(box(0.07, 1.6, 0.07, pole, rx, 0.8, dz));
+      for (const y of [1.5, 1.05]) {
+        g.add(box(0.05, 0.05, 1.9, pole, rx, y, 0));
+        for (let z = -0.75; z <= 0.75; z += 0.25) {
+          const f = box(0.05, 0.32, 0.12, (z * 8) % 2 ? fish : fish2, rx + 0.02, y - 0.18, z);
+          f.rotation.z = 0.08;
+          g.add(f);
+        }
+      }
+    }
+    // A smoker (brick) for the smokehouse.
+    if (tier === 1) {
+      g.add(box(0.8, 1.1, 0.8, mat('#8a5a44'), W / 2 + 0.7, 0.55, -D / 2 + 0.5));
+      g.add(box(0.3, 0.8, 0.3, mat('#6b4436'), W / 2 + 0.7, 1.5, -D / 2 + 0.5));
+    }
+  }
+  g.userData.building = true;
+  return g;
+}
+
+/** The net shed: an open lean-to with nets draped to dry, floats and pots. */
+function netShed(W: number, D: number, p: number): THREE.Group {
+  const g = new THREE.Group();
+  const post = mat('#5b4330');
+  const k = smooth(0.1, 0.8, p);
+  for (const [x, z] of [[-W / 2, -D / 2], [W / 2, -D / 2], [-W / 2, D / 2], [W / 2, D / 2]]) {
+    const h = (z < 0 ? 2.1 : 1.8) * k;
+    if (h > 0.05) g.add(box(0.09, h, 0.09, post, x, h / 2, z));
+  }
+  if (p > 0.7) {
+    const roof = box(W + 0.4, 0.06, D + 0.5, mat('#6f7a7a'), 0, 2.02, 0);
+    roof.rotation.x = 0.14;
+    g.add(roof);
+    g.add(box(W, 1.6, 0.06, mat('#7a6a58'), 0, 0.85, -D / 2));
+  }
+  if (p >= 1) {
+    const netM = new THREE.MeshLambertMaterial({ color: '#3f4a48', transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+    for (const s of [-1, 1]) {
+      const net = new THREE.Mesh(new THREE.PlaneGeometry(D * 0.9, 1.3), netM);
+      net.position.set(s * (W / 2 + 0.02), 1.1, 0);
+      net.rotation.y = Math.PI / 2;
+      g.add(net);
+      for (let i = 0; i < 4; i++) g.add(new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 4), mat('#d86a3a')).translateX(s * (W / 2 + 0.05)).translateY(1.72).translateZ(-D * 0.4 + i * D * 0.27));
+    }
+    for (let i = 0; i < 2; i++) g.add(box(0.5, 0.4, 0.5, mat('#6b5236'), -0.3 + i * 0.6, 0.2, D / 2 + 0.5));
+  }
+  return g;
+}
+
+/** A clinker rowing boat, oars shipped. */
+function rowBoat(p: number): THREE.Group {
+  const g = new THREE.Group();
+  const hull = mat('#7a5a3a'), inside = mat('#5b4330'), stripe = mat('#4f7f7a');
+  const k = smooth(0.1, 1, p);
+  if (k <= 0) return g;
+  g.add(box(0.9, 0.12, 2.2 * k, inside, 0, 0.06, 0));
+  for (const s of [-1, 1]) {
+    const side = box(0.08, 0.4, 2.3 * k, hull, s * 0.5, 0.25, 0);
+    side.rotation.z = s * 0.22;
+    g.add(side);
+    g.add(box(0.09, 0.08, 2.3 * k, stripe, s * 0.55, 0.42, 0));
+  }
+  if (p >= 1) {
+    const bow = box(0.7, 0.4, 0.5, hull, 0, 0.25, 1.25);
+    bow.rotation.y = Math.PI / 4;
+    bow.scale.set(0.8, 1, 0.8);
+    g.add(bow);
+    g.add(box(0.95, 0.4, 0.08, hull, 0, 0.25, -1.15));
+    for (const z of [-0.35, 0.45]) g.add(box(0.9, 0.05, 0.25, inside, 0, 0.3, z));
+    for (const s of [-1, 1]) {
+      const oar = box(0.05, 0.05, 2.2, mat('#8a7458'), s * 0.3, 0.36, 0);
+      oar.rotation.y = s * 0.08;
+      g.add(oar);
+    }
+  }
+  return g;
+}
+
 function roofPatch(site: Site, p: number): THREE.Group {
   const g = new THREE.Group();
   const S = site.shelter, C = site.collapse;
@@ -514,6 +656,26 @@ export class VillageView {
       case 'workshop': g = workshop(W, D, tier, p); break;
       case 'lantern': g = lantern(p); break;
       case 'annex': g = leanTo(W + 0.3, D + 0.3, p, glow); break;
+      case 'jetty': {
+        const len = (facing === 1 || facing === 3) ? f.w : f.d;
+        g = jetty(len, tier, p);
+        this.place(g, f, facing);
+        // Level with the bank it starts from, not the pond bed.
+        const c = footCenter(this.world, f);
+        const dir = [[0, 1], [1, 0], [0, -1], [-1, 0]][facing];
+        const bank = { x: c.x - dir[0] * (len / 2 + 0.5), z: c.z - dir[1] * (len / 2 + 0.5) };
+        g.position.y = Math.max(0.05, heightAt(this.world, bank.x, bank.z) + 0.1);
+        return g;
+      }
+      case 'fishhut': g = fishHut(W + 0.2, D + 0.2, tier, p, glow); break;
+      case 'netshed': g = netShed(W + 0.2, D + 0.2, p); break;
+      case 'boat': {
+        g = rowBoat(p);
+        this.place(g, f, facing);
+        g.position.y = WATER_Y - 0.05;
+        g.userData.boat = true;
+        return g;
+      }
       case 'kitchen': {
         g = kitchen(p, !this.village.site.kitchenCovered);
         const K = this.village.site.kitchen;
@@ -739,6 +901,24 @@ export class VillageView {
     }
     for (const [id, e] of this.entries) {
       if (!live.has(id)) { this.dispose(e.group); this.entries.delete(id); }
+    }
+  }
+
+  /** A boat out on the water goes where its fisher is; otherwise it's moored. */
+  updateBoats(afloat: { x: number; z: number; facing: number; boatId: number }[]) {
+    for (const b of this.village.buildings) {
+      if (b.kind !== 'boat') continue;
+      const e = this.entries.get(`b${b.id}`);
+      if (!e) continue;
+      const who = afloat.find((a) => a.boatId === b.id);
+      if (who) {
+        e.group.position.set(who.x, WATER_Y - 0.05, who.z);
+        e.group.rotation.y = who.facing + Math.PI / 2;
+      } else {
+        const c = footCenter(this.world, b.foot);
+        e.group.position.set(c.x, WATER_Y - 0.05, c.z);
+        e.group.rotation.y = [0, Math.PI / 2, Math.PI, -Math.PI / 2][b.facing];
+      }
     }
   }
 

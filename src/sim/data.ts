@@ -16,7 +16,7 @@ export interface TraitDef {
 }
 
 export const TRAITS: Record<TraitId, TraitDef> = {
-  stoic:       { id: 'stoic', name: 'Stoic', blurb: 'Grief lands softer, but so does joy.', griefMult: 0.5, bondRate: 0.7 },
+  stoic:       { id: 'stoic', name: 'Stoic', blurb: 'Grief lands softer, but so does joy.', griefMult: 0.5, bondRate: 0.7, roleBonus: { fisher: 0.3 } },
   tender:      { id: 'tender', name: 'Tender', blurb: 'Loves quickly. Mourns hard.', griefMult: 1.6, bondRate: 1.5 },
   green_thumb: { id: 'green_thumb', name: 'Green Thumb', blurb: 'The overgrowth yields to them.', roleBonus: { forager: 0.5, farmer: 0.5 } },
   tinkerer:    { id: 'tinkerer', name: 'Tinkerer', blurb: 'Sees parts where others see junk.', roleBonus: { builder: 0.5 } },
@@ -40,12 +40,13 @@ export const PSI: Record<PsiId, PsiDef> = {
   echo:     { id: 'echo', name: 'Echo', blurb: 'Reads the last memory left in an object.' },
 };
 
-export type RoleId = 'builder' | 'farmer' | 'forager' | 'scout' | 'tender' | 'attune' | 'rest';
+export type RoleId = 'builder' | 'farmer' | 'forager' | 'fisher' | 'scout' | 'tender' | 'attune' | 'rest';
 
 export const ROLES: Record<RoleId, { name: string; blurb: string }> = {
   builder: { name: 'Builder', blurb: 'Fells trees and hauls what the village needs.' },
   farmer:  { name: 'Farmer', blurb: 'Tills, sows, tends and harvests the fields you mark.' },
   forager: { name: 'Forager', blurb: 'Gathers berries and greens from the overgrowth.' },
+  fisher:  { name: 'Fisher', blurb: 'Works the fishing grounds you mark: jetty, nets and boat.' },
   scout:   { name: 'Scout', blurb: 'Walks the edge of the known map and pushes it back.' },
   tender:  { name: 'Tender', blurb: 'Keeps the fire and keeps people company.' },
   attune:  { name: 'Attuner', blurb: 'Sits with the wisps at the ring. Gathers glimmer.' },
@@ -67,11 +68,12 @@ export const BACKGROUNDS = [
   'former line cook', 'former EMT', 'former radio host', 'former lineworker',
   'former schoolteacher', 'former sky-watcher forum mod', 'former long-haul trucker',
   'former park ranger', 'former data-center tech', 'born after the Quiet',
-  'former carpenter',
+  'former carpenter', 'former deckhand',
 ];
 
 /** Trades from before the Quiet that come with know-how (0..1; 0.5 = can do it). */
-export const TRADE_SKILLS: Record<string, { joinery?: number }> = {
+export const TRADE_SKILLS: Record<string, { joinery?: number; netmending?: number }> = {
   'former carpenter': { joinery: 0.7 },
+  'former deckhand': { netmending: 0.7 },
   'former cabinetmaker': { joinery: 0.6 },
 };

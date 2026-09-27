@@ -19,7 +19,7 @@ export type GroundId = (typeof Ground)[keyof typeof Ground];
 export type TreeKind = 'oak' | 'pine' | 'birch';
 
 /** Zones the player paints. One per tile. */
-export const Zone = { None: 0, Home: 1, Woodlot: 2, Field: 3, Sacred: 4 } as const;
+export const Zone = { None: 0, Home: 1, Woodlot: 2, Field: 3, Sacred: 4, Fishing: 5 } as const;
 export type ZoneKind = (typeof Zone)[keyof typeof Zone];
 
 /** Field crop states. */
@@ -65,6 +65,9 @@ export type PoiKind = 'ruin' | 'ring' | 'pond';
 export interface Poi { id: number; kind: PoiKind; tx: number; tz: number; name: string; discovered: boolean }
 
 export interface Rect { x0: number; z0: number; x1: number; z1: number }
+
+/** A body of water with fish in it. Stock recovers logistically toward `max`. */
+export interface Pond { id: number; tiles: number; cx: number; cz: number; stock: number; max: number; name: string }
 export interface Point { x: number; z: number }
 
 export interface World {
@@ -96,6 +99,12 @@ export interface World {
   cropGrowth: Float32Array;
   cropVersion: number;
   pois: Poi[];
+  /** Water bodies, and tile index → pond id (-1 = none). */
+  ponds: Pond[];
+  pondAt: Int32Array;
+  /** Walkable decking over water (jetties), and its height. */
+  deck: Uint8Array;
+  deckY: Float32Array;
   home: Point;
   campfire: Point;
   stockpile: Rect;
@@ -114,7 +123,26 @@ export const toTileZ = (w: World, z: number) => Math.floor(z + w.h / 2);
 export function passable(w: World, tx: number, tz: number): boolean {
   if (!inBounds(w, tx, tz)) return false;
   const i = idx(w, tx, tz);
-  return w.blocked[i] === 0 && w.ground[i] !== Ground.Water;
+  return w.blocked[i] === 0 && (w.ground[i] !== Ground.Water || w.deck[i] === 1);
+}
+
+/** Surface water level (the rendered water plane). */
+export const WATER_Y = -0.32;
+
+/** Height someone stands at: on decking if there is any, else the ground. */
+export function standHeight(w: World, x: number, z: number): number {
+  const tx = toTileX(w, x), tz = toTileZ(w, z);
+  if (inBounds(w, tx, tz) && w.deck[idx(w, tx, tz)]) return w.deckY[idx(w, tx, tz)];
+  return heightAt(w, x, z);
+}
+
+/** Tiles of water within `r` of a tile (for shore tests). */
+export function nearWater(w: World, tx: number, tz: number, r: number): boolean {
+  for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    const x = tx + dx, z = tz + dz;
+    if (inBounds(w, x, z) && w.ground[idx(w, x, z)] === Ground.Water) return true;
+  }
+  return false;
 }
 
 /** Movement cost multiplier for a tile (only meaningful if passable). */
@@ -178,7 +206,10 @@ export const inZone = (w: World, tx: number, tz: number) => zoneAt(w, tx, tz) ==
 export function zoneAllowed(w: World, tx: number, tz: number, kind: ZoneKind): boolean {
   if (!inBounds(w, tx, tz)) return false;
   const i = idx(w, tx, tz);
-  if (w.explored[i] <= 128 || w.ground[i] === Ground.Water) return false;
+  if (w.explored[i] <= 128) return false;
+  // Fishing grounds: the shore and the shallows of a pond, anywhere explored.
+  if (kind === Zone.Fishing) return w.pondAt[i] >= 0 ? nearLand(w, tx, tz, 3) : w.ground[i] !== Ground.Water && nearWater(w, tx, tz, 3);
+  if (w.ground[i] === Ground.Water) return false;
   if (kind === Zone.Field || kind === Zone.Woodlot) {
     const g = w.ground[i];
     if (g === Ground.Asphalt || g === Ground.Concrete || w.blocked[i]) return false;
@@ -203,6 +234,14 @@ export function paintZone(w: World, x: number, z: number, radius: number, kind: 
   }
   if (changed) w.zoneVersion++;
   return changed;
+}
+
+function nearLand(w: World, tx: number, tz: number, r: number): boolean {
+  for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    const x = tx + dx, z = tz + dz;
+    if (inBounds(w, x, z) && w.ground[idx(w, x, z)] !== Ground.Water) return true;
+  }
+  return false;
 }
 
 export function isExplored(w: World, tx: number, tz: number): boolean {
