@@ -142,7 +142,7 @@ export class People {
    * `bed` gives the bed an indoor agent sleeps in; when `showIndoors` is set
    * (roofs off), sleepers are drawn lying there instead of hidden.
    */
-  update(t: number, dt: number, agents: Agent[], bed?: (a: Agent) => { x: number; z: number; yaw: number } | null, showIndoors = false) {
+  update(t: number, dt: number, agents: Agent[], bed?: (a: Agent) => { x: number; z: number; yaw: number; y?: number } | null, showIndoors = false) {
     for (const a of agents) {
       const r = this.rigs.get(a.id);
       if (!r) continue;
@@ -151,7 +151,7 @@ export class People {
         const slot = showIndoors && bed ? bed(a) : null;
         root.visible = !!slot;
         if (slot) {
-          root.position.set(slot.x, heightAt(this.world, slot.x, slot.z) + 0.1, slot.z);
+          root.position.set(slot.x, heightAt(this.world, slot.x, slot.z) + (slot.y ?? 0.1), slot.z);
           root.rotation.y = slot.yaw;
           r.ring.visible = a.id === this.selected;
           this.pose(r, a, t);

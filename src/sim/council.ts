@@ -9,13 +9,14 @@
 import type { Colony } from './colony';
 import { adjustBond, alive, bondValue, log, type Survivor } from './community';
 import { dayOfSeason, seasonOf } from './calendar';
-import { bedsTotal, hasBuilt, storageCapacity, type SiteKind } from './buildings';
+import { bedsTotal, hasBuilt, sharedBeds, storageCapacity, store, type SiteKind } from './buildings';
+import { householdName, householdOf, waitingHouseholds } from './homes';
 import type { Rng } from './rng';
 import { communitySight, homeResonance, nurture, type EntityRequest } from './veil';
 import { Zone, idx, paintZone, reveal, toTileX, toTileZ, type Point } from './world';
 
 export type ProposalKind =
-  | 'build' | 'festival' | 'wild_ring' | 'rest_day' | 'open_gates' | 'close_gates' | 'offering' | 'grove';
+  | 'build' | 'festival' | 'wild_ring' | 'rest_day' | 'open_gates' | 'close_gates' | 'offering' | 'grove' | 'home' | 'commons';
 
 export interface Proposal {
   id: number;
@@ -27,6 +28,8 @@ export interface Proposal {
   support: number[];
   cost: { food?: number; wood?: number; glimmer?: number };
   request?: EntityRequest;
+  /** Home petitions: the household asking. */
+  household?: number;
 }
 
 export interface Council {
@@ -52,6 +55,8 @@ export function createCouncil(): Council {
 }
 
 const first = (s: Survivor) => s.name.split(' ')[0];
+/** Proposal titles inside a sentence: lower-case the first word, keep names. */
+const inline = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 const has = (s: Survivor, t: string) => s.traits.includes(t as never);
 
 const FESTIVALS: Record<string, [string, string]> = {
@@ -92,9 +97,44 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
       'Before the frost, we need somewhere cold to keep the harvest.',
       (s) => (s.role === 'farmer' ? 1 : 0) + (has(s, 'hoarder') ? 1 : 0));
   }
-  if (bedsTotal(v) < pop + 1) {
-    buildCand('hut', 1.8, 'Raise another house', 'People are sleeping close enough to kick each other.',
+  const waiting = waitingHouseholds(v);
+  if (bedsTotal(v) < pop + 1 && !waiting.length) {
+    buildCand('hut', 1.8, 'Raise a bunkhouse', 'People are sleeping close enough to kick each other.',
       (s) => (s.role === 'builder' ? 1 : 0) + (col.beds.has(s.id) ? 0 : 1));
+  }
+  // Households without a home petition for one (not those already approved).
+  if (store(v).level >= 1) {
+    for (const h of waiting) {
+      if (v.homeQueue.includes(h.id) || day - h.since < 1) continue;
+      const speaker = living.filter((s) => h.members.includes(s.id) && !taken.has(s.id))
+        .sort((a, b) => b.stats.empathy - a.stats.empathy)[0];
+      if (!speaker) continue;
+      const others = h.members.filter((m) => m !== speaker.id).map((m) => first(living.find((s) => s.id === m)!));
+      const waited = day - h.since;
+      const pitch = others.length
+        ? `${others.join(' and ')} and I would like a place of our own. A house, a bit of ground behind it. We'll do most of the work.`
+        : 'I\'d like a small place of my own. I don\'t need much. A door I can close.';
+      out.push({
+        score: 1.5 + Math.min(1.2, waited * 0.12) + h.members.length * 0.15,
+        make: () => ({
+          kind: 'home', household: h.id, title: `A home for ${householdName(c, h)}`, pitch, proposer: speaker.id, cost: {},
+        }),
+      });
+    }
+  }
+  // Once most people have homes, the old shelter can become something shared.
+  const st = store(v);
+  const housed = living.filter((s) => householdOf(v, s.id)?.home).length;
+  const unhoused = pop - housed;
+  if (st.level === 2 && housed / pop >= 0.5 && sharedBeds(v) - (st.beds - 2) >= unhoused) {
+    out.push({
+      score: 2,
+      make: () => ({
+        kind: 'commons', title: 'Make the old store a commons hall', cost: { wood: 8 },
+        pitch: 'Hardly anyone sleeps in the store now. Let\'s put a long table in it, and a stove, and eat together on cold nights.',
+        proposer: voice(living, (s) => (has(s, 'storyteller') ? 2 : 0) + s.stats.empathy / 5 + (s.role === 'tender' ? 1 : 0), rng, taken).id,
+      }),
+    });
   }
   if (!hasBuilt(v, 'shrine')) {
     const hr = homeResonance(col);
@@ -185,6 +225,14 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
 
 function affinity(col: Colony, s: Survivor, p: Omit<Proposal, 'id' | 'support'>): number {
   switch (p.kind) {
+    case 'home': {
+      const h = col.village.households.find((x) => x.id === p.household);
+      if (h?.members.includes(s.id)) return 1;
+      const mine = householdOf(col.village, s.id);
+      // Others waiting would rather their own petition went first; the settled are glad to help.
+      return (mine && !mine.home ? -0.2 : 0.15) + (s.role === 'builder' ? 0.1 : 0);
+    }
+    case 'commons': return (has(s, 'storyteller') ? 0.3 : 0) + (householdOf(col.village, s.id)?.home ? 0.2 : -0.3);
     case 'build':
       if (p.build === 'cellar') return (s.role === 'farmer' ? 0.3 : 0) + (has(s, 'hoarder') ? 0.3 : 0);
       if (p.build === 'hut') return (col.beds.has(s.id) ? 0 : 0.5) + (s.role === 'builder' ? 0.1 : 0);
@@ -212,8 +260,9 @@ export function maybeConvene(col: Colony, rng: Rng) {
   for (const cand of cands) {
     if (picked.length >= 3) break;
     const p = cand.make();
-    const key = p.kind === 'build' ? `build:${p.build}` : p.kind;
+    const key = p.kind === 'build' ? `build:${p.build}` : p.kind === 'home' ? `home:${p.household}` : p.kind;
     if (kinds.has(key) || speakers.has(p.proposer)) continue;
+    if (p.kind === 'home' && picked.filter((x) => x.kind === 'home').length >= 2) continue;
     kinds.add(key);
     speakers.add(p.proposer);
     picked.push({ ...p, id: council.nextId++, support: [] });
@@ -260,11 +309,11 @@ export function resolveCouncil(col: Colony, choice: number, dream = false, auto 
   }
   applyProposal(col, chosen);
   const proposer = first(who(chosen.proposer));
-  if (auto) log(c, `The council settled it without you: ${proposer}'s "${chosen.title.toLowerCase()}".`, 'info');
-  else if (dream) log(c, `Everyone woke having dreamt the same thing. The council backed ${proposer}: ${chosen.title.toLowerCase()}.`, 'strange');
+  if (auto) log(c, `The council settled it without you: ${proposer}'s "${inline(chosen.title)}".`, 'info');
+  else if (dream) log(c, `Everyone woke having dreamt the same thing. The council backed ${proposer}: ${inline(chosen.title)}.`, 'strange');
   else {
     const hurt = passed.map((p) => first(who(p.proposer)));
-    log(c, `The council backed ${proposer}: ${chosen.title.toLowerCase()}.${hurt.length ? ` ${hurt.join(' and ')} took it quietly.` : ''}`, 'good');
+    log(c, `The council backed ${proposer}: ${inline(chosen.title)}.${hurt.length ? ` ${hurt.join(' and ')} took it quietly.` : ''}`, 'good');
   }
   council.active = null;
   council.nextDay = c.day + 4;
@@ -311,6 +360,19 @@ function applyProposal(col: Colony, p: Proposal) {
       if (p.request) paintZone(w, p.request.x, p.request.z, 4.5, Zone.Sacred);
       col.veil.requests = col.veil.requests.filter((q) => q !== p.request);
       break;
+    case 'home':
+      if (p.household && !col.village.homeQueue.includes(p.household)) col.village.homeQueue.push(p.household);
+      break;
+    case 'commons': {
+      const st = store(col.village);
+      st.level = 3;
+      st.beds = 2;
+      st.name = 'the commons hall';
+      col.village.bedsDirty = true;
+      log(c, 'The cots came out of the old store and a long table went in. The commons hall: supper on cold nights, and a place to talk.', 'good');
+      for (const s of living) s.morale = Math.min(100, s.morale + 4);
+      break;
+    }
   }
 }
 

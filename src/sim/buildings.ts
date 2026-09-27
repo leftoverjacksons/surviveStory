@@ -6,13 +6,14 @@
 import { alive, log, type Community } from './community';
 import { ANNEX, CAMP, KITCHEN, STORE, STORE_DOOR, STORE_INSIDE } from './layout';
 import type { Rng } from './rng';
+import type { Household, Plot } from './homes';
 import {
   Ground, LANE_WEAR, PATH_WEAR, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
   type Point, type World,
 } from './world';
 
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine';
-export type ProjectKind = 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'upgrade';
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine';
+export type ProjectKind = 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'upgrade';
 export type Tier = 0 | 1;
 
 export interface Cost { wood: number; scrap: number; glimmer: number }
@@ -31,12 +32,16 @@ export interface Building {
   door: Point;
   inside: Point;
   beds: number;
-  /** Store: 0 derelict, 1 cleared, 2 roof patched. */
+  /** Store: 0 derelict, 1 cleared, 2 roof patched, 3 commons hall. */
   level: number;
   /** Garden: tended minutes today, and growth 0..1 (visual). */
   tended: number;
   growth: number;
   name: string;
+  /** Homes: the plot it stands on, who lives there, and its heading. */
+  plot?: number;
+  household?: number;
+  yaw?: number;
 }
 
 export interface Project {
@@ -56,6 +61,13 @@ export interface Project {
   /** Tree ids that must be felled before building can start. */
   clearTrees: number[];
   done: boolean;
+  /** Homes: plot, household, the tiles the house covers, and its door and heading. */
+  plot?: number;
+  household?: number;
+  blockTiles?: number[];
+  door?: Point;
+  inside?: Point;
+  yaw?: number;
 }
 
 export interface Village {
@@ -66,14 +78,25 @@ export interface Village {
   nextId: number;
   craftXp: number;
   tier: Tier;
+  households: Household[];
+  plots: Plot[];
+  /** Tile index → plot id (0 = none). */
+  plotAt: Int32Array;
+  /** Households whose petition for a home the council approved. */
+  homeQueue: number[];
+  /** Last day a household found no room for a plot, and the land it searched. */
+  noPlotDay?: number;
+  noPlotKey?: string;
+  /** Set when bed assignments need redoing (e.g. the store became a hall). */
+  bedsDirty?: boolean;
 }
 
 interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]; work: [number, number]; beds?: [number, number] }
 const c = (wood: number, scrap: number, glimmer = 0): Cost => ({ wood, scrap, glimmer });
 
-export const DEFS: Record<Exclude<ProjectKind, 'upgrade' | 'clear_store' | 'patch_roof'>, Def> = {
+export const DEFS: Record<Exclude<ProjectKind, 'upgrade' | 'clear_store' | 'patch_roof' | 'home'>, Def> = {
   annex:    { name: ['Lean-to on the store', 'Lean-to on the store'], w: ANNEX.w, d: ANNEX.d, cost: [c(18, 6), c(18, 6)], work: [600, 600], beds: [2, 2] },
-  hut:      { name: ['Scrap shack', 'Timber cabin'], w: 3, d: 3, cost: [c(14, 8), c(34, 2)], work: [600, 900], beds: [2, 3] },
+  hut:      { name: ['Bunk shack', 'Bunkhouse'], w: 3, d: 3, cost: [c(14, 8), c(34, 2)], work: [600, 900], beds: [2, 3] },
   garden:   { name: ['Tire garden', 'Fenced garden'], w: 4, d: 3, cost: [c(6, 4), c(18, 0)], work: [300, 420] },
   workshop: { name: ['Scrap workbench', 'Timber workshop'], w: 3, d: 3, cost: [c(10, 6), c(30, 4)], work: [420, 660] },
   kitchen:  { name: ['Canopy kitchen', 'Canopy kitchen'], w: 4, d: 2, cost: [c(12, 6), c(12, 6)], work: [480, 480] },
@@ -90,7 +113,10 @@ export const MAX_ACTIVE = 2;
 const zero = (): Cost => c(0, 0, 0);
 
 export function createVillage(w: World): Village {
-  const v: Village = { buildings: [], projects: [], nextId: 1, craftXp: 0, tier: 0 };
+  const v: Village = {
+    buildings: [], projects: [], nextId: 1, craftXp: 0, tier: 0,
+    households: [], plots: [], plotAt: new Int32Array(w.w * w.h), homeQueue: [],
+  };
   // The old store is there from the start: derelict, no beds yet.
   const foot = footOfRect(w, STORE.x - STORE.w / 2, STORE.z - STORE.d / 2, STORE.w, STORE.d);
   v.buildings.push({
@@ -105,7 +131,14 @@ function footOfRect(w: World, x0: number, z0: number, wid: number, dep: number):
 }
 
 export const store = (v: Village) => v.buildings.find((b) => b.kind === 'store')!;
-export const bedsTotal = (v: Village) => v.buildings.reduce((n, b) => n + b.beds, 0);
+/** Beds anyone could sleep in: shared beds, plus homes up to their household's size (and empty homes). */
+export const bedsTotal = (v: Village) => v.buildings.reduce((n, b) => {
+  if (b.kind !== 'home' || !b.household) return n + b.beds;
+  const h = v.households.find((x) => x.id === b.household);
+  return n + Math.min(b.beds, h ? h.members.length : b.beds);
+}, 0);
+/** Shared (non-home) beds. */
+export const sharedBeds = (v: Village) => v.buildings.reduce((n, b) => n + (b.kind === 'home' ? 0 : b.beds), 0);
 export const hasBuilt = (v: Village, k: BuildingKind) => v.buildings.some((b) => b.kind === k);
 export const footCenter = (w: World, f: Footprint): Point => ({ x: tileX(w, f.tx) - 0.5 + f.w / 2, z: tileZ(w, f.tz) - 0.5 + f.d / 2 });
 
@@ -138,7 +171,7 @@ function footprintFree(w: World, v: Village, f: Footprint, margin: number): { ok
       if (!inZone(w, tx, tz) || !isExplored(w, tx, tz)) return { ok: false, trees };
       const g = w.ground[i];
       if (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete) return { ok: false, trees };
-      if (w.blocked[i] || w.bushAt[i] >= 0) return { ok: false, trees };
+      if (w.blocked[i] || w.bushAt[i] >= 0 || v.plotAt[i]) return { ok: false, trees };
       if (w.treeAt[i] >= 0) {
         if (w.trees[w.treeAt[i]].protected) return { ok: false, trees };
         trees.push(w.treeAt[i]);
@@ -178,6 +211,7 @@ export function heatNeed(b: Building): number {
     case 'store': return b.level >= 2 ? 2 : 3;
     case 'annex': return 1;
     case 'hut': return b.tier === 0 ? 2 : 1;
+    case 'home': return b.tier === 0 ? 2 : 1;
     default: return 0;
   }
 }
@@ -299,7 +333,11 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
         cost: { ...def.cost[0] }, workNeeded: def.work[0], target: 0, clearTrees: [],
       });
     }
-    if (st.level >= 1 && !has('hut')) return site('hut');
+    // Households get homes of their own (see homes.ts); a bunk shack is for
+    // when nobody has paired up yet and people are sleeping out.
+    const waiting = v.households.some((h) => !h.home);
+    const noRoom = v.noPlotDay !== undefined && com.day - v.noPlotDay <= 1;
+    if (st.level >= 1 && !has('hut') && (!waiting || (noRoom && beds < pop))) return site('hut');
     return null;
   };
   const site = (kind: SiteKind): Project | null => {
@@ -344,7 +382,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   if (beds < pop + 2) wants.push(shelter); // a little room for newcomers
   if (v.tier === 1 && !has('upgrade')) {
     wants.push(() => {
-      const old = v.buildings.find((b) => b.tier === 0 && (b.kind === 'hut' || b.kind === 'garden' || b.kind === 'workshop' || b.kind === 'cellar' || b.kind === 'shrine'));
+      const old = v.buildings.find((b) => b.tier === 0 && (b.kind === 'garden' || b.kind === 'workshop' || b.kind === 'cellar' || b.kind === 'shrine'));
       if (!old) return null;
       const def = DEFS[old.kind as 'hut' | 'garden' | 'workshop' | 'cellar' | 'shrine'];
       log(com, `${lead} wants to rebuild ${old.name.toLowerCase()} properly, in timber.`, 'good');
@@ -383,6 +421,7 @@ function projectBeds(p: Project, v: Village): number {
   if (p.kind === 'patch_roof') return 2;
   if (p.kind === 'annex') return DEFS.annex.beds![0];
   if (p.kind === 'hut') return DEFS.hut.beds![p.tier];
+  if (p.kind === 'home') return v.households.find((h) => h.id === p.household)?.members.length ?? 0;
   if (p.kind === 'upgrade') {
     const b = v.buildings.find((x) => x.id === p.target);
     return b?.kind === 'hut' ? DEFS.hut.beds![1] - DEFS.hut.beds![0] : 0;
@@ -421,8 +460,20 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
       }
       break;
     }
+    case 'home': {
+      const b: Building = {
+        id: v.nextId++, kind: 'home', tier: p.tier, foot: p.foot, facing: 0, door: { ...p.door! }, inside: { ...p.inside! },
+        beds: 0, level: 0, tended: 0, growth: 1, name: p.name, plot: p.plot, household: p.household, yaw: p.yaw,
+      };
+      const plot = v.plots.find((x) => x.id === p.plot);
+      b.beds = plot ? plot.house.beds : 2;
+      v.buildings.push(b);
+      for (const i of p.blockTiles ?? []) w.blocked[i] = 1;
+      log(com, `${p.name} is finished.`, 'good');
+      break;
+    }
     default: {
-      const kind = p.kind as Exclude<BuildingKind, 'store'>;
+      const kind = p.kind as Exclude<BuildingKind, 'store' | 'home'>;
       const def = DEFS[kind];
       const cen = footCenter(w, p.foot);
       const b: Building = {
@@ -445,12 +496,29 @@ export function checkTier(v: Village, com: Community) {
   }
 }
 
-/** Bed assignments: indoor beds first, by survivor id. Returns survivor id → building id. */
+/**
+ * Bed assignments. Households sleep at home; everyone else takes the shared
+ * beds (and any empty home), by survivor id. Returns survivor id → building id.
+ */
 export function assignBeds(v: Village, ids: number[]): Map<number, number> {
   const out = new Map<number, number>();
+  const living = new Set(ids);
+  for (const h of v.households) {
+    const b = h.home ? v.buildings.find((x) => x.id === h.home) : undefined;
+    if (!b) continue;
+    let n = 0;
+    for (const m of h.members) if (living.has(m) && n < b.beds) { out.set(m, b.id); n++; }
+  }
   const slots: number[] = [];
-  for (const b of v.buildings) for (let i = 0; i < b.beds; i++) slots.push(b.id);
-  [...ids].sort((a, b) => a - b).forEach((id, i) => { if (i < slots.length) out.set(id, slots[i]); });
+  for (const b of v.buildings) {
+    if (b.kind === 'home' && b.household) continue;
+    for (let i = 0; i < b.beds; i++) slots.push(b.id);
+  }
+  let k = 0;
+  for (const id of [...ids].sort((a, b) => a - b)) {
+    if (out.has(id)) continue;
+    if (k < slots.length) out.set(id, slots[k++]);
+  }
   return out;
 }
 

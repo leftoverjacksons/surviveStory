@@ -37,6 +37,8 @@ export interface Survivor {
   hue: number;
   /** 0..100: how much of the hidden layer they perceive. */
   sight: number;
+  /** Day they joined the village. */
+  arrived?: number;
 }
 
 export type BondKind = 'stranger' | 'friend' | 'close' | 'rival';
@@ -178,6 +180,7 @@ export function createSurvivor(c: Community, rng: Rng): Survivor {
     griefDays: 0,
     memories: [],
     hue: rng.int(0, 7),
+    arrived: c.day,
     sight: Math.min(100, stats.attunement * 7 + (traits.includes('orb_touched') ? 15 : 0) + (psi ? 10 : 0) + rng.int(0, 12)),
   };
   return s;

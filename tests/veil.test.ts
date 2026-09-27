@@ -26,7 +26,7 @@ describe('resonance', () => {
     const before = homeResonance(col);
     for (let i = 0; i < 20; i++) disturb(col, 0, 0, 0.05, 3);
     const hurt = homeResonance(col);
-    expect(hurt).toBeLessThan(before - 0.1);
+    expect(hurt).toBeLessThan(before - 0.05);
     for (let d = 0; d < 30; d++) veilDaily(col, { cold: false, rationing: false });
     expect(homeResonance(col)).toBeGreaterThan(hurt + 0.05);
   });

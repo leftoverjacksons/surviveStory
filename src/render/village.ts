@@ -6,48 +6,16 @@ import { CAR, KITCHEN, STORE } from '../sim/layout';
 import type { Building } from '../sim/buildings';
 import { heightAt, tileX, tileZ, type Heap, type World } from '../sim/world';
 import type { StoreParts } from './station';
+import { homeLayout, housePoint } from '../sim/homes';
+import { buildHouse } from './house';
 import type { RoofControl } from './roofs';
-import { enhance, glowTexture, makeRand } from './util';
+import { glowTexture, makeRand } from './util';
 
-// ---------- shared materials ----------
-
-const matCache = new Map<string, THREE.Material>();
-function mat(color: string, fog = true, tag = ''): THREE.MeshLambertMaterial {
-  const key = `${color}${fog}${tag}`;
-  let m = matCache.get(key) as THREE.MeshLambertMaterial | undefined;
-  if (!m) {
-    m = new THREE.MeshLambertMaterial({ color, flatShading: true });
-    if (fog) enhance(m);
-    matCache.set(key, m);
-  }
-  return m;
-}
-const GLOW = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffc27a').multiplyScalar(1.6), toneMapped: false });
-const GHOST = new THREE.MeshBasicMaterial({ color: '#9ff2e0', transparent: true, opacity: 0.55, depthWrite: false });
-const WISP = new THREE.MeshBasicMaterial({ color: new THREE.Color('#bff7ea').multiplyScalar(3), toneMapped: false });
+import { GHOST, GLOW, WISP, box, cyl, mat, smooth } from './kit';
 let glowTex: THREE.Texture | null = null;
 
 const PANELS = ['#8a5a3a', '#6d7b80', '#5f7f78', '#8e6a4f', '#7b4a3c', '#9a9486'];
 const TARPS = ['#3f6f9a', '#b8703a', '#4e7a5a'];
-
-function box(w: number, h: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-function cyl(r: number, h: number, m: THREE.Material, x = 0, y = 0, z = 0, seg = 7): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), m);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-const smooth = (a: number, b: number, x: number) => {
-  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
 
 /** Local frame: door faces +z; W along x, D along z. */
 function localSize(f: Footprint, facing: number) {
@@ -414,7 +382,7 @@ function materialPile(p: Project, f: Footprint, world: World): THREE.Group {
 
 // ---------- beds ----------
 
-interface Slot { x: number; z: number; yaw: number }
+interface Slot { x: number; z: number; yaw: number; y?: number }
 
 /** Where the beds are inside a building, in its local frame (door toward +z). */
 function localBeds(kind: string, tier: number): { x: number; z: number }[] {
@@ -428,17 +396,48 @@ const STORE_BEDS: { x: number; z: number }[] = [
   { x: -4, z: 1.1 }, { x: -2.6, z: 1.1 }, { x: -1.2, z: 1.1 },
 ];
 
+/** The commons hall: a long table down the middle of the old store. */
+const HALL_TABLE = { x: STORE.x - 0.6, z: STORE.z + 0.2, len: 5.6 };
+const HALL_SEATS: Slot[] = [];
+for (let i = 0; i < 7; i++) for (const s of [-1, 1]) {
+  HALL_SEATS.push({ x: HALL_TABLE.x - HALL_TABLE.len / 2 + 0.5 + i * 0.78, z: HALL_TABLE.z + s * 0.72, yaw: s > 0 ? Math.PI : 0, y: 0.18 });
+}
+/** Guest cots at the back of the hall. */
+const HALL_BEDS = [{ x: -4.2, z: -1.6 }, { x: 3.2, z: -1.6 }];
+
 /** World position and heading of bed `index` in a building. */
-export function bedSlot(world: World, b: Building, index: number): Slot | null {
+export function bedSlot(world: World, village: Village, b: Building, index: number): Slot | null {
   if (b.kind === 'store') {
-    const p = STORE_BEDS[index];
+    const p = (b.level >= 3 ? HALL_BEDS : STORE_BEDS)[index];
     return p ? { x: STORE.x + p.x, z: STORE.z + p.z, yaw: 0 } : null;
+  }
+  if (b.kind === 'home') {
+    const plot = village.plots.find((x) => x.id === b.plot);
+    const bed = plot ? homeLayout(plot.house).beds[index] : undefined;
+    if (!plot || !bed) return null;
+    const p = housePoint(plot.hc, plot.yaw, bed.x, bed.z);
+    return { x: p.x, z: p.z, yaw: plot.yaw + bed.yaw, y: 0.36 };
   }
   const p = localBeds(b.kind, b.tier)[index];
   if (!p) return null;
   const c = footCenter(world, b.foot);
   const yaw = FACING_YAW[b.facing];
   return { x: c.x + p.x * Math.cos(yaw) + p.z * Math.sin(yaw), z: c.z - p.x * Math.sin(yaw) + p.z * Math.cos(yaw), yaw };
+}
+
+/** Where someone sits indoors (eating, or spending the evening): seat `index`. */
+export function seatSlot(world: World, village: Village, b: Building, index: number): Slot | null {
+  void world;
+  if (b.kind === 'store') return HALL_SEATS[index % HALL_SEATS.length];
+  if (b.kind === 'home') {
+    const plot = village.plots.find((x) => x.id === b.plot);
+    if (!plot) return null;
+    const seats = homeLayout(plot.house).seats;
+    const s = seats[index % seats.length];
+    const p = housePoint(plot.hc, plot.yaw, s.x, s.z);
+    return { x: p.x, z: p.z, yaw: plot.yaw + s.yaw, y: 0.1 };
+  }
+  return null;
 }
 
 function bedroll(color: string): THREE.Group {
@@ -498,6 +497,37 @@ export class VillageView {
     return g;
   }
 
+  /** A house on its plot, at progress p. */
+  private homeMesh(plotId: number | undefined, tier: number, p: number, glow: THREE.Mesh[]): THREE.Group {
+    const plot = this.village.plots.find((x) => x.id === plotId);
+    if (!plot) return new THREE.Group();
+    const g = buildHouse(plot.house, tier, p, glow);
+    g.position.set(plot.hc.x, heightAt(this.world, plot.hc.x, plot.hc.z), plot.hc.z);
+    g.rotation.y = plot.yaw;
+    return g;
+  }
+
+  /** Strings and stakes marking out where the house will stand. */
+  private homeOutline(plotId: number | undefined): THREE.Group {
+    const g = new THREE.Group();
+    const plot = this.village.plots.find((x) => x.id === plotId);
+    if (!plot) return g;
+    const { W, D, wing } = plot.house;
+    const rects: [number, number, number, number][] = [[0, 0, W, D]];
+    if (wing) rects.push([wing.side * (W / 2 - wing.w / 2), -D / 2 - wing.d / 2, wing.w, wing.d]);
+    for (const [cx, cz, w, d] of rects) {
+      for (const [ew, ed, x, z] of [[w, 0.05, 0, -d / 2], [w, 0.05, 0, d / 2], [0.05, d, -w / 2, 0], [0.05, d, w / 2, 0]] as const) {
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(ew, 0.04, ed), GHOST);
+        edge.position.set(cx + x, 0.08, cz + z);
+        g.add(edge);
+      }
+      for (const [x, z] of [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2]]) g.add(box(0.06, 0.5, 0.06, mat('#c8b890'), cx + x, 0.25, cz + z));
+    }
+    g.position.set(plot.hc.x, heightAt(this.world, plot.hc.x, plot.hc.z), plot.hc.z);
+    g.rotation.y = plot.yaw;
+    return g;
+  }
+
   private upsert(id: string, key: string, build: (glow: THREE.Mesh[]) => THREE.Group) {
     const e = this.entries.get(id);
     if (e && e.key === key) return;
@@ -545,6 +575,7 @@ export class VillageView {
     }
     // Inside the store: junk before it's cleared, cots after.
     const ikey = `${st.level}:${st.beds}`;
+    const hall = st.level >= 3;
     if (ikey !== this.storeInteriorKey) {
       this.storeInteriorKey = ikey;
       if (this.storeInterior) this.group.remove(this.storeInterior);
@@ -557,6 +588,27 @@ export class VillageView {
           b.rotation.set(rand() * 0.5, rand() * 3, rand() * 0.5);
           gi.add(b);
         }
+      } else if (hall) {
+        // The commons hall: long table, benches, a stove, bunting, two guest cots.
+        const T = HALL_TABLE;
+        gi.add(box(T.len, 0.08, 0.9, mat('#7a5a3a', false), T.x, 0.74, T.z));
+        for (const dx of [-T.len / 2 + 0.3, 0, T.len / 2 - 0.3]) for (const dz of [-0.3, 0.3]) gi.add(box(0.08, 0.72, 0.08, mat('#5b4330', false), T.x + dx, 0.36, T.z + dz));
+        for (const s of [-1, 1]) gi.add(box(T.len - 0.2, 0.07, 0.3, mat('#6b4f33', false), T.x, 0.42, T.z + s * 0.72));
+        for (let i = 0; i < 6; i++) gi.add(cyl(0.09, 0.14, mat(['#b0603a', '#c8b890', '#6f8a6a'][i % 3], false), T.x - T.len / 2 + 0.6 + i * 0.9, 0.85, T.z + (i % 2 ? 0.15 : -0.15), 7));
+        const stove = new THREE.Group();
+        stove.add(cyl(0.42, 0.9, mat('#3a3a38', false), 0, 0.45, 0, 10));
+        stove.add(cyl(0.08, 2.6, mat('#3a3a38', false), 0, 2.2, 0, 6));
+        const fl = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.26, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffae4a').multiplyScalar(2.4), toneMapped: false }));
+        fl.position.set(0, 0.4, 0.38);
+        stove.add(fl);
+        stove.position.set(STORE.x + 3.4, 0, STORE.z + 0.9);
+        gi.add(stove);
+        const colors = ['#6f7d5c', '#8a6a4a'];
+        HALL_BEDS.forEach((b, i) => {
+          const bed = bedroll(colors[i]);
+          bed.position.set(STORE.x + b.x, 0.08, STORE.z + b.z);
+          gi.add(bed);
+        });
       } else {
         const colors = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a'];
         for (let i = 0; i < st.beds && i < STORE_BEDS.length; i++) {
@@ -575,6 +627,16 @@ export class VillageView {
 
     for (const b of v.buildings) {
       if (b.kind === 'store') continue;
+      if (b.kind === 'home') {
+        const id = `b${b.id}`;
+        live.add(id);
+        this.upsert(id, `home${b.tier}`, (glow) => {
+          const g = this.homeMesh(b.plot, b.tier, 1, glow);
+          g.userData.buildingId = b.id;
+          return g;
+        });
+        continue;
+      }
       // An upgrade in progress keeps the old building standing until it's done.
       const id = `b${b.id}`;
       live.add(id);
@@ -595,6 +657,12 @@ export class VillageView {
         const g = new THREE.Group();
         g.userData.projectId = p.id;
         if (p.kind === 'clear_store') { g.add(junkPile(1 - prog)); return g; }
+        if (p.kind === 'home') {
+          g.add(this.homeOutline(p.plot));
+          g.add(materialPile(p, p.foot, this.world));
+          if (p.work > 0) g.add(this.homeMesh(p.plot, p.tier, Math.min(0.99, prog), glow));
+          return g;
+        }
         if (p.kind === 'patch_roof') {
           const rp = roofPatch(prog);
           rp.userData.roofGroup = true;

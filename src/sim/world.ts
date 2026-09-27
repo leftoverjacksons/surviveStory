@@ -141,6 +141,11 @@ export function heightAt(w: World, x: number, z: number): number {
 export function reveal(w: World, x: number, z: number, radius: number): boolean {
   const cx = toTileX(w, x), cz = toTileZ(w, z);
   const r = Math.ceil(radius);
+  // Walking through well-known country: nothing new to see.
+  const k = Math.max(1, r - 1);
+  const known = (tx: number, tz: number) => !inBounds(w, tx, tz) || w.explored[idx(w, tx, tz)] === 255;
+  if (known(cx, cz) && known(cx + k, cz) && known(cx - k, cz) && known(cx, cz + k) && known(cx, cz - k)
+    && known(cx + r, cz) && known(cx - r, cz) && known(cx, cz + r) && known(cx, cz - r)) return false;
   let changed = false;
   for (let dz = -r; dz <= r; dz++) {
     for (let dx = -r; dx <= r; dx++) {

@@ -15,8 +15,12 @@ import {
 } from './calendar';
 import {
   assignBeds, bedsTotal, checkTier, completeProject, heatNeed, storageCapacity, createVillage, footCenter, hasBuilt, materialsReady,
-  outstanding, plan, GARDEN_YIELD, MATERIALS, type Material, type Project, type Village,
+  outstanding, plan, store, GARDEN_YIELD, MATERIALS, type Building, type Material, type Project, type Village,
 } from './buildings';
+import {
+  SITE_CREW, YARD, homeComfort, homeOf, householdName, householdOf, householdsDaily, onHomeBuilt, planHome, plotPoint,
+  type Plot,
+} from './homes';
 import { bedSpot, KITCHEN, seatSpot } from './layout';
 import { highwayZ } from './worldgen';
 import { createVeil, disturb, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil } from './veil';
@@ -43,9 +47,10 @@ export type Task =
   | { kind: 'chop'; tree: number; stage: 'go' | 'work' }
   | { kind: 'haul'; item: number; stage: 'go' | 'deliver' }
   | { kind: 'forage'; bush: number; stage: 'go' | 'work' | 'deliver'; t: number }
-  | { kind: 'eat'; stage: 'go' | 'eat'; t: number }
+  | { kind: 'eat'; stage: 'go' | 'eat'; t: number; place: MealPlace; building: number }
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
-  | { kind: 'social'; stage: 'go' | 'sit' }
+  | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench'; building: number }
+  | { kind: 'yard'; plot: number; item: number; stage: 'go' | 'work'; t: number }
   | { kind: 'scout'; stage: 'go' | 'look'; t: number }
   | { kind: 'attune'; stage: 'go' | 'sit'; t: number }
   | { kind: 'tend'; stage: 'go' | 'sit'; t: number }
@@ -59,6 +64,7 @@ export type Task =
   | { kind: 'scrounge'; stage: 'go' | 'work' | 'deliver'; t: number; fishing: boolean };
 
 export type FarmAction = 'till' | 'sow' | 'tend' | 'harvest';
+export type MealPlace = 'home' | 'hall' | 'kitchen' | 'fire';
 
 export interface Agent {
   id: number;
@@ -78,6 +84,8 @@ export interface Agent {
   /** Inside a building (hidden from view); `door` is where they come back out. */
   indoors: boolean;
   door: Point | null;
+  /** Building they are inside, if indoors (0 = none). */
+  inside: number;
   sleptIndoors: boolean;
 }
 
@@ -145,13 +153,20 @@ function makeAgent(col: Colony, s: Survivor, i: number): Agent {
     id: s.id, x: seat.x, z: seat.z, facing: 0, path: [], pathI: 0, task: null,
     needs: { food: 70 + (s.id * 7) % 25, rest: 80, social: 60 },
     carry: null, anim: 'idle', activity: 'Waking up', lastTile: -1, lookAt: null,
-    indoors: false, door: null, sleptIndoors: false,
+    indoors: false, door: null, inside: 0, sleptIndoors: false,
   };
 }
 
-/** Add agents for new survivors; drop agents (and their claims) for the dead. */
-export function syncAgents(col: Colony) {
+/**
+ * Add agents for new survivors; drop agents (and their claims) for the dead.
+ * Beds are reassigned when anyone comes or goes, or when `force` is set
+ * (buildings finished, households changed).
+ */
+export function syncAgents(col: Colony, force = false) {
   const living = alive(col.community);
+  let changed = force || living.length !== col.agents.length;
+  if (!changed) for (let i = 0; i < living.length; i++) if (!col.agents.some((a) => a.id === living[i].id)) { changed = true; break; }
+  if (!changed) return;
   const ids = new Set(living.map((s) => s.id));
   for (const a of col.agents) if (!ids.has(a.id)) releaseClaims(col, a.id);
   col.agents = col.agents.filter((a) => ids.has(a.id));
@@ -170,8 +185,15 @@ function leadName(col: Colony): string {
 }
 
 export function replan(col: Colony) {
-  if (!alive(col.community).length) return;
+  const pop = alive(col.community).length;
+  if (!pop) return;
   withRng(col.community, (rng) => {
+    const v = col.village;
+    const urgent = () => {
+      const pending = v.projects.filter((p) => !p.done && (p.kind === 'home' || p.kind === 'hut' || p.kind === 'annex' || p.kind === 'patch_roof')).length * 2;
+      return bedsTotal(v) + pending < pop;
+    };
+    if (store(v).level >= 1) while (planHome(col, rng, leadName(col), urgent())) { /* up to two homes at once */ }
     while (plan(col.world, col.village, col.community, rng, leadName(col), seasonIndex(dayOf(col)))) { /* fill up to the active limit */ }
   });
 }
@@ -180,12 +202,14 @@ const activeProjects = (col: Colony) => col.village.projects.filter((p) => !p.do
 const projectById = (col: Colony, id: number) => col.village.projects.find((p) => p.id === id);
 const buildingById = (col: Colony, id: number) => col.village.buildings.find((b) => b.id === id);
 
-function releaseClaims(col: Colony, id: number) {
-  for (const t of col.world.trees) if (t.reserved === id) t.reserved = 0;
-  for (const b of col.world.bushes) if (b.reserved === id) b.reserved = 0;
-  for (const it of col.items) if (it.reserved === id) it.reserved = 0;
-  for (const h of col.world.heaps) if (h.reserved === id) h.reserved = 0;
-  for (const [tile, who] of col.claims) if (who === id) col.claims.delete(tile);
+/** Free everything an agent reserved; `kind` limits the search to what that task can hold. */
+function releaseClaims(col: Colony, id: number, kind?: Task['kind']) {
+  const all = kind === undefined;
+  if (all || kind === 'chop') for (const t of col.world.trees) if (t.reserved === id) t.reserved = 0;
+  if (all || kind === 'forage') for (const b of col.world.bushes) if (b.reserved === id) b.reserved = 0;
+  if (all || kind === 'haul') for (const it of col.items) if (it.reserved === id) it.reserved = 0;
+  if (all || kind === 'salvage') for (const h of col.world.heaps) if (h.reserved === id) h.reserved = 0;
+  if (all || kind === 'farm' || kind === 'plant') for (const [tile, who] of col.claims) if (who === id) col.claims.delete(tile);
 }
 
 const survivorOf = (col: Colony, id: number) => col.community.survivors.find((s) => s.id === id)!;
@@ -459,8 +483,13 @@ function buildable(col: Colony, p: Project) {
 }
 
 function pickBuild(col: Colony, a: Agent): Task | null {
-  for (const p of activeProjects(col)) {
+  // People work on their own future home first.
+  const mine = householdOf(col.village, a.id)?.id;
+  const projects = activeProjects(col).sort((p, q) => Number(q.household === mine && !!mine) - Number(p.household === mine && !!mine));
+  for (const p of projects) {
     if (!buildable(col, p)) continue;
+    const crew = col.agents.filter((o) => o !== a && o.task?.kind === 'build' && o.task.project === p.id).length;
+    if (crew >= SITE_CREW && !(mine && p.household === mine)) continue;
     const spot = workSpot(col, a, p);
     if (setDest(col, a, spot.x, spot.z)) return { kind: 'build', project: p.id, stage: 'go' };
   }
@@ -596,6 +625,106 @@ function pickWander(col: Colony, a: Agent): Task | null {
   });
 }
 
+/** A cheap per-day coin for habits, 0..99, stable through the day. */
+const habit = (col: Colony, key: number) => ((dayOf(col) * 2654435761 + key * 40503) >>> 0) % 100;
+
+function goInside(a: Agent, b: Building) {
+  a.door = { x: a.x, z: a.z };
+  a.x = b.inside.x; a.z = b.inside.z;
+  a.indoors = true;
+  a.inside = b.id;
+}
+
+const plotById = (col: Colony, id: number | undefined) => col.village.plots.find((p) => p.id === id);
+const hallOpen = (col: Colony) => store(col.village).level >= 3;
+
+/** Where to eat: supper at home for those who have one, else the hall, the kitchen, or the fire. */
+function mealPlace(col: Colony, a: Agent, s: Survivor): { place: MealPlace; building: number; spot: Point } {
+  const v = col.village;
+  const h = hourOf(col);
+  const home = homeOf(v, s.id);
+  const st = store(v);
+  const supper = h >= 16 || h < 9;
+  if (home && (supper || habit(col, s.id) < 30)) {
+    const sociable = s.traits.includes('storyteller') || a.needs.social < 35;
+    if (!(hallOpen(col) && sociable && habit(col, s.id + 7) < 50)) return { place: 'home', building: home.id, spot: home.door };
+  }
+  if (hallOpen(col) && supper) return { place: 'hall', building: st.id, spot: st.door };
+  if (hasBuilt(v, 'kitchen')) return { place: 'kitchen', building: 0, spot: { x: KITCHEN.x - 3.5 + (col.agents.indexOf(a) % 8), z: KITCHEN.z } };
+  return { place: 'fire', building: 0, spot: seatOf(col, a) };
+}
+
+/** Where to spend the evening: at home some nights, the hall in bad weather, else the fire. */
+function eveningPlace(col: Colony, a: Agent, s: Survivor): { place: 'fire' | 'home' | 'hall' | 'bench'; building: number; spot: Point } {
+  const v = col.village;
+  const hh = householdOf(v, s.id);
+  const home = homeOf(v, s.id);
+  const season = seasonNow(col);
+  if (home && hh && habit(col, hh.id * 13) < 45) {
+    const plot = plotById(col, home.plot);
+    const bench = plot?.yard.find((y) => y.kind === 'bench' && y.progress >= 1);
+    if (plot && bench && season !== 'winter' && col.weather !== 'rain' && col.weather !== 'snow' && habit(col, hh.id * 5) < 60) {
+      const k = hh.members.indexOf(s.id);
+      return { place: 'bench', building: home.id, spot: plotPoint(plot, bench.u + (k - 0.5) * 0.5, bench.v) };
+    }
+    return { place: 'home', building: home.id, spot: home.door };
+  }
+  const st = store(v);
+  if (hallOpen(col) && (season === 'winter' || col.weather === 'rain' || col.weather === 'snow')) return { place: 'hall', building: st.id, spot: st.door };
+  return { place: 'fire', building: 0, spot: seatOf(col, a) };
+}
+
+/** Somewhere to stand while working on a yard feature. */
+function yardSpot(plot: Plot, i: number, a: Agent): Point {
+  const y = plot.yard[i];
+  if (y.kind === 'fence') {
+    // Work along the sides and back, in the order the fence goes up.
+    const path = [plot.corners[1], plot.corners[2], plot.corners[3], plot.corners[0]];
+    const lens = [0, 1, 2].map((k) => Math.hypot(path[k + 1].x - path[k].x, path[k + 1].z - path[k].z));
+    let d = Math.min(0.999, y.progress) * lens.reduce((m, n) => m + n, 0);
+    for (let k = 0; k < 3; k++) {
+      if (d <= lens[k]) {
+        const f = d / lens[k];
+        const p = { x: path[k].x + (path[k + 1].x - path[k].x) * f, z: path[k].z + (path[k + 1].z - path[k].z) * f };
+        // A step inside the plot.
+        const cx = (plot.corners[0].x + plot.corners[2].x) / 2, cz = (plot.corners[0].z + plot.corners[2].z) / 2;
+        const l = Math.hypot(cx - p.x, cz - p.z) || 1;
+        return { x: p.x + ((cx - p.x) / l) * 0.7, z: p.z + ((cz - p.z) / l) * 0.7 };
+      }
+      d -= lens[k];
+    }
+  }
+  const side = (a.id % 2 ? 1 : -1) * Math.min(0.6, y.w / 3);
+  return plotPoint(plot, y.u + side, y.v - y.d / 2 - 0.5);
+}
+
+/** Home improvements: build the next yard feature, or tend the vegetable beds. */
+function pickYard(col: Colony, a: Agent, s: Survivor): Task | null {
+  const v = col.village;
+  const home = homeOf(v, s.id);
+  const plot = plotById(col, home?.plot);
+  if (!plot) return null;
+  const season = seasonNow(col);
+  const res = col.community.resources;
+  for (let i = 0; i < plot.yard.length; i++) {
+    const y = plot.yard[i];
+    if (col.agents.some((o) => o !== a && o.task?.kind === 'yard' && o.task.plot === plot.id && o.task.item === i)) continue;
+    let want = false;
+    if (y.progress < 1) {
+      const outdoorsOnly = y.kind === 'beds' || y.kind === 'fruit' || y.kind === 'flowers';
+      if (season === 'winter' && outdoorsOnly) continue;
+      const c = YARD[y.kind].cost;
+      // Don't raid the village stores for a yard.
+      if (y.progress === 0 && (res.wood < c.wood + 12 || res.scrap < c.scrap + 3)) continue;
+      want = true;
+    } else if (y.kind === 'beds' && y.tended < 45 && season !== 'winter') want = true;
+    if (!want) continue;
+    const spot = yardSpot(plot, i, a);
+    if (setDest(col, a, spot.x, spot.z)) return { kind: 'yard', plot: plot.id, item: i, stage: 'go', t: 0 };
+  }
+  return null;
+}
+
 function seatOf(col: Colony, a: Agent): Point {
   const living = col.agents;
   return seatSpot(living.indexOf(a), living.length);
@@ -610,14 +739,17 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     if (setDest(col, a, bed.x, bed.z)) return { kind: 'sleep', stage: 'go' };
   }
   if (a.needs.food < 38 && res.food >= 1) {
-    const seat = hasBuilt(col.village, 'kitchen')
-      ? { x: KITCHEN.x - 3.5 + (col.agents.indexOf(a) % 8), z: KITCHEN.z }
-      : seatOf(col, a);
-    if (setDest(col, a, seat.x, seat.z)) return { kind: 'eat', stage: 'go', t: 0 };
+    const m = mealPlace(col, a, s);
+    if (setDest(col, a, m.spot.x, m.spot.z)) return { kind: 'eat', stage: 'go', t: 0, place: m.place, building: m.building };
   }
   if (isEvening(h)) {
-    const seat = seatOf(col, a);
-    if (setDest(col, a, seat.x, seat.z)) return { kind: 'social', stage: 'go' };
+    const e = eveningPlace(col, a, s);
+    if (setDest(col, a, e.spot.x, e.spot.z)) return { kind: 'social', stage: 'go', place: e.place, building: e.building };
+  }
+  // After the day's work, people potter about their own yards.
+  if (h >= 17 && s.role !== 'rest' && res.food >= col.agents.length * 4 && habit(col, s.id * 3) < 55) {
+    const y = pickYard(col, a, s);
+    if (y) return y;
   }
   let t: Task | null = null;
   // A council rest day: no work, just company.
@@ -670,7 +802,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     }
   }
   // Anyone at a loose end brings in a ripe harvest or lends a hand on a building site.
-  if (!t && s.role !== 'rest') t = pickFarm(col, a, 'harvest') ?? pickBuild(col, a);
+  if (!t && s.role !== 'rest') t = pickFarm(col, a, 'harvest') ?? pickBuild(col, a) ?? pickYard(col, a, s);
   return t ?? pickWander(col, a);
 }
 
@@ -699,7 +831,8 @@ function endTask(col: Colony, a: Agent) {
     a.x = a.door.x; a.z = a.door.z;
     a.indoors = false;
   }
-  releaseClaims(col, a.id);
+  a.inside = 0;
+  releaseClaims(col, a.id, t?.kind);
   a.task = null;
   a.path = [];
   a.pathI = 0;
@@ -801,23 +934,39 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
     }
     case 'eat': {
       if (t.stage === 'go') {
-        a.anim = 'walk'; a.activity = 'Going to eat';
+        a.anim = 'walk';
+        a.activity = t.place === 'home' ? 'Heading home to eat' : t.place === 'hall' ? 'Going to the hall for supper' : 'Going to eat';
         if (walk(col, a, dt)) {
           const cost = rationing(col) ? 0.5 : 1;
           if (res.food < cost) return endTask(col, a);
           res.food -= cost;
           t.stage = 'eat';
+          const b = t.building ? buildingById(col, t.building) : undefined;
+          if (b) goInside(a, b);
         }
         return;
       }
-      const kitchen = hasBuilt(col.village, 'kitchen');
       const rations = rationing(col);
-      if (!kitchen) face(a, w.campfire); else a.facing = 0;
+      if (t.place === 'fire') face(a, w.campfire); else if (t.place === 'kitchen') a.facing = 0;
       a.anim = 'eat';
-      a.activity = rations ? 'Eating half a ration' : kitchen ? 'Eating a hot meal in the kitchen' : 'Eating by the fire';
+      let company = 0;
+      if (t.place === 'home' || t.place === 'hall') {
+        const mates = col.agents.filter((o) => o !== a && o.inside === t.building && (o.task?.kind === 'eat' || o.task?.kind === 'social'));
+        company = mates.length;
+        a.needs.social = Math.min(100, a.needs.social + dt * ((company ? 14 : 3) / 60));
+        const names = mates.slice(0, 2).map((o) => first(survivorOf(col, o.id)));
+        a.activity = rations ? 'Eating half a ration' : t.place === 'home'
+          ? (names.length ? `Supper at home with ${names.join(' and ')}` : 'Cooking supper at home')
+          : 'Supper in the commons hall';
+      } else {
+        a.activity = rations ? 'Eating half a ration' : t.place === 'kitchen' ? 'Eating a hot meal in the kitchen' : 'Eating by the fire';
+      }
       t.t += dt;
       a.needs.food = Math.min(100, a.needs.food + dt * 2.8);
-      if (t.t >= (rations ? 10 : 20)) endTask(col, a);
+      if (t.t >= (rations ? 10 : t.place === 'home' || t.place === 'hall' ? 30 : 20)) {
+        if (!rations && (t.place === 'home' || t.place === 'hall')) s.morale = Math.min(100, s.morale + (company ? 1.5 : 0.8));
+        endTask(col, a);
+      }
       return;
     }
     case 'sleep': {
@@ -828,11 +977,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
           const b = col.beds.get(s.id);
           const bld = b !== undefined ? buildingById(col, b) : undefined;
           a.sleptIndoors = !!bld;
-          if (bld) {
-            a.door = { x: a.x, z: a.z };
-            a.x = bld.inside.x; a.z = bld.inside.z;
-            a.indoors = true;
-          }
+          if (bld) goInside(a, bld);
         }
         return;
       }
@@ -845,14 +990,77 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
     }
     case 'social': {
       if (t.stage === 'go') {
-        a.anim = 'walk'; a.activity = 'Heading to the fire';
-        if (walk(col, a, dt)) t.stage = 'sit';
+        a.anim = 'walk';
+        a.activity = { fire: 'Heading to the fire', home: 'Heading home for the evening', hall: 'Heading to the hall', bench: 'Heading home for the evening' }[t.place];
+        if (walk(col, a, dt)) {
+          t.stage = 'sit';
+          const b = t.building && (t.place === 'home' || t.place === 'hall') ? buildingById(col, t.building) : undefined;
+          if (b) goInside(a, b);
+        }
         return;
       }
-      face(a, w.campfire);
-      a.anim = 'sit'; a.activity = 'Talking by the fire';
-      a.needs.social = Math.min(100, a.needs.social + dt * (25 / 60));
+      a.anim = 'sit';
+      if (t.place === 'fire') {
+        face(a, w.campfire);
+        a.activity = 'Talking by the fire';
+        a.needs.social = Math.min(100, a.needs.social + dt * (25 / 60));
+      } else {
+        const mates = col.agents.filter((o) => o !== a && o.task?.kind === 'social' && o.task.stage === 'sit' && o.task.place === t.place && o.task.building === t.building);
+        const names = mates.slice(0, 2).map((o) => first(survivorOf(col, o.id)));
+        if (t.place === 'bench') {
+          const b = buildingById(col, t.building);
+          if (b) face(a, { x: a.x * 2 - b.inside.x, z: a.z * 2 - b.inside.z }); // looking out over the lane
+        }
+        a.activity = t.place === 'hall' ? 'Spending the evening in the commons hall'
+          : t.place === 'bench' ? (names.length ? `Sitting out on the bench with ${names.join(' and ')}` : 'Sitting out on the bench')
+          : names.length ? `A quiet evening in with ${names.join(' and ')}` : 'A quiet evening at home';
+        a.needs.social = Math.min(100, a.needs.social + dt * ((t.place === 'hall' ? 25 : mates.length ? 20 : 6) / 60));
+      }
       if (!isEvening(hourOf(col))) endTask(col, a);
+      return;
+    }
+    case 'yard': {
+      const plot = plotById(col, t.plot);
+      const y = plot?.yard[t.item];
+      if (!plot || !y) return endTask(col, a);
+      if (t.stage === 'go') {
+        a.anim = 'walk';
+        a.activity = y.progress >= 1 ? 'Heading home to see to the vegetables' : `Heading home to work on ${YARD[y.kind].name}`;
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      face(a, y.kind === 'fence' ? { x: a.x + plot.n.x, z: a.z + plot.n.z } : plotPoint(plot, y.u, y.v));
+      if (y.progress < 1) {
+        if (y.progress === 0) {
+          const c = YARD[y.kind].cost;
+          if (res.wood < c.wood || res.scrap < c.scrap) return endTask(col, a);
+          res.wood -= c.wood; res.scrap -= c.scrap;
+          y.progress = 0.001;
+        }
+        a.anim = y.kind === 'beds' || y.kind === 'fruit' || y.kind === 'flowers' ? 'forage' : 'build';
+        y.progress = Math.min(1, y.progress + (dt * workRate(s, 'builder', col)) / YARD[y.kind].work);
+        a.activity = `Making ${YARD[y.kind].name} at home · ${Math.min(99, Math.round(y.progress * 100))}%`;
+        if (y.progress >= 1) {
+          const h = householdOf(col.village, s.id);
+          const who = h && h.members.length > 1 ? householdName(col.community, h) : first(s);
+          log(col.community, `${who} finished ${YARD[y.kind].name} ${y.kind === 'fence' ? 'around their plot' : 'in their yard'}.`, 'good');
+          remember(s, col.community.day, `Made ${YARD[y.kind].name} at home.`);
+          if (y.kind === 'fruit' || y.kind === 'flowers') nurture(col, a.x, a.z, 0.01);
+          if (y.kind !== 'fence') return endTask(col, a);
+          // The fence walker picks the next stretch.
+        } else if (y.kind === 'fence') {
+          // Walk along as the fence goes up.
+          const spot = yardSpot(plot, t.item, a);
+          if (Math.hypot(spot.x - a.x, spot.z - a.z) > 1.5 && setDest(col, a, spot.x, spot.z)) { t.stage = 'go'; return; }
+        }
+      } else {
+        a.anim = 'forage';
+        a.activity = 'Weeding the vegetable beds at home';
+        y.tended += dt * workRate(s, 'farmer');
+        if (y.tended >= 60) return endTask(col, a);
+      }
+      t.t += dt;
+      if (t.t >= 90) endTask(col, a);
       return;
     }
     case 'tend': {
@@ -911,8 +1119,12 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       a.activity = `${p.kind === 'clear_store' ? 'Clearing out the store' : `Building: ${p.name.toLowerCase()}`} · ${Math.min(99, Math.round((p.work / p.workNeeded) * 100))}%`;
       if (p.work >= p.workNeeded) {
         completeProject(w, col.village, col.community, p);
+        if (p.kind === 'home') {
+          const b = col.village.buildings.find((x) => x.kind === 'home' && x.plot === p.plot);
+          if (b) onHomeBuilt(col, b);
+        }
         remember(s, col.community.day, `Helped finish ${p.name.toLowerCase()}.`);
-        syncAgents(col);
+        syncAgents(col, true);
         replan(col);
         endTask(col, a);
       }
@@ -1162,7 +1374,20 @@ function hourly(col: Colony) {
       let friends = 0;
       for (const o of living) if (o !== s && bondValue(c, s.id, o.id) >= 20) friends += 0.6;
       const v = col.village;
-      const comfort = (a.sleptIndoors ? 4 : -2) + (hasBuilt(v, 'kitchen') ? 3 : 0)
+      // Home: comfort of their own; crowding in shared sleeping rooms; waiting for a house.
+      let home = 0;
+      const bid = col.beds.get(s.id);
+      const bed = bid !== undefined ? buildingById(col, bid) : undefined;
+      if (bed?.kind === 'home') home += homeComfort(v, bed);
+      else if (bed) {
+        let n = 0;
+        for (const x of col.beds.values()) if (x === bed.id) n++;
+        home -= Math.min(4, Math.max(0, n - 4) * 0.8);
+      }
+      const hh = householdOf(v, s.id);
+      if (hh && !hh.home && c.day - hh.since > 4) home -= 2;
+      if (hallOpen(col)) home += 1.5;
+      const comfort = home + (a.sleptIndoors ? 4 : -2) + (hasBuilt(v, 'kitchen') ? 3 : 0)
         + Math.min(3, v.buildings.filter((b) => b.kind === 'lantern').length)
         - (rationing(col) ? 10 : 0) - (seasonNow(col) === 'winter' ? 2 : 0)
         + (homeRes < 0.3 ? -4 : homeRes > 0.6 ? 2 : 0) + (col.minute < col.council.festivalUntil ? 6 : 0);
@@ -1171,8 +1396,22 @@ function hourly(col: Colony) {
       s.morale = Math.max(0, Math.min(100, s.morale + (target - s.morale) * 0.06));
     }
 
-    // Conversations around the fire.
-    const sitting = col.agents.filter((a) => a.task?.kind === 'social' && a.task.stage === 'sit');
+    // Households spending the evening together grow closer.
+    const atHome = col.agents.filter((a) => a.task?.kind === 'social' && a.task.stage === 'sit' && (a.task.place === 'home' || a.task.place === 'bench'));
+    for (const x of atHome) for (const y of atHome) {
+      if (x.id >= y.id || x.task?.kind !== 'social' || y.task?.kind !== 'social' || x.task.building !== y.task.building) continue;
+      adjustBond(c, x.id, y.id, 1.2);
+      if (rng.chance(0.05)) {
+        const [na, nb] = [first(survivorOf(col, x.id)), first(survivorOf(col, y.id))];
+        log(c, rng.pick([
+          `${na} and ${nb} stayed in tonight, talking by their own hearth.`,
+          `${na} read aloud to ${nb} from a swollen paperback.`,
+          `${na} and ${nb} sat out on the step and watched the wisps come up.`,
+        ]), 'info');
+      }
+    }
+    // Conversations around the fire (or in the hall).
+    const sitting = col.agents.filter((a) => a.task?.kind === 'social' && a.task.stage === 'sit' && (a.task.place === 'fire' || a.task.place === 'hall'));
     if (sitting.length >= 2 && rng.chance(0.5)) {
       const [x, y] = rng.shuffle([...sitting]).slice(0, 2);
       const sa = survivorOf(col, x.id), sb = survivorOf(col, y.id);
@@ -1270,6 +1509,9 @@ function daily(col: Colony) {
   councilDaily(col);
   departures(col);
   dailyRollover(c);
+  householdsDaily(col);
+  dailyYards(col, lastSeason);
+  syncAgents(col, true);
   checkTier(col.village, c);
   col.unreachable.clear();
   arrivals(col);
@@ -1300,6 +1542,28 @@ function dailyFields(col: Colony, lastSeason: Season, season: Season) {
   if (lost > 0) log(col.community, `Frost took ${lost} rows of crops that were never brought in.`, 'bad');
   col.tended.clear();
   w.cropVersion++;
+}
+
+/** Yards: vegetable beds, fruit trees and hens feed the village a little. */
+function dailyYards(col: Colony, lastSeason: Season) {
+  const r = col.community.resources;
+  for (const plot of col.village.plots) {
+    if (!plot.household) continue;
+    for (const y of plot.yard) {
+      if (y.progress < 1) continue;
+      if (y.kind === 'beds') {
+        const tended = y.tended >= 45;
+        if (tended && (lastSeason === 'summer' || lastSeason === 'autumn')) r.food += 1.5;
+        y.growth = lastSeason === 'winter' ? 0 : Math.max(0.1, Math.min(1, y.growth + (tended ? 0.12 : -0.08)));
+        y.tended = 0;
+      } else if (y.kind === 'fruit' && lastSeason !== 'winter') {
+        y.growth = Math.min(1, y.growth + 1 / 30);
+        if (y.growth >= 1 && lastSeason === 'autumn') r.food += 2;
+      } else if (y.kind === 'coop') {
+        r.food += lastSeason === 'winter' ? 0.3 : 0.8;
+      }
+    }
+  }
 }
 
 function dailyTrees(col: Colony, lastSeason: Season) {
@@ -1370,7 +1634,8 @@ export function tick(col: Colony, dtMinutes: number) {
     remaining -= dt;
     const before = col.minute;
     col.minute += dt;
-    syncAgents(col);
+    syncAgents(col, col.village.bedsDirty);
+    col.village.bedsDirty = false;
 
     for (const a of col.agents) {
       const s = survivorOf(col, a.id);

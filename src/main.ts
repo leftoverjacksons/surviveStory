@@ -14,7 +14,9 @@ import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
 import { People } from './render/people';
 import { Camp } from './render/camp';
-import { HeapsView, VillageView, bedSlot } from './render/village';
+import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
+import { PlotsView } from './render/plots';
+import { seasonIndex } from './sim/calendar';
 import { RoofControl } from './render/roofs';
 import { PhenomenaView, ResonanceTexture } from './render/veil';
 import { nudgeCalm, nudgeOmen, resolveCouncil } from './sim/council';
@@ -22,7 +24,7 @@ import { worldUniforms } from './render/util';
 import { Hud, type ZoneTool } from './ui/hud';
 
 // ---------- simulation ----------
-const seed = Date.now() % 100000;
+const seed = Number(new URLSearchParams(location.search).get('seed')) || Date.now() % 100000;
 const world = generateWorld(seed);
 const community = createCommunity(seed);
 const colony = createColony(world, community);
@@ -93,6 +95,8 @@ const villageView = new VillageView(world, colony.village, station.store, roofs)
 scene.add(villageView.group);
 const heaps = new HeapsView(world);
 scene.add(heaps.group);
+const plotsView = new PlotsView(world, colony.village);
+scene.add(plotsView.group);
 const fields = new FieldsView(world);
 scene.add(fields.group);
 const precip = new Precipitation();
@@ -109,6 +113,7 @@ function syncScene() {
   people.sync(community.survivors, colony.agents);
   camp.sync(community, colony.items, colony.beds);
   villageView.sync();
+  plotsView.sync(seasonIndex(colony.community.day));
   heaps.sync();
   fields.sync();
   trees.syncPlanted();
@@ -170,14 +175,21 @@ function cycleRoofs() {
 }
 roofBtn.addEventListener('click', cycleRoofs);
 
-/** Which bed an indoor sleeper is in: their rank among the building's assigned sleepers. */
-function bedOf(a: { id: number }) {
-  const bid = colony.beds.get(a.id);
-  if (bid === undefined) return null;
+/**
+ * Where someone indoors is drawn: sleepers in their bed (their rank among the
+ * building's sleepers), everyone else at a seat by the table.
+ */
+function bedOf(a: (typeof colony.agents)[number]) {
+  const bid = a.task?.kind === 'sleep' ? colony.beds.get(a.id) : a.inside;
+  if (bid === undefined || !bid) return null;
   const b = colony.village.buildings.find((x) => x.id === bid);
   if (!b) return null;
+  if (a.task?.kind !== 'sleep') {
+    const mates = colony.agents.filter((o) => o.inside === bid && o.task?.kind !== 'sleep').map((o) => o.id).sort((x, y) => x - y);
+    return seatSlot(world, colony.village, b, mates.indexOf(a.id));
+  }
   const mates = [...colony.beds.entries()].filter(([, v]) => v === bid).map(([k]) => k).sort((x, y) => x - y);
-  return bedSlot(world, b, mates.indexOf(a.id));
+  return bedSlot(world, colony.village, b, mates.indexOf(a.id));
 }
 
 function setOmen(on: boolean) {
@@ -286,10 +298,17 @@ canvas.addEventListener('pointerup', (e) => {
   if (o) { select(o.userData.survivorId as number); return; }
   select(0);
   // Not a person: a building?
-  const bh = raycaster.intersectObjects([villageView.group, station.group], true)[0];
+  const bh = raycaster.intersectObjects([villageView.group, plotsView.group, station.group], true)[0];
   let q: THREE.Object3D | null = bh?.object ?? null;
-  while (q && q.userData.buildingId === undefined && q.userData.projectId === undefined) q = q.parent;
-  if (q) { hud.inspect(q.userData.buildingId !== undefined ? { building: q.userData.buildingId } : { project: q.userData.projectId }); return; }
+  while (q && q.userData.buildingId === undefined && q.userData.projectId === undefined && q.userData.plotId === undefined) q = q.parent;
+  if (q?.userData.plotId !== undefined) {
+    // A yard: show the home on it (or the house going up).
+    const pid = q.userData.plotId as number;
+    const home = colony.village.buildings.find((b) => b.plot === pid);
+    const proj = colony.village.projects.find((p) => !p.done && p.plot === pid);
+    if (home) { hud.inspect({ building: home.id }); return; }
+    if (proj) { hud.inspect({ project: proj.id }); return; }
+  } else if (q) { hud.inspect(q.userData.buildingId !== undefined ? { building: q.userData.buildingId } : { project: q.userData.projectId }); return; }
   if (bh) {
     // The station itself: the store, or the kitchen under the canopy.
     const p = bh.point;
@@ -423,7 +442,8 @@ function frame() {
   people.update(t, dt, colony.agents, bedOf, roofs.mode !== 'shown');
   camp.update(t, community.resources.wood > 0);
   const occupied = new Set<number>();
-  for (const a of colony.agents) if (a.indoors) { const b = colony.beds.get(a.id); if (b !== undefined) occupied.add(b); }
+  for (const a of colony.agents) if (a.indoors && a.inside) occupied.add(a.inside);
+  plotsView.update(t);
   villageView.update(sky.night, occupied, t);
   mushroomGlow.color.setRGB(0.5, 1.2, 1.0).multiplyScalar(0.4 + sky.night * 1.6);
   bloom.strength = 0.45 + sky.night * 0.5;
@@ -437,6 +457,7 @@ function frame() {
     people.sync(community.survivors, colony.agents);
     camp.sync(community, colony.items, colony.beds);
     villageView.sync();
+    plotsView.sync(seasonIndex(colony.community.day));
     heaps.sync();
     fields.sync(t);
     trees.syncPlanted();

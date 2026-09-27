@@ -51,5 +51,13 @@ reference: Tiny Glade.
 - Built: milestones A, B, C1 (seasons, zones, winter, lanes), C2 (Veil,
   phenomena, council, Influence), look-inside (roof cutaway, x-ray
   silhouettes), building inspector.
-- Next, pending user confirmation: C2.5 "Homes and purpose" (DESIGN §17),
-  then the C3 art pass.
+- C2.5 in progress (user approved; they asked for bigger homes where people
+  live and cook, yards like Manor Lords burgage plots, irregular shapes,
+  varied structures):
+  - Done: households (`src/sim/homes.ts`), petitions via council,
+    self-start after 8 days, irregular plots along lanes and the green,
+    procedural houses (`src/render/house.ts`), yards (`src/render/plots.ts`),
+    suppers and evenings at home, crowding and comfort, the store as a
+    commons hall.
+  - Next: know-how in place of eras, aspirations and crafts, stakes for the
+    Veil, then procedural starting sites.

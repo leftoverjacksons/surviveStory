@@ -46,6 +46,13 @@ function prepare(col: Colony) {
   paintZone(w, lot.x, lot.z, 4.5, Zone.Woodlot);
 }
 
+/** A player answering "paint more Home zone": extend it where the land is open. */
+function growHome(col: Colony) {
+  const w = col.world;
+  const spot = bestSpot(w, 22, 34, 6, Zone.Home, false, []);
+  if (spot.score > 20) paintZone(w, spot.x, spot.z, 6, Zone.Home);
+}
+
 const rows: number[][] = [];
 const t0 = Date.now();
 for (let seed = 1; seed <= colonies; seed++) {
@@ -55,6 +62,7 @@ for (let seed = 1; seed <= colonies; seed++) {
   for (let d = 0; d < days; d++) {
     const logLen = col.community.log.length;
     for (let m = 0; m < 1440; m += 5) tick(col, 5);
+    if (prepared && (col.village.noPlotDay ?? -9) >= col.community.day - 1) growHome(col);
     if (d >= 36) minFoodWinter = Math.min(minFoodWinter, col.community.resources.food);
     if (col.community.resources.food < 1) hungryDays++;
     if (d === 35) foodAtWinter = col.community.resources.food;
@@ -70,15 +78,20 @@ for (let seed = 1; seed <= colonies; seed++) {
     col.world.trees.filter((t) => t.planted).length,
     homeResonance(col), communitySight(col), col.veil.influence,
     c.log.filter((l) => l.tone === 'strange').length, c.log.filter((l) => l.text.startsWith('The council met')).length,
+    v.households.length, v.buildings.filter((b) => b.kind === 'home').length,
+    alive(c).filter((s) => v.buildings.find((b) => b.id === col.beds.get(s.id))?.kind === 'home').length,
+    v.plots.reduce((n, p) => n + p.yard.filter((y) => y.progress >= 1).length, 0),
+    v.buildings.some((b) => b.kind === 'store' && b.level >= 3) ? 1 : 0,
   ]);
   if (showLog && seed === 1) {
     for (const l of c.log) if (l.tone !== 'info' || l.text.startsWith('Day')) console.log(`  D${l.day} ${l.text}`);
     console.log('  buildings:', v.buildings.map((b) => `${b.name}(t${b.tier})`).join(', '));
+    for (const p of v.plots) console.log(`  plot ${p.id}: hh ${p.household} corners ${p.corners.map((q) => `${q.x.toFixed(1)},${q.z.toFixed(1)}`).join(' ')} house ${p.house.W.toFixed(1)}x${p.house.D.toFixed(1)} wing ${!!p.house.wing} yard ${p.yard.map((y) => `${y.kind}:${y.progress.toFixed(2)}`).join(' ')}`);
   }
 }
 const mean = (i: number) => rows.reduce((s, r) => s + r[i], 0) / rows.length;
 const min = (i: number) => Math.min(...rows.map((r) => r[i]));
 const max = (i: number) => Math.max(...rows.map((r) => r[i]));
-const names = ['alive', 'food @ winter', 'died', 'left', 'beds', 'morale', 'food', 'min food (winter)', 'hungry days', 'wood', 'cold nights', 'buildings', 'tier', 'explored %', 'saplings', 'home resonance', 'mean sight', 'influence', 'strange lines', 'councils'];
+const names = ['alive', 'food @ winter', 'died', 'left', 'beds', 'morale', 'food', 'min food (winter)', 'hungry days', 'wood', 'cold nights', 'buildings', 'tier', 'explored %', 'saplings', 'home resonance', 'mean sight', 'influence', 'strange lines', 'councils', 'households', 'homes', 'sleep at home', 'yard features', 'hall'];
 console.log(`${colonies} colonies × ${days} days${prepared ? ' (prepared)' : ''}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 names.forEach((n, i) => console.log(`${n.padEnd(18)} mean ${mean(i).toFixed(1).padStart(7)}   min ${min(i).toFixed(1).padStart(7)}   max ${max(i).toFixed(1).padStart(7)}`));

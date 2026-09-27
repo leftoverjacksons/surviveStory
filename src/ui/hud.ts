@@ -8,13 +8,15 @@ import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { exploredFraction } from '../sim/world';
 import { bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project } from '../sim/buildings';
 import { communitySight, homeResonance } from '../sim/veil';
+import { YARD, homeComfort, householdName, householdOf, waitingHouseholds } from '../sim/homes';
 import { CALM_COST, DREAM_COST, OMEN_COST, resolvable } from '../sim/council';
 
 /** What each kind of building is for, in plain words. */
 const BUILDING_INFO: Record<string, string> = {
-  store: 'The gas station\'s old shop. Their first shelter: clearing it gives 4 beds, patching the roof 6.',
+  store: 'The gas station\'s old shop. Their first shelter: clearing it gives 4 beds, patching the roof 6. Once most people have homes, the council may make it a commons hall for shared suppers and winter evenings.',
   annex: 'A lean-to built against the store. 2 more beds.',
-  hut: 'A home. A scrap shack sleeps 2; a timber cabin sleeps 3. Homes burn firewood for heat in winter.',
+  hut: 'A bunkhouse: shared beds for people without a home of their own yet.',
+  home: 'A household\'s own house on its own plot. They sleep and cook here, spend some evenings in, and improve the yard behind it over the seasons. Burns firewood in winter.',
   garden: 'A kitchen garden. Tended daily, it adds a little food in summer and autumn.',
   workshop: 'The workbench. With it, and some practice, they learn to work timber.',
   kitchen: 'The canopy kitchen. Hot meals lift everyone\'s morale.',
@@ -228,6 +230,9 @@ export class Hud {
         act.textContent = a.activity;
         act.classList.toggle('idle', a.anim === 'idle' || a.anim === 'sleep');
       }
+      const home = card.querySelector<HTMLElement>('.home')!;
+      const ht = this.homeLine(s.id);
+      if (home.innerHTML !== ht) home.innerHTML = ht;
       this.setBar(card, 'mor', s.morale, 100, `${Math.round(s.morale)}`);
       this.setBar(card, 'hp', s.hp, s.maxHp, `${Math.max(0, Math.round(s.hp))}/${s.maxHp}`);
       this.setBar(card, 'sight', s.sight, 100, `${Math.round(s.sight)}`);
@@ -265,12 +270,21 @@ export class Hud {
           <div class="bar"><i style="width:${pct.toFixed(0)}%"></i></div></div>`;
       }).join('')
       : `<div class="empty">Nothing planned. They'll think of something when the village needs it.</div>`)
+      + this.waitingLine()
       + `<div class="st" style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink-dim)">${tier}<span>${built} built</span></div>`;
     if ($('projects').innerHTML !== html) $('projects').innerHTML = html;
     this.renderWinter();
     this.renderInspect();
     this.renderVeil();
     this.renderCouncil();
+  }
+
+  private waitingLine(): string {
+    const v = this.col.village, c = this.col.community;
+    const waiting = waitingHouseholds(v);
+    if (!waiting.length) return '';
+    const names = waiting.map((h) => `${householdName(c, h)}${v.homeQueue.includes(h.id) ? ' ✓' : ''}`);
+    return `<div class="st" style="font-size:11.5px;color:var(--ink-dim);margin:2px 0 6px">Waiting for homes: ${esc(names.join(' · '))}</div>`;
   }
 
   setVeilView(on: boolean) { this.veilView = on; }
@@ -296,7 +310,19 @@ export class Hud {
       if (heatNeed(b)) facts.push(['Winter firewood', `${heatNeed(b)} a day when occupied`]);
       if (b.kind === 'cellar') facts.push(['Stores keep', `${Math.floor(storageCapacity(col.village))} food in all`]);
       if (b.kind === 'garden') facts.push(['Tended today', b.tended >= 60 ? 'Yes' : 'Not yet']);
-      if (b.kind === 'store') facts.push(['State', ['Derelict', 'Cleared', 'Roof patched'][b.level] ?? '']);
+      if (b.kind === 'store') facts.push(['State', ['Derelict', 'Cleared', 'Roof patched', 'Commons hall'][b.level] ?? '']);
+      if (b.kind === 'home') {
+        const plot = col.village.plots.find((p) => p.id === b.plot);
+        const h = col.village.households.find((x) => x.id === b.household);
+        facts.unshift(['Household', h ? householdName(col.community, h) : 'Empty']);
+        if (plot) {
+          const done = plot.yard.filter((y) => y.progress >= 1).map((y) => YARD[y.kind].name);
+          const next = plot.yard.find((y) => y.progress < 1);
+          facts.push(['Yard', done.length ? cap(done.join(', ')) : 'Bare ground so far']);
+          if (next) facts.push(['Next', `${cap(YARD[next.kind].name)}${next.progress > 0 ? ` (${Math.round(next.progress * 100)}%)` : ''}`]);
+          facts.push(['Comfort', `+${homeComfort(col.village, b).toFixed(1)} morale for those who live here`]);
+        }
+      }
       const build = (b as Building).tier === 1 ? 'Timber' : 'Salvage';
       if (b.kind !== 'store' && b.kind !== 'kitchen' && b.kind !== 'lantern') facts.push(['Built from', build]);
       html = `<h3>${esc(cap(b.name))}<button type="button" id="inspect-close">Close</button></h3>
@@ -424,6 +450,26 @@ export class Hud {
     }
   }
 
+  /** Where someone lives, or what they're waiting for. */
+  private homeLine(id: number): string {
+    const v = this.col.village, c = this.col.community;
+    const h = householdOf(v, id);
+    const others = h ? h.members.filter((m) => m !== id).map((m) => c.survivors.find((x) => x.id === m)?.name.split(' ')[0] ?? '?') : [];
+    const withWho = others.length ? ` with <em>${esc(others.join(' and '))}</em>` : '';
+    if (h?.home) {
+      const b = v.buildings.find((x) => x.id === h.home);
+      return `Lives${withWho} in <em>${esc(b?.name ?? 'their house')}</em>`;
+    }
+    const bid = this.col.beds.get(id);
+    const where = bid !== undefined ? v.buildings.find((x) => x.id === bid)?.name : undefined;
+    const sleeps = where ? `sleeps in ${esc(where)}` : 'sleeps by the fire';
+    if (!h) return where ? `Sleeps in ${esc(where)}` : 'Sleeps by the fire';
+    const building = v.projects.some((p) => !p.done && p.household === h.id);
+    const approved = v.homeQueue.includes(h.id);
+    const state = building ? 'their house is going up' : approved ? 'the council said yes to a house' : `waiting on a house for ${c.day - h.since} days`;
+    return `Household${withWho} · ${state} · ${sleeps}`;
+  }
+
   private card(s: Survivor): string {
     const c = this.col.community;
     const others = alive(c).filter((o) => o.id !== s.id);
@@ -454,6 +500,7 @@ export class Hud {
         <div>FOOD${bar('food', 'need')}</div><div>REST${bar('rest', 'need')}</div><div>COMPANY${bar('social', 'need')}</div>
       </div>
       ${bonds ? `<div class="bonds">${bonds}</div>` : ''}
+      <div class="bonds home"></div>
     </div>`;
   }
 }

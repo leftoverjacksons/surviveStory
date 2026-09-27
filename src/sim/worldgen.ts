@@ -274,11 +274,11 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
   addHeap(21, highwayZ(21) + 1.6, 'car', 12, Math.PI - 0.15);
   addHeap(-12, 17.5, 'pile', 6, 2.0);
 
-  reveal(w, 0, 0, 24);
+  reveal(w, 0, 0, 28);
   // The starting home zone: the clearing they can already see, minus roads and water.
   for (let tz = 0; tz < size; tz++) for (let tx = 0; tx < size; tx++) {
     const i = idx(w, tx, tz);
-    if (Math.hypot(tileX(w, tx), tileZ(w, tz)) <= 20 && w.ground[i] !== Ground.Water) w.zone[i] = Zone.Home;
+    if (Math.hypot(tileX(w, tx), tileZ(w, tz)) <= 26 && w.ground[i] !== Ground.Water) w.zone[i] = Zone.Home;
   }
   return w;
 }
