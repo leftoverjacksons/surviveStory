@@ -63,7 +63,8 @@ export class ZoneTexture {
     this.version = w.zoneVersion;
     const d = this.data;
     for (let i = 0; i < w.zone.length; i++) {
-      const c = ZONE_COLORS[w.zone[i]];
+      // Fields are drawn by their own outline and fence, not the tile grid.
+      const c = w.zone[i] === Zone.Field ? undefined : ZONE_COLORS[w.zone[i]];
       if (c) { d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
       else d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = d[i * 4 + 3] = 0;
     }

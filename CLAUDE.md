@@ -99,6 +99,8 @@ reference: Tiny Glade.
   - Old world phase 2 done: houses are modern salvage vernacular built from
     `village.salvaged` (`HouseSpec.clad`), with levels 0 shack → 1 patched →
     2 glasshouse + solar (`Building.level`, upgrade projects).
+  - Playtest round 2 fixes done (fog, nights, fog-of-war leak, fields). Fields
+    are now drawn as outlines and fenced (`sim/fields.ts`; DESIGN §17). NOT published.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
   - Published: version 13 (commit 82f3d22): Blender survivors, soft look, pixel art

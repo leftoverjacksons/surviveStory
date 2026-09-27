@@ -25,6 +25,7 @@ import { bedSpot, seatSpot } from './sites';
 import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill, type Craft } from './purpose';
 import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pondOf } from './fishing';
 import { highwayZ } from './worldgen';
+import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence } from './fields';
 import {
   PSI_SIGHT, createVeil, disturb, growthFactor, healFactor, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil,
 } from './veil';
@@ -55,6 +56,7 @@ export type Task =
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench'; building: number }
   | { kind: 'yard'; plot: number; item: number; stage: 'go' | 'work'; t: number }
+  | { kind: 'fence'; field: number; stage: 'go' | 'work'; t: number }
   | { kind: 'practice'; building: number; stage: 'go' | 'work'; t: number }
   | { kind: 'fish'; fishery: number; stage: 'go' | 'fish' | 'deliver'; t: number; boat: boolean; catch: number }
   | { kind: 'leisure'; what: 'fish' | 'cards' | 'herbs'; stage: 'go' | 'do'; t: number }
@@ -763,6 +765,20 @@ function yardSpot(plot: Plot, i: number, a: Agent): Point {
 }
 
 /** Home improvements: build the next yard feature, or tend the vegetable beds. */
+/** Fence a field that is in use: one person at a time walks the outline, building as they go. */
+function pickFence(col: Colony, a: Agent): Task | null {
+  const w = col.world, res = col.community.resources;
+  for (const f of w.fields) {
+    if (!wantsFence(w, f)) continue;
+    if (col.agents.some((o) => o !== a && o.task?.kind === 'fence' && o.task.field === f.id)) continue;
+    // Timber for the whole fence must be on hand, with some to spare.
+    if (f.fence === 0 && res.wood < fenceWood(f) + 10) continue;
+    const { p } = alongPerimeter(f.pts, f.fence);
+    if (setDest(col, a, p.x, p.z, true)) return { kind: 'fence', field: f.id, stage: 'go', t: 0 };
+  }
+  return null;
+}
+
 function pickYard(col: Colony, a: Agent, s: Survivor): Task | null {
   const v = col.village;
   const home = homeOf(v, s.id);
@@ -923,7 +939,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
         ?? pickSalvage(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
     case 'farmer':
-      t = pickFarm(col, a) ?? pickGarden(col, a) ?? pickForage(col, a) ?? pickHaul(col, a);
+      t = pickFarm(col, a) ?? pickGarden(col, a) ?? pickFence(col, a) ?? pickForage(col, a) ?? pickHaul(col, a);
       if (!fieldTiles(col).length && seasonNow(col) === 'spring' && !col.hints.has('field')) {
         col.hints.add('field');
         log(col.community, `${first(s)} keeps looking at the meadow. "We could plant here, if someone marked out a field."`, 'info');
@@ -1277,6 +1293,38 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       }
       t.t += dt;
       if (t.t >= 90) endTask(col, a);
+      return;
+    }
+    case 'fence': {
+      const f = w.fields.find((x) => x.id === t.field);
+      if (!f || f.fence >= 1) return endTask(col, a);
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = 'Going to fence the field';
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      if (f.fence === 0) {
+        const need = fenceWood(f);
+        if (res.wood < need) return endTask(col, a);
+        res.wood -= need;
+        f.fence = 0.0001;
+        log(col.community, `${first(s)} has started fencing the field, post by post.`, 'info');
+      }
+      a.anim = 'build';
+      const len = perimeter(f.pts);
+      const before = f.fence;
+      f.fence = Math.min(1, f.fence + (dt * workRate(s, 'builder', col)) / (len * FENCE_WORK_PER_UNIT));
+      a.activity = `Fencing the field · ${Math.round(f.fence * 100)}%`;
+      if (f.fence >= 1) {
+        log(col.community, `The field is fenced now, with a gate towards the village.`, 'good');
+        return endTask(col, a);
+      }
+      // Every couple of metres, walk on to the next stretch.
+      if (Math.floor(f.fence * len / 2) !== Math.floor(before * len / 2)) {
+        const { p } = alongPerimeter(f.pts, f.fence);
+        if (!setDest(col, a, p.x, p.z, true)) return endTask(col, a);
+        t.stage = 'go';
+      }
       return;
     }
     case 'yard': {

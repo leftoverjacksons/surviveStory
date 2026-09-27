@@ -5,6 +5,7 @@
  */
 import { alive, communityMorale, createCommunity } from '../src/sim/community';
 import { createColony, dayOf, tick } from '../src/sim/colony';
+import { roundField } from '../src/sim/fields';
 import { generateWorld } from '../src/sim/worldgen';
 import type { SiteKind } from '../src/sim/sites';
 import { Zone, idx, paintZone, toTileX, toTileZ, zoneAllowed, type World } from '../src/sim/world';
@@ -39,8 +40,8 @@ for (let seed = 1; seed <= N; seed++) {
   const col = createColony(generateWorld(seed, undefined, siteArg), createCommunity(seed));
   if (prepared) {
     const w = col.world;
-    const f1 = bestSpot(w, 20, 24, 3.5, Zone.Field, false, []); paintZone(w, f1.x, f1.z, 3.5, Zone.Field);
-    const f2 = bestSpot(w, 20, 24, 3.5, Zone.Field, false, [f1]); paintZone(w, f2.x, f2.z, 3.5, Zone.Field);
+    const f1 = bestSpot(w, 20, 24, 3.5, Zone.Field, false, []); roundField(w, f1.x, f1.z, 4, w.campfire);
+    const f2 = bestSpot(w, 20, 24, 3.5, Zone.Field, false, [f1]); roundField(w, f2.x, f2.z, 4, w.campfire);
     const lot = bestSpot(w, 18, 24, 4.5, Zone.Woodlot, true, [f1, f2]); paintZone(w, lot.x, lot.z, 4.5, Zone.Woodlot);
   }
   let pop10 = -1, inf100 = -1, minWinter = 1e9, ration = 0, foodW = 0, minMor = 100;

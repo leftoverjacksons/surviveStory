@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
-import { createCommunity, killSurvivor, recruit, setRole } from './sim/community';
+import { createCommunity, killSurvivor, log, recruit, setRole } from './sim/community';
 import { SITE_KINDS, type SiteKind } from './sim/sites';
 import { generateWorld, siteKindFor } from './sim/worldgen';
 import { Zone, heightAt, paintZone, reveal } from './sim/world';
+import { createField, deleteField, fieldAtPoint } from './sim/fields';
 import { daylightHours, seasonLook } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
 import { FogTexture, WearTexture, ZoneTexture, buildTerrain } from './render/terrain';
@@ -246,13 +247,65 @@ let zoneTool: ZoneTool | null = null;
 const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, fishing: Zone.Fishing, erase: Zone.None };
 function setZoneTool(mode: ZoneTool | null) {
   zoneTool = mode;
+  if (mode !== 'field') clearDraft();
   hud.setZoneMode(mode);
   worldUniforms.uZone.value = mode ? 1 : 0;
 }
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const hitPoint = new THREE.Vector3();
+// ---- fields are drawn as outlines: click the corners, close the shape ----
+const draft: { x: number; z: number }[] = [];
+const draftLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#f0a040', depthTest: false, transparent: true }));
+draftLine.renderOrder = 10;
+draftLine.frustumCulled = false;
+const draftDots = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: '#ffd080', size: 6, sizeAttenuation: false, depthTest: false }));
+draftDots.renderOrder = 10;
+draftDots.frustumCulled = false;
+scene.add(draftLine, draftDots);
+function groundAt(clientX: number, clientY: number): THREE.Vector3 | null {
+  const r = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, iso.camera);
+  return raycaster.ray.intersectPlane(groundPlane, hitPoint) ? hitPoint.clone() : null;
+}
+function drawDraft(cursor?: THREE.Vector3 | null) {
+  const pts = draft.map((p) => new THREE.Vector3(p.x, heightAt(world, p.x, p.z) + 0.15, p.z));
+  // Fresh geometry each time: setFromPoints reuses (and will not grow) an existing buffer.
+  draftDots.geometry.dispose(); draftDots.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  if (cursor && draft.length) pts.push(new THREE.Vector3(cursor.x, heightAt(world, cursor.x, cursor.z) + 0.15, cursor.z));
+  draftLine.geometry.dispose(); draftLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+}
+function clearDraft() { draft.length = 0; drawDraft(); }
+function closeDraft() {
+  if (draft.length >= 3) {
+    const f = createField(world, draft.slice(), world.campfire);
+    if (f) {
+      log(community, `A field is marked out: ${f.tiles.length} plots of ground, staked at the corners. The farmers will fence it once it's worked.`, 'good');
+      replan(colony);
+    } else {
+      log(community, 'That field would take almost no workable ground (roads, water, buildings or unexplored land). Try again.', 'info');
+    }
+  }
+  clearDraft();
+  hud.render();
+}
+function fieldClick(clientX: number, clientY: number) {
+  const g = groundAt(clientX, clientY);
+  if (!g) return;
+  if (!draft.length) {
+    const f = fieldAtPoint(world, g.x, g.z);
+    if (f) {
+      if (confirm('Remove this field? Anything growing in it will be lost.')) { deleteField(world, f.id); replan(colony); hud.render(); }
+      return;
+    }
+  }
+  if (draft.length >= 3 && Math.hypot(g.x - draft[0].x, g.z - draft[0].z) < 1.2) { closeDraft(); return; }
+  draft.push({ x: g.x, z: g.z });
+  drawDraft(g);
+}
+
 function paintAt(clientX: number, clientY: number) {
-  if (!zoneTool) return;
+  if (!zoneTool || zoneTool === 'field') return;
   const r = canvas.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, iso.camera);
@@ -293,6 +346,7 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 });
 canvas.addEventListener('pointermove', (e) => {
+  if (zoneTool === 'field' && draft.length) drawDraft(groundAt(e.clientX, e.clientY));
   const p = pointers.get(e.pointerId);
   if (!p) return;
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -301,7 +355,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (pointers.size === 1) {
     const worldPerPx = (iso.camera.top - iso.camera.bottom) / canvas.clientHeight;
     if (p.button === 2 || e.ctrlKey || e.altKey) iso.rotateBy(-dx * 0.008);
-    else if (zoneTool && p.button === 0) paintAt(e.clientX, e.clientY);
+    else if (zoneTool && zoneTool !== 'field' && p.button === 0) paintAt(e.clientX, e.clientY);
     else {
       if (Math.hypot(p.x - p.sx, p.y - p.sy) > 6) setFollow(false);
       iso.pan(-dx * worldPerPx, (dy * worldPerPx) / Math.sin(Math.atan(1 / Math.SQRT2)));
@@ -322,6 +376,10 @@ canvas.addEventListener('pointerup', (e) => {
   const p = pointers.get(e.pointerId);
   pointers.delete(e.pointerId);
   pinchDist = 0;
+  if (zoneTool === 'field' && p?.button === 0) {
+    if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) <= 6) fieldClick(e.clientX, e.clientY);
+    return;
+  }
   if (zoneTool && p?.button === 0) { replan(colony); return; }
   if (omenMode && p?.button === 0 && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) <= 6) {
     const r = canvas.getBoundingClientRect();
@@ -385,6 +443,8 @@ window.addEventListener('keydown', (e) => {
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
   else if (k === 'r') cycleRoofs();
   else if (k === 'v') { veilView = !veilView; hud.setVeilView(veilView); hud.render(); }
+  else if (k === 'escape' && draft.length) clearDraft();
+  else if (k === 'enter' && draft.length) closeDraft();
   else if (k === 'escape') { select(0); setZoneTool(null); setOmen(false); hud.inspect(null); }
   else keys.add(k);
 });
@@ -597,4 +657,4 @@ async function addModel(url: string, x: number, z: number, height = 1.7, clip = 
 }
 const debugMixers: THREE.AnimationMixer[] = [];
 
-Object.assign(window, { __game: { stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });
+Object.assign(window, { __game: { stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });

@@ -1,4 +1,5 @@
 import type { District, Material, Ruin } from './oldworld';
+import type { FieldPlot } from './fields';
 import type { Site } from './sites';
 
 /**
@@ -95,6 +96,9 @@ export interface World {
   walls: WallBlock[];
   /** The old world: ruined buildings, grouped into districts (see oldworld.ts). */
   ruins: Ruin[];
+  /** Fields drawn as outlines (see fields.ts), and tile → field id (0 = none). */
+  fields: FieldPlot[];
+  fieldAt: Int32Array;
   districts: District[];
   /** Painted zones (see Zone). Home is where the community may build. */
   zone: Uint8Array;
@@ -236,6 +240,8 @@ export function paintZone(w: World, x: number, z: number, radius: number, kind: 
     const i = idx(w, tx, tz);
     if (kind !== Zone.None && !zoneAllowed(w, tx, tz, kind)) continue;
     if (w.zone[i] === kind) continue;
+    // Fields are drawn as outlines and removed whole (see fields.ts); painting leaves them be.
+    if (w.fieldAt?.[i] > 0) continue;
     if (w.zone[i] === Zone.Field) { w.cropState[i] = Crop.Untilled; w.cropGrowth[i] = 0; w.cropVersion++; }
     w.zone[i] = kind;
     changed = true;

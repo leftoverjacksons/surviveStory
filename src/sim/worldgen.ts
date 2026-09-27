@@ -1,5 +1,6 @@
 import { Rng } from './rng';
 import { layOldWorld, type Material } from './oldworld';
+import { createField } from './fields';
 import { fbm, smoothstep } from './noise';
 import { HIGHWAY_Z } from './layout';
 import { SITE_KINDS, siteOf, type SiteKind } from './sites';
@@ -35,7 +36,7 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     fogVersion: 0,
     trees: [], treeAt: new Int32Array(n).fill(-1),
     bushes: [], bushAt: new Int32Array(n).fill(-1),
-    rocks: [], heaps: [], walls: [], ruins: [], districts: [], pois: [],
+    rocks: [], heaps: [], walls: [], ruins: [], districts: [], fields: [], fieldAt: new Int32Array(n), pois: [],
     ponds: [], pondAt: new Int32Array(n).fill(-1), deck: new Uint8Array(n), deckY: new Float32Array(n),
     zone: new Uint8Array(n), zoneVersion: 0,
     wear: new Float32Array(n), wearVersion: 0,
@@ -334,12 +335,12 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     for (let tz = 0; tz < size; tz++) for (let tx = 0; tx < size; tx++) {
       const x = tileX(w, tx), z = tileZ(w, tz);
       const i = idx(w, tx, tz);
-      if (x > 6 && x < 14 && z > -19 && z < -12 && !w.blocked[i] && w.ground[i] !== Ground.Water) {
-        w.zone[i] = Zone.Field;
+      if (x > 6 && x < 14 && z > -19 && z < -12) {
         if (w.treeAt[i] >= 0) { w.trees[w.treeAt[i]].felled = true; w.treeAt[i] = -1; }
         if (w.bushAt[i] >= 0) { w.bushes[w.bushAt[i]].berries = 0; w.bushes[w.bushAt[i]].max = 0; w.bushAt[i] = -1; }
       }
     }
+    createField(w, [{ x: 6.2, z: -18.8 }, { x: 13.8, z: -18.8 }, { x: 13.8, z: -12.2 }, { x: 6.2, z: -12.2 }], w.campfire);
     // The farmhouse burned long ago: a foundation and a chimney stack.
     for (let tz = toTileZ(w, 0); tz <= toTileZ(w, 4); tz++) for (let tx = toTileX(w, -14); tx <= toTileX(w, -9); tx++) {
       const edge = tz === toTileZ(w, 0) || tz === toTileZ(w, 4) || tx === toTileX(w, -14) || tx === toTileX(w, -9);

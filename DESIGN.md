@@ -993,3 +993,35 @@ flagged:
 - **Next, proposed by the user:** fields drawn as polygons (click points
   until the shape closes) that follow the land and are eventually fenced,
   instead of painted tiles.
+
+### Fields drawn as outlines (after playtest round 2)
+The user asked for polygon fields in place of painted ones, with editing
+done by deleting and redrawing for now.
+- **Drawing.** With the Field tool, each click on the ground adds a corner.
+  An orange line follows the cursor. The shape closes when the first corner
+  is clicked again or on Enter, and Esc cancels. Clicking inside an existing
+  field (with no draft open) asks whether to remove it.
+- **Simulation** (`sim/fields.ts`).
+  - A `FieldPlot` keeps its corners, the tiles inside, fence progress
+    (0..1) and a gate edge.
+  - The tiles inside become Field zone, so tilling, sowing, tending and
+    harvest are unchanged. `w.fieldAt` maps each tile to its field.
+  - Unexplored, built-on, road and water tiles are left out. A field
+    needs at least four usable tiles.
+  - Painting a zone never overwrites a field tile.
+- **Look** (`render/land.ts`).
+  - The soil is the outline itself: triangulated, split to edges of 0.6
+    or less, and draped over the terrain.
+  - Furrows run along the contour, across the mean downhill direction. On
+    flat ground they run parallel to the longest side.
+  - Crops stay inside the outline, and the tile grid is no longer drawn.
+- **Fencing.**
+  - Once half a field has been worked, a farmer fences it. This costs 0.35
+    wood per unit of perimeter, and they start only while wood covers that
+    plus 10.
+  - The fence is built progressively along the outline: posts about every
+    1.2, two rails.
+  - A gate sits on the edge nearest the fire.
+  - On the farm site, the starting field is fenced by about day 9.
+- **Known limitation.** A corner placed on unexplored ground still draws
+  soil there, but the mist covers it and it is never tilled.
