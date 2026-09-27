@@ -179,7 +179,7 @@ const SURFACE_GLSL = `
       } else {                  // corrugated steel: ribs, streaks of rust
         k = fract(u / 0.14) < 0.5 ? 1.08 : 0.86;
         float rust = smoothstep(0.55, 0.85, sh21(floor(vec2(u * 1.2, v * 0.6))) * 0.6 + sh21(floor(vec2(u * 5.0, v * 2.0))) * 0.4);
-        tint = (vec3(0.42, 0.22, 0.1) - col) * rust * 0.7;
+        tint = (vec3(0.42, 0.22, 0.1) - col) * rust * 0.45;
       }
     } else if (kind == 4) {            // foliage: leaf clumps, lit on their upper sides, dark gaps between
       vec3 q = wp * 4.5;

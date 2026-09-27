@@ -9,48 +9,103 @@
  */
 import * as THREE from 'three';
 import { homeLayout, type HouseSpec } from '../sim/homes';
+import type { Material } from '../sim/oldworld';
 import { GLOW, box, cyl, mat, smooth } from './kit';
 import { enhance, glowTexture, makeRand } from './util';
 
-const DAUB = ['#e9dcc0', '#e2d2b0', '#efe4cb', '#dccbb0', '#e6d6c4', '#d9d0bc'];
-const FRAME = ['#4f3a28', '#5a4330', '#3f3226', '#634a34'];
-const PANELS = ['#8a5a3a', '#6d7b80', '#5f7f78', '#8e6a4f', '#7b4a3c', '#9a9486', '#a88a5a'];
 const SHUTTERS = ['#5f7f6a', '#4f6f8a', '#8a4f3f', '#6f6a8a', '#8a7a4a', '#4f7a78'];
 const BLANKETS = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a', '#7a6a8a'];
-const THATCH = ['#b89a5c', '#a88c52', '#c2a468'];
-const SHINGLE = ['#6e4f3a', '#5f4a3e', '#7a5a44'];
-const TIN = ['#7d8a8c', '#8a8f86', '#6f7a7a'];
 
 let glowTex: THREE.Texture | null = null;
 
-interface Palette {
-  wall: string; frame: string; roof: string; roofKind: 'thatch' | 'shingle' | 'tin'; shutter: string; tier: number;
+type Surface = 'auto' | 'brick' | 'corrugated' | 'none';
+interface Clad { color: string; surface: Surface }
+
+/** How each kind of salvage looks nailed to a wall. */
+const CLAD: Partial<Record<Material, { colors: string[]; surface: Surface }>> = {
+  'vinyl siding': { colors: ['#b9c79a', '#c9b98e', '#9ab5bf', '#c7a38f', '#a7c0a4', '#d1c29a', '#8fa7b8'], surface: 'auto' },
+  'corrugated steel': { colors: ['#8a9296', '#6f7d78', '#94877a', '#7a8a96'], surface: 'corrugated' },
+  'garage doors': { colors: ['#d8d4c4', '#c8c0b0', '#b8c0c4'], surface: 'corrugated' },
+  'car panels': { colors: ['#8a5a4a', '#5a7078', '#b8a88a', '#6a7a5a', '#4a5a78', '#9a6a3a', '#a8b0a8'], surface: 'none' },
+  'pallets': { colors: ['#b8a070', '#a89064', '#c4ac7c'], surface: 'auto' },
+  'interior doors': { colors: ['#c8b890', '#e0d8c4', '#a88a64', '#d8d0bc'], surface: 'auto' },
+  'pews': { colors: ['#6b4f33', '#7a5a3c'], surface: 'auto' },
+  'barn boards': { colors: ['#8a3a2e', '#7a4a34', '#6e3a30'], surface: 'auto' },
+  'shop signs': { colors: ['#c8503a', '#3a6a9a', '#d8a040', '#4a8a5a', '#d06a3a'], surface: 'none' },
+  'bricks': { colors: ['#8a4a3a', '#96583f', '#7d4536'], surface: 'brick' },
+  'aluminium frame': { colors: ['#a8aca8', '#b8bcb8'], surface: 'corrugated' },
+  'steel girders': { colors: ['#6a6e70', '#7a7470'], surface: 'corrugated' },
+  'shop shelving': { colors: ['#9a9c98', '#b0b0a8'], surface: 'corrugated' },
+};
+/** Painted boards and tin, for a patched-up house. */
+const PAINT = ['#d8d0bc', '#b9c79a', '#9ab5bf', '#c7a38f', '#e0d4b0', '#a7c0a4', '#c4b0c8'];
+const TIN_PAINTED = ['#5f7a5a', '#8a4a3a', '#4f6a7a', '#6a6a5e'];
+
+const clad = new Map<string, THREE.Material>();
+/** A cladding material with its surface texture; plain ones share the kit's. */
+function cm(c: Clad): THREE.Material {
+  if (c.surface === 'auto') return mat(c.color);
+  const key = `${c.color}|${c.surface}`;
+  let m = clad.get(key);
+  if (!m) { m = enhance(new THREE.MeshLambertMaterial({ color: c.color, flatShading: true }), { surface: c.surface }); clad.set(key, m); }
+  return m;
 }
 
-function palette(tier: number, rand: () => number): Palette {
+interface Palette {
+  /** Level 0: a patchwork of these; later, the first (tidied, often painted). */
+  clad: Clad[];
+  wall: Clad;
+  frame: string; roof: string; roofKind: 'shingle' | 'slate' | 'tin'; shutter: string; tier: number;
+  /** A brick course along the bottom (if bricks were salvaged). */
+  brick: boolean;
+  /** Big salvaged windows (plate glass, greenhouse glass). */
+  bigWindows: boolean;
+}
+
+/**
+ * The house's look from what it was built of and how far it has come:
+ * level 0 is a patchwork of whatever was salvaged; level 1 is the same
+ * house patched and tidied (straight cladding, white frames, a proper roof);
+ * level 2 adds a glasshouse and solar panels (see buildHouse).
+ */
+function palette(level: number, materials: Material[] | undefined, rand: () => number): Palette {
   const pick = <T,>(a: T[]) => a[Math.floor(rand() * a.length)];
-  if (tier === 0) return { wall: pick(PANELS), frame: '#5b4632', roof: pick(TIN), roofKind: 'tin', shutter: pick(SHUTTERS), tier };
-  const thatch = rand() < 0.55;
+  const mats = materials?.length ? materials : ['corrugated steel', 'car panels', 'pallets'] as Material[];
+  const walls = mats.filter((m) => CLAD[m]);
+  const patch = (walls.length ? walls : ['corrugated steel' as Material]).map((m) => ({ color: pick(CLAD[m]!.colors), surface: CLAD[m]!.surface }));
+  // Always something rough in the patchwork.
+  if (patch.length < 3) patch.push({ color: pick(CLAD['pallets']!.colors), surface: 'auto' });
+  const roofKind = mats.includes('roof slates') ? 'slate' : mats.includes('roof shingles') ? 'shingle' : 'tin';
+  const tidy: Clad = patch[0].surface === 'none' || patch[0].surface === 'corrugated'
+    ? (level >= 1 && rand() < 0.6 ? { color: pick(PAINT), surface: 'auto' } : patch[0])
+    : patch[0];
   return {
-    wall: pick(DAUB), frame: pick(FRAME), roof: thatch ? pick(THATCH) : pick(SHINGLE), roofKind: thatch ? 'thatch' : 'shingle',
-    shutter: pick(SHUTTERS), tier,
+    clad: patch,
+    wall: level === 0 ? patch[0] : tidy,
+    frame: level === 0 ? '#5b4632' : '#e8e4d8',
+    roof: roofKind === 'slate' ? pick(['#3e4448', '#4a4a4e']) : roofKind === 'shingle' ? pick(['#5a5652', '#6e4f3a', '#4a4e52']) : level === 0 ? pick(['#7d8a8c', '#8a8f86', '#6f7a7a']) : pick(TIN_PAINTED),
+    roofKind,
+    shutter: pick(SHUTTERS),
+    tier: level,
+    brick: mats.includes('bricks'),
+    bigWindows: mats.some((m) => m === 'plate glass' || m === 'greenhouse glass' || m === 'window glass'),
   };
 }
 
 /** A gable roof over a W×D block, ridge along local x. Returns meshes for the roof group. */
 function gableRoof(len: number, span: number, pitch: number, eaves: number, pal: Palette, rand: () => number, k = 1): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
-  const over = pal.roofKind === 'thatch' ? 0.45 : 0.35;
-  const thick = pal.roofKind === 'thatch' ? 0.28 : pal.roofKind === 'tin' ? 0.06 : 0.12;
+  const over = 0.35;
+  const thick = pal.roofKind === 'tin' ? 0.06 : 0.12;
   const half = span / 2 + over;
   const rise = (span / 2) * Math.tan(pitch);
   const slopeLen = half / Math.cos(pitch);
-  const roofM = mat(pal.roof);
+  const roofM = pal.roofKind === 'tin' ? cm({ color: pal.roof, surface: 'corrugated' }) : mat(pal.roof);
   for (const s of [-1, 1]) {
     const slab = box(len + over * 2, thick, slopeLen * k, roofM, 0, eaves + rise / 2 - over * Math.tan(pitch) / 2 + thick / 2, s * (half / 2) * (2 - k));
     slab.rotation.x = s * pitch;
     out.push(slab);
-    if (pal.roofKind === 'tin' && k >= 1 && rand() < 0.7) {
+    if (pal.roofKind === 'tin' && pal.tier === 0 && k >= 1 && rand() < 0.7) {
       // A tarp or a rust-red sheet patched over a hole.
       const patch = box(len * (0.25 + rand() * 0.3), thick + 0.02, slopeLen * 0.5, mat(rand() < 0.5 ? '#3f6f9a' : '#8a4a32'),
         (rand() - 0.5) * len * 0.5, eaves + rise / 2 - over * Math.tan(pitch) / 2 + thick / 2 + 0.02, s * half / 2);
@@ -63,21 +118,20 @@ function gableRoof(len: number, span: number, pitch: number, eaves: number, pal:
     const shape = new THREE.Shape([new THREE.Vector2(-span / 2, 0), new THREE.Vector2(span / 2, 0), new THREE.Vector2(0, rise)]);
     const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.14, bevelEnabled: false });
     geo.translate(0, 0, -0.07);
-    const gm = mat(pal.tier === 0 ? pal.wall : pal.wall);
+    const gm = cm(pal.wall);
     for (const sx of [-1, 1]) {
       const tri = new THREE.Mesh(geo, gm);
       tri.rotation.y = Math.PI / 2;
       tri.position.set(sx * (len / 2 - 0.02), eaves, 0);
       tri.castShadow = tri.receiveShadow = true;
       out.push(tri);
-      if (pal.tier === 1) {
-        // A king post and collar in the gable, timber-frame style.
-        out.push(box(0.1, rise * 0.9, 0.1, mat(pal.frame), sx * (len / 2 + 0.03), eaves + rise * 0.45, 0));
-        out.push(box(0.1, 0.1, span * 0.55, mat(pal.frame), sx * (len / 2 + 0.03), eaves + rise * 0.45, 0));
+      if (pal.tier >= 1) {
+        // A round vent high in the gable.
+        out.push(cyl(0.18, 0.06, mat(pal.frame), sx * (len / 2 + 0.03), eaves + rise * 0.45, 0, 10).rotateZ(Math.PI / 2));
       }
     }
-    if (pal.roofKind !== 'tin') {
-      const ridge = box(len + over * 2 + 0.1, 0.16, 0.34, mat(pal.roofKind === 'thatch' ? '#8c7040' : '#4a3a30'), 0, eaves + rise + 0.08, 0);
+    {
+      const ridge = box(len + over * 2 + 0.1, 0.12, 0.3, mat('#4a4a46'), 0, eaves + rise + 0.06, 0);
       out.push(ridge);
     }
   }
@@ -102,62 +156,61 @@ function wall(len: number, h: number, pal: Palette, o: WallOpts, rand: () => num
   const runs: [number, number][] = [];
   for (const [a, b] of holes) { if (a > x) runs.push([x, a]); x = Math.max(x, b); }
   if (x < len / 2) runs.push([x, len / 2]);
-  const wallM = mat(pal.wall);
+  const wallM = cm(pal.wall);
   for (const [a, b] of runs) {
     if (pal.tier === 0) {
-      // Salvage: mismatched panels, a little uneven.
-      const n = Math.max(1, Math.round((b - a) / 0.5));
+      // Salvage: a patchwork of whatever came home, panels a little uneven.
+      const n = Math.max(1, Math.round((b - a) / 0.55));
       for (let i = 0; i < n; i++) {
         const w0 = (b - a) / n;
         const ph = h * (0.96 + rand() * 0.08);
-        g.add(box(w0 - 0.02, ph, T, mat(rand() < 0.55 ? pal.wall : PANELS[Math.floor(rand() * PANELS.length)]), a + w0 * (i + 0.5), ph / 2, 0));
+        g.add(box(w0 - 0.02, ph, T, cm(pal.clad[Math.floor(rand() * pal.clad.length)]), a + w0 * (i + 0.5), ph / 2, 0));
       }
     } else {
       g.add(box(b - a, h, T, wallM, (a + b) / 2, h / 2, 0));
     }
+    if (pal.brick) g.add(box(b - a + 0.01, 0.7, T + 0.03, cm({ color: '#8a4a3a', surface: 'brick' }), (a + b) / 2, 0.35, 0));
   }
   // Openings: lintel over the door and gap.
   for (const [a, b] of holes) g.add(box(b - a, h - 1.95, T, wallM, (a + b) / 2, 1.95 + (h - 1.95) / 2, 0));
-  if (pal.tier === 1) {
-    // Timber frame: sill, wall plate, posts, and a brace or two.
+  if (pal.tier >= 1) {
+    // Painted corner boards and a fascia under the eaves.
     const fm = mat(pal.frame);
-    g.add(box(len + 0.04, 0.14, T + 0.05, fm, 0, 0.07, 0));
-    g.add(box(len + 0.04, 0.14, T + 0.05, fm, 0, h - 0.07, 0));
-    const posts = Math.max(2, Math.round(len / 1.4) + 1);
-    for (let i = 0; i < posts; i++) {
-      const px = -len / 2 + (len * i) / (posts - 1);
-      if (holes.some(([a, b]) => px > a - 0.05 && px < b + 0.05)) continue;
-      g.add(box(0.12, h, T + 0.05, fm, px, h / 2, 0));
-      if (i < posts - 1 && rand() < 0.45) {
-        const nx = -len / 2 + (len * (i + 1)) / (posts - 1);
-        if (holes.some(([a, b]) => nx > a - 0.3 && px < b + 0.3)) continue;
-        const bl = Math.hypot(nx - px, h * 0.8);
-        const brace = box(0.09, bl, T + 0.04, fm, (px + nx) / 2, h * 0.45, 0);
-        brace.rotation.z = Math.atan2(nx - px, h * 0.8) * (rand() < 0.5 ? 1 : -1);
-        g.add(brace);
-      }
-    }
+    for (const x of [-len / 2, len / 2]) g.add(box(0.12, h, T + 0.05, fm, x, h / 2, 0));
+    g.add(box(len + 0.04, 0.12, T + 0.05, fm, 0, h - 0.06, 0));
   }
   if (o.door !== undefined) {
-    g.add(box(0.86, 1.9, 0.07, mat(pal.tier === 0 ? '#3f6f9a' : '#5b4330'), o.door, 0.97, T / 2 + 0.02));
+    g.add(box(0.86, 1.9, 0.07, mat(pal.tier === 0 ? '#3f6f9a' : ['#5b7a8a', '#8a4a3a', '#4a6a4a', '#e8e4d8'][Math.floor(rand() * 4)]), o.door, 0.97, T / 2 + 0.02));
     g.add(box(0.06, 0.06, 0.08, mat('#c8b070'), o.door + 0.3, 1.0, T / 2 + 0.07));
     g.add(box(1.0, 0.12, 0.3, mat('#7d7a70'), o.door, 0.06, T / 2 + 0.15)); // step
   }
   for (const wx of o.windows) {
-    g.add(box(0.62, 0.56, 0.06, mat('#2a3236'), wx, 1.4, T / 2 + 0.02));
-    g.add(box(0.72, 0.08, 0.1, mat(pal.frame), wx, 1.1, T / 2 + 0.04));
-    for (const s of [-1, 1]) {
-      const sh = box(0.3, 0.6, 0.04, mat(pal.shutter), wx + s * 0.48, 1.4, T / 2 + 0.05);
-      sh.rotation.y = s * 0.25;
-      g.add(sh);
+    // Salvaged windows: odd sizes on a shack (some just plastic sheeting),
+    // matched white frames once patched up, wide panes if plate glass came home.
+    const ww = pal.bigWindows && pal.tier >= 1 ? 1.0 : pal.tier === 0 ? 0.45 + rand() * 0.35 : 0.64;
+    const wh = pal.tier === 0 ? 0.4 + rand() * 0.3 : pal.bigWindows ? 0.8 : 0.62;
+    const wy = 1.35 + (pal.tier === 0 ? (rand() - 0.5) * 0.15 : 0.05);
+    const sheeting = pal.tier === 0 && rand() < 0.3;
+    g.add(box(ww, wh, 0.06, mat(sheeting ? '#b8c4c0' : '#2a3236'), wx, wy, T / 2 + 0.02));
+    const fm = mat(pal.frame);
+    g.add(box(ww + 0.1, 0.07, 0.1, fm, wx, wy - wh / 2 - 0.02, T / 2 + 0.04));
+    g.add(box(ww + 0.1, 0.06, 0.09, fm, wx, wy + wh / 2 + 0.02, T / 2 + 0.04));
+    for (const s of [-1, 1]) g.add(box(0.06, wh + 0.1, 0.09, fm, wx + s * (ww / 2 + 0.02), wy, T / 2 + 0.04));
+    if (pal.tier >= 1) g.add(box(0.04, wh, 0.08, fm, wx, wy, T / 2 + 0.05)); // mullion
+    if (pal.tier >= 1 && rand() < 0.3) {
+      for (const s of [-1, 1]) {
+        const sh = box(0.28, wh + 0.06, 0.04, mat(pal.shutter), wx + s * (ww / 2 + 0.2), wy, T / 2 + 0.05);
+        sh.rotation.y = s * 0.25;
+        g.add(sh);
+      }
     }
-    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.46), GLOW);
-    win.position.set(wx, 1.4, T / 2 + 0.06);
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(ww - 0.08, wh - 0.08), GLOW);
+    win.position.set(wx, wy, T / 2 + 0.06);
     win.visible = false;
     g.add(win);
-    if (lit) glow.push(win);
-    // Window boxes on some timber houses.
-    if (pal.tier === 1 && rand() < 0.35) {
+    if (lit && !sheeting) glow.push(win);
+    // Window boxes on patched-up houses.
+    if (pal.tier >= 1 && rand() < 0.35) {
       g.add(box(0.64, 0.14, 0.18, mat(pal.frame), wx, 1.05, T / 2 + 0.12));
       for (let f = 0; f < 4; f++) {
         const fl = new THREE.Mesh(new THREE.IcosahedronGeometry(0.07, 0), mat(['#d8607a', '#e8c050', '#f0f0e0', '#b070c0'][Math.floor(rand() * 4)]));
@@ -328,7 +381,7 @@ export function buildHouse(spec: HouseSpec, tier: number, p: number, glow: THREE
   const g = new THREE.Group();
   g.userData.building = true;
   const rand = makeRand(spec.seed);
-  const pal = palette(tier, rand);
+  const pal = palette(tier, spec.clad, rand);
   const { W, D, wall: H, chimney } = spec;
   const roof = new THREE.Group();
   roof.userData.roofGroup = true;
@@ -420,12 +473,68 @@ export function buildHouse(spec: HouseSpec, tier: number, p: number, glow: THREE
     const L = homeLayout(spec);
     const span = along ? D : W;
     const top = H + 0.24 + (span / 2) * Math.tan(pitch) + 0.5;
-    const stone = mat(tier === 0 ? '#5a5a50' : '#8f877a');
-    const lower = box(0.55, H, 0.55, stone, L.hearth.x, 0.24 + H / 2, L.hearth.z - 0.15);
-    g.add(lower);
-    const upper = box(0.55, top - H - 0.24, 0.55, stone, L.hearth.x, H + 0.24 + (top - H - 0.24) / 2, L.hearth.z - 0.15);
-    roof.add(upper);
-    roof.add(box(0.65, 0.1, 0.65, mat('#6b6458'), L.hearth.x, top + 0.02, L.hearth.z - 0.15));
+    if (tier === 0 || !pal.brick) {
+      // A stovepipe: salvaged flue, a rain cap, soot at the top.
+      const pipe = mat('#4a4a48');
+      roof.add(cyl(0.12, top - H + 0.3, pipe, L.hearth.x, H + 0.24 + (top - H + 0.3) / 2 - 0.3, L.hearth.z - 0.15, 8));
+      roof.add(cyl(0.22, 0.05, mat('#2e2c2a'), L.hearth.x, top + 0.34, L.hearth.z - 0.15, 8));
+    } else {
+      const brick = cm({ color: '#8a4a3a', surface: 'brick' });
+      g.add(box(0.55, H, 0.55, brick, L.hearth.x, 0.24 + H / 2, L.hearth.z - 0.15));
+      roof.add(box(0.55, top - H - 0.24, 0.55, brick, L.hearth.x, H + 0.24 + (top - H - 0.24) / 2, L.hearth.z - 0.15));
+      roof.add(box(0.65, 0.1, 0.65, mat('#6b6458'), L.hearth.x, top + 0.02, L.hearth.z - 0.15));
+    }
+  }
+  if (p >= 1) {
+    const span = along ? D : W, len = along ? W : D;
+    const rise = (span / 2) * Math.tan(pitch);
+    // A shack's rain catcher: an old satellite dish on a bracket, tipped up.
+    if (tier === 0 && rand() < 0.6) {
+      const dish = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 5, 0, Math.PI * 2, 0, 0.9), mat('#c8c8c0'));
+      dish.rotation.x = Math.PI;
+      dish.position.set(chimney * (W / 2 - 0.4), H + 0.5, D / 2 + 0.2);
+      dish.castShadow = true;
+      roof.add(dish);
+    }
+    if (tier >= 2) {
+      // Solar panels from the old roofs, on the front slope.
+      const n = Math.max(2, Math.floor(len / 1.3));
+      const slope = new THREE.Group();
+      for (let i = 0; i < n; i++) {
+        if (Math.abs(-len / 2 + (len * (i + 0.5)) / n - (along ? homeLayout(spec).hearth.x : 0)) < 0.5 && along) continue;
+        slope.add(box(1.0, 0.05, 1.4, mat('#2a3a5a'), -len / 2 + (len * (i + 0.5)) / n, 0, 0));
+        slope.add(box(1.04, 0.03, 0.05, mat('#a8aca8'), -len / 2 + (len * (i + 0.5)) / n, 0.02, 0));
+      }
+      // Halfway down the front slope, just proud of it.
+      slope.position.set(0, H + 0.24 + rise * 0.5 + 0.1, span * 0.25);
+      slope.rotation.x = pitch;
+      const holder = new THREE.Group();
+      holder.add(slope);
+      if (!along) holder.rotation.y = Math.PI / 2;
+      roof.add(holder);
+      // A lean-to glasshouse on the side away from the hearth.
+      const side = -chimney, gw = 1.6, gd = Math.min(D - 0.6, 3.2), gh = 2.1;
+      const gx = side * (W / 2 + gw / 2);
+      const frame = mat('#e8e4d8'), glass = mat('#9ec4bf');
+      const gy = Math.min(0, ground(gx, 0));
+      g.add(box(gw, 0.3 - gy, gd, cm({ color: '#8a4a3a', surface: 'brick' }), gx, (0.3 + gy) / 2, 0));
+      for (const z of [-gd / 2, gd / 2]) for (const x of [gx - side * gw / 2 + side * 0.05, gx + side * gw / 2 - side * 0.05]) {
+        const hh = x === gx + side * gw / 2 - side * 0.05 ? gh - 0.6 : gh;
+        g.add(box(0.07, hh, 0.07, frame, x, 0.3 + hh / 2, z));
+      }
+      for (const z of [-gd / 2 + 0.03, gd / 2 - 0.03]) g.add(box(gw - 0.1, gh - 0.7, 0.03, glass, gx, 0.3 + (gh - 0.7) / 2 + 0.05, z));
+      g.add(box(0.03, gh - 0.9, gd - 0.1, glass, gx + side * (gw / 2 - 0.05), 0.3 + (gh - 0.9) / 2 + 0.05, 0));
+      const lid = box(gw + 0.1, 0.04, gd + 0.1, glass, gx, 0.3 + gh - 0.3, 0);
+      lid.rotation.z = side * -Math.atan2(0.6, gw);
+      roof.add(lid);
+      // Seedlings on staging inside.
+      g.add(box(gw * 0.6, 0.06, gd * 0.8, mat('#6b4f33'), gx, 0.95, 0));
+      for (let k = 0; k < 6; k++) {
+        const pl = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 0), mat(['#5f8a3a', '#7a9a44', '#4f7a34'][k % 3]));
+        pl.position.set(gx + (rand() - 0.5) * gw * 0.5, 1.08, (rand() - 0.5) * gd * 0.7);
+        g.add(pl);
+      }
+    }
   }
   // Porch over the door.
   if (spec.porch && p >= 1) {

@@ -95,8 +95,10 @@ reference: Tiny Glade.
     factories) matching the starting site. Station Eleven is the reference.
   - Old world phase 1 done: districts of ruins by site (`sim/oldworld.ts`,
     `render/ruins.ts`), salvage with provenance (`village.salvaged`), better
-    cars. NOT published. Phase 2 (salvage-built houses and upgrade levels,
-    DESIGN §18) awaits the user's go-ahead.
+    cars. NOT published.
+  - Old world phase 2 done: houses are modern salvage vernacular built from
+    `village.salvaged` (`HouseSpec.clad`), with levels 0 shack → 1 patched →
+    2 glasshouse + solar (`Building.level`, upgrade projects). NOT published.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
   - Published: the artifact has the CC0 survivors and deer (commit c65e3cb, version 12).

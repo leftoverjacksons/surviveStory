@@ -110,6 +110,9 @@ export interface Village {
 interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]; work: [number, number]; beds?: [number, number] }
 const c = (wood: number, scrap: number, glimmer = 0): Cost => ({ wood, scrap, glimmer });
 
+/** Materials to improve a home from `level`. */
+export const HOME_UPGRADE_COST = (level: number): Cost => (level === 0 ? { wood: 16, scrap: 10, glimmer: 0 } : { wood: 12, scrap: 16, glimmer: 0 });
+
 export const DEFS: Record<Exclude<ProjectKind, 'upgrade' | 'clear_store' | 'patch_roof' | 'home' | FisheryKind>, Def> = {
   annex:    { name: ['Lean-to', 'Lean-to'], w: 3, d: 5, cost: [c(18, 6), c(18, 6)], work: [600, 600], beds: [2, 2] },
   hut:      { name: ['Bunk shack', 'Bunkhouse'], w: 3, d: 3, cost: [c(14, 8), c(34, 2)], work: [600, 900], beds: [2, 3] },
@@ -434,6 +437,29 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
       });
     });
   }
+  // Households improve their homes once the village can spare the materials:
+  // first patching up a shack, then (with joinery) a glasshouse and solar panels.
+  if (!has('upgrade') && com.day >= 12) {
+    // Glasshouses come slowly: the first around day 40, then one every eight days.
+    const kept = v.buildings.filter((b) => b.kind === 'home' && b.level >= 2).length;
+    const glassOk = v.tier === 1 && com.day >= 40 + kept * 8;
+    const home = v.buildings
+      .filter((b) => b.kind === 'home' && b.household && b.level < 2 && (b.level === 0 || glassOk))
+      .sort((a, b) => a.level - b.level)[0];
+    const cost = home ? HOME_UPGRADE_COST(home.level) : null;
+    // Wood must be on hand; scrap is fetched for it (salvage follows demand).
+    if (home && cost && com.resources.wood >= cost.wood + 12) {
+      wants.push(() => {
+        log(com, home.level === 0
+          ? `${lead} says ${home.name} has stood long enough as a shack; they'll patch it up properly.`
+          : `${home.name}'s household wants a glasshouse on the sunny side, and panels from the old roofs.`, 'good');
+        return newProject(v, {
+          kind: 'upgrade', tier: 1, name: home.level === 0 ? `Patch up ${home.name}` : `Glasshouse for ${home.name}`,
+          foot: home.foot, facing: home.facing, cost, workNeeded: home.level === 0 ? 1400 : 2600, target: home.id, clearTrees: [],
+        });
+      });
+    }
+  }
   const lanterns = v.buildings.filter((b) => b.kind === 'lantern').length;
   if (com.resources.glimmer >= 8 && lanterns < Math.min(3, Math.floor(com.day / 8)) && !has('lantern')) {
     wants.push(() => site('lantern'));
@@ -500,7 +526,14 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
     }
     case 'upgrade': {
       const b = v.buildings.find((x) => x.id === p.target);
-      if (b) {
+      if (b?.kind === 'home') {
+        // A home improved: patched and tidied (level 1), then well kept (level 2).
+        b.level = Math.min(2, b.level + 1);
+        if (b.level >= 1) b.tier = 1;
+        log(com, b.level === 1
+          ? `${b.name} is patched up: straight walls, proper windows, a roof that keeps the rain out.`
+          : `${b.name} has a glasshouse on its sunny side now, and panels on the roof.`, 'good');
+      } else if (b) {
         b.tier = 1;
         const def = DEFS[b.kind as 'hut' | 'garden' | 'workshop' | 'cellar' | 'shrine'];
         b.name = def.name[1];
@@ -512,7 +545,7 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
     case 'home': {
       const b: Building = {
         id: v.nextId++, kind: 'home', tier: p.tier, foot: p.foot, facing: 0, door: { ...p.door! }, inside: { ...p.inside! },
-        beds: 0, level: 0, tended: 0, growth: 1, name: p.name, plot: p.plot, household: p.household, yaw: p.yaw,
+        beds: 0, level: p.tier, tended: 0, growth: 1, name: p.name, plot: p.plot, household: p.household, yaw: p.yaw,
       };
       const plot = v.plots.find((x) => x.id === p.plot);
       b.beds = plot ? plot.house.beds : 2;

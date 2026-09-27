@@ -862,8 +862,8 @@ export class VillageView {
       if (b.kind === 'home') {
         const id = `b${b.id}`;
         live.add(id);
-        this.upsert(id, `home${b.tier}`, (glow) => {
-          const g = this.homeMesh(b.plot, b.tier, 1, glow);
+        this.upsert(id, `home${b.level}`, (glow) => {
+          const g = this.homeMesh(b.plot, b.level, 1, glow);
           g.userData.buildingId = b.id;
           return g;
         });

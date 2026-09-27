@@ -14,6 +14,7 @@ import { alive, bondValue, log, remember, type Community, type Survivor } from '
 import type { Colony } from './colony';
 import type { Building, Cost, Footprint, Project, Tier, Village } from './buildings';
 import type { Rng } from './rng';
+import type { Material } from './oldworld';
 import {
   Ground, LANE_WEAR, PATH_WEAR, heightAt, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
   type Point, type World,
@@ -48,6 +49,40 @@ export interface HouseSpec {
   chimney: 1 | -1;
   beds: number;
   seed: number;
+  /**
+   * What it is built from: salvage the village has brought in (see
+   * `village.salvaged`), heaviest first. Chosen when the plot is laid out.
+   */
+  clad?: Material[];
+}
+
+/** What a site's first houses are made of, before anything has been salvaged. */
+const SITE_CLAD: Record<string, Material[]> = {
+  station: ['corrugated steel', 'car panels', 'shop signs'],
+  motel: ['interior doors', 'vinyl siding', 'corrugated steel'],
+  farm: ['barn boards', 'corrugated steel', 'pallets'],
+  chapel: ['bricks', 'pews', 'roof slates'],
+  glasshouse: ['aluminium frame', 'greenhouse glass', 'pallets'],
+};
+
+/** Pick a house's materials from what has been salvaged, weighted by amount. */
+export function chooseCladding(v: Village, rng: Rng): Material[] {
+  const tally = new Map<Material, number>();
+  for (const [k, n] of Object.entries(v.salvaged)) {
+    const m = k.split('|')[0] as Material;
+    tally.set(m, (tally.get(m) ?? 0) + n);
+  }
+  const pool = [...tally.entries()].filter(([, n]) => n >= 6);
+  const out: Material[] = [];
+  while (out.length < 3 && pool.length) {
+    const total = pool.reduce((s, [, n]) => s + n, 0);
+    let r = rng.next() * total;
+    const i = pool.findIndex(([, n]) => (r -= n) < 0);
+    out.push(pool[Math.max(0, i)][0]);
+    pool.splice(Math.max(0, i), 1);
+  }
+  for (const m of SITE_CLAD[v.site.kind] ?? SITE_CLAD.station) if (out.length < 3 && !out.includes(m)) out.push(m);
+  return out;
 }
 
 export type YardKind = 'beds' | 'woodpile' | 'bench' | 'fence' | 'fruit' | 'flowers' | 'washing' | 'coop' | 'shed';
@@ -372,7 +407,8 @@ export function planYard(plot: Plot, traits: Set<string>): YardItem[] {
 export function homeComfort(v: Village, b: Building): number {
   const plot = v.plots.find((p) => p.id === b.plot);
   const done = plot ? plot.yard.filter((y) => y.progress >= 1).length : 0;
-  return 2 + Math.min(3, done * 0.5);
+  // A patched-up house is warmer and drier; a well-kept one, with its glasshouse, more so.
+  return 2 + Math.min(3, done * 0.5) + b.level * 0.5;
 }
 
 // ---------- finding a plot ----------
@@ -626,6 +662,7 @@ export function planHome(col: Colony, rng: Rng, lead: string, urgent: boolean): 
     return null;
   }
   const plot = plan.plot;
+  plot.house.clad = chooseCladding(v, rng);
   plot.id = v.nextId++;
   plot.household = h.id;
   v.plots.push(plot);

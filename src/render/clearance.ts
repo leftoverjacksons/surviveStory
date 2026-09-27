@@ -34,7 +34,7 @@ export function obstaclesFor(w: World, v: Village): Obstacle[] {
   const S = v.site.shelter;
   const span = v.site.ridge === 'x' ? S.d : S.w;
   out.push(box(w, S.x, S.z, 0, S.w / 2 + 0.4, S.d / 2 + 0.4, S.h + (v.site.roof === 'gable' ? (span / 2) * Math.tan(v.site.pitch) : 0) + 0.4));
-  const home = (plotId: number | undefined) => {
+  const home = (plotId: number | undefined, level = 0) => {
     const plot = v.plots.find((p) => p.id === plotId);
     if (!plot) return;
     const s = plot.house;
@@ -49,6 +49,12 @@ export function obstaclesFor(w: World, v: Village): Obstacle[] {
       out.push(box(w, plot.hc.x + X.x * wx + Z.x * wz, plot.hc.z + X.z * wx + Z.z * wz, plot.yaw,
         s.wing.w / 2 + eave, s.wing.d / 2 + eave, s.wall + rise * 0.8 + 0.2, floor));
     }
+    if (level >= 2) {
+      // The glasshouse lean-to on the side away from the hearth.
+      const { X } = houseAxes(plot.yaw);
+      const gx = -s.chimney * (s.W / 2 + 0.8);
+      out.push(box(w, plot.hc.x + X.x * gx, plot.hc.z + X.z * gx, plot.yaw, 1.0, 1.9, 2.4, floor));
+    }
   };
   const foot = (kind: string, f: { tx: number; tz: number; w: number; d: number }) => {
     const top = TOP[kind];
@@ -58,7 +64,7 @@ export function obstaclesFor(w: World, v: Village): Obstacle[] {
   };
   for (const b of v.buildings) {
     if (b.kind === 'store') continue;
-    if (b.kind === 'home') home(b.plot);
+    if (b.kind === 'home') home(b.plot, b.level);
     else if (b.kind === 'kitchen') out.push(box(w, v.site.kitchen.x, v.site.kitchen.z, 0, 1.9, 1.9, TOP.kitchen!));
     else foot(b.kind, b.foot);
   }
@@ -73,7 +79,7 @@ export function obstaclesFor(w: World, v: Village): Obstacle[] {
 
 /** A key that changes whenever the set of obstacles does. */
 export function obstacleKey(v: Village): string {
-  return `${v.buildings.length}:${v.buildings.map((b) => b.id).join(',')}|${v.projects.filter((p) => !p.done).map((p) => p.id).join(',')}`;
+  return `${v.buildings.length}:${v.buildings.map((b) => `${b.id}.${b.level}`).join(',')}|${v.projects.filter((p) => !p.done).map((p) => p.id).join(',')}`;
 }
 
 /** Nearest point of obstacle `o` to (x, y, z); returns the offset from it and its length. */

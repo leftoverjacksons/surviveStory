@@ -930,3 +930,43 @@ closer in character to each starting site.
   balance probe shows no deaths and normal morale. Influence capped on 2 of
   6 seeds, both with 14 survivors; probably run-to-run variation, but worth
   watching.
+
+### The old world, phase 2: salvage-built houses and upgrade levels
+The medieval look is gone: no timber framing, limewash or thatch. Houses are
+modern vernacular, built from what the village has actually salvaged.
+- **Materials** (`HouseSpec.clad`, from `chooseCladding`): when a plot is
+  laid out, three materials are drawn from `village.salvaged`, weighted by
+  amount. Early on, the starting site fills the gaps (station: corrugated
+  steel, car panels, shop signs; motel: doors, siding; farm: barn boards;
+  chapel: bricks, pews, slates; glasshouse: aluminium, glass). The site's
+  own junk heaps now carry that material too.
+- **Looks by material** (`render/house.ts`, table `CLAD`):
+  - vinyl siding: pastel boards;
+  - corrugated steel, garage doors, aluminium: ribbed sheet with rust;
+  - car panels: flat paint colours;
+  - pallets, doors, pews: wood;
+  - barn boards: red;
+  - shop signs: bright panels;
+  - bricks: a brick course along the base and a brick chimney;
+  - slates and shingles: the roof covering (otherwise corrugated tin);
+  - glass: wide windows.
+- **Levels** (`Building.level` for homes):
+  0. **Salvage shack**: a patchwork of the materials, uneven panels, odd
+     window sizes (some just plastic sheeting), a rusty tin roof with a tarp
+     patch, a stovepipe, and a satellite dish as rain catcher.
+  1. **Patched up**: tidy cladding (tin and car panels get painted over),
+     white corner boards and fascia, matched windows with white frames and
+     mullions, window boxes, painted tin roof, round gable vent.
+  2. **Well kept**: adds solar panels on the front slope and a glasshouse
+     lean-to (brick base, white frame, glass, seedlings) on the side away
+     from the hearth.
+- **Upgrades**: an `upgrade` project targets the home.
+  - Level 0 → 1 from day 12: 16 wood and 10 scrap, 1,400 work.
+  - Level 1 → 2 needs joinery; the first around day 40, then one every
+    8 days: 12 wood and 16 scrap, 2,600 work.
+  - Wood must be on hand; the scrap demand sends people salvaging, which
+    now reaches the ruins.
+  - Each level adds 0.5 comfort.
+  - Measured over 3 seeds: shacks patched by about day 24; the first
+    glasshouse on day 36–48; 4 of 5 homes well kept by day 72.
+- **Inspector**: shows the home's state and what it is built from.

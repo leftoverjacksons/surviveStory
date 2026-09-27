@@ -303,11 +303,18 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     addHeap(x, highwayZ(x) + side * rng.range(1, 2.5), 'car', rng.int(10, 16), rng.range(-0.4, 0.4) + (rng.chance(0.5) ? Math.PI : 0));
   }
   for (const h of oldHeaps) addHeap(h.x, h.z, h.kind, h.scrap, h.rot, h.source, h.material);
-  for (const j of site.junk) addHeap(j.x, j.z, 'pile', j.scrap, 0.4 + j.x);
+  // The site's own junk is what the place was made of.
+  const SITE_JUNK: Record<string, Material> = { station: 'shop shelving', motel: 'interior doors', farm: 'barn boards', chapel: 'pews', glasshouse: 'greenhouse glass' };
+  for (const j of site.junk) {
+    addHeap(j.x, j.z, 'pile', j.scrap, 0.4 + j.x);
+    const h = w.heaps[w.heaps.length - 1];
+    if (h) h.material = SITE_JUNK[site.kind];
+  }
   // Wrecks that never made it past the station, just up the road each way.
   addHeap(-19, highwayZ(-19) - 1.6, 'car', 12, 0.1);
   addHeap(21, highwayZ(21) + 1.6, 'car', 12, Math.PI - 0.15);
   addHeap(-12, 17.5, 'pile', 6, 2.0);
+  if (w.heaps.length) w.heaps[w.heaps.length - 1].material = 'pallets';
 
   reveal(w, 0, 0, 28);
   // The starting home zone: the clearing they can already see, minus roads and water.
