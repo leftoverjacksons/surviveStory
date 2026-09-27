@@ -76,7 +76,8 @@ reference: Tiny Glade.
   - Buildings adapt to slopes (foundations, steps, floor = f(terrain); user
     rejected terrain flattening). DESIGN §17 "Buildings on slopes". NOT published.
   - Expeditions (milestone D) proposed; user said to hold off for now.
-  - Agreed order: slopes (done) → trees v2 → CC0 characters/animals (user must
+  - Trees v2 done (species silhouettes, limbs, jagged pines; DESIGN §17). NOT published.
+  - Agreed order: slopes (done) → trees v2 (done) → CC0 characters/animals (user must
     allow quaternius.com, poly.pizza, github KayKit in the environment's network settings).
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.

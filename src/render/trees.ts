@@ -9,8 +9,31 @@ const CH = 32;
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
 /** Visual recipe for one tree, deterministic from its id. */
-interface Part { geo: 'trunk' | 'blob' | 'cone'; pos: THREE.Vector3; rot: THREE.Euler; scale: THREE.Vector3; color: THREE.Color }
+interface Part {
+  geo: 'trunk' | 'blob' | 'cone';
+  pos: THREE.Vector3; rot: THREE.Euler; scale: THREE.Vector3; color: THREE.Color;
+  /** Branches: where the limb ends (so it can be dropped if it would pierce a wall). */
+  tip?: THREE.Vector3;
+}
 
+const UP = new THREE.Vector3(0, 1, 0);
+const _q = new THREE.Quaternion();
+
+/** A limb from `from` along `dir` (unit) for `len`, `thick` times a trunk's girth. */
+function limb(from: THREE.Vector3, dir: THREE.Vector3, len: number, thick: number, color: THREE.Color): Part {
+  _q.setFromUnitVectors(UP, dir);
+  return { geo: 'trunk', pos: from.clone(), rot: new THREE.Euler().setFromQuaternion(_q), scale: new THREE.Vector3(thick, len, thick), color, tip: from.clone().addScaledVector(dir, len) };
+}
+
+const BARK = { oak: '#5e4c3b', pine: '#57432f', birch: '#d8d4c6', dead: '#7a7366' };
+
+/**
+ * Visual recipe for one tree, deterministic from its id. Each species has
+ * its own silhouette: oaks spread from a short, flared trunk into several
+ * limbs each carrying a clump; birches are tall and slim with narrow,
+ * drooping clumps up the stem; pines stack jagged tiers. A few old oaks are
+ * dead snags, bare and grey.
+ */
 function recipe(t: Tree, w: World): Part[] {
   const rand = makeRand(t.id * 7919 + 13);
   const x = t.tx - w.w / 2 + 0.5 + (rand() - 0.5) * 0.4;
@@ -18,36 +41,90 @@ function recipe(t: Tree, w: World): Part[] {
   const y = heightAt(w, x, z);
   const s = t.size;
   const parts: Part[] = [];
+  const base = new THREE.Vector3(x, y, z);
   const lean = new THREE.Euler((rand() - 0.5) * 0.12, 0, (rand() - 0.5) * 0.12);
+
   if (t.kind === 'pine') {
-    const h = (3.2 + rand() * 2) * s;
-    parts.push({ geo: 'trunk', pos: new THREE.Vector3(x, y, z), rot: lean, scale: new THREE.Vector3(s * 0.8, h * 0.45, s * 0.8), color: new THREE.Color('#4a3829') });
-    const tiers = 3;
+    const h = (3.4 + rand() * 2.2) * s;
+    parts.push({ geo: 'trunk', pos: base, rot: lean, scale: new THREE.Vector3(s * 0.8, h * 0.5, s * 0.8), color: new THREE.Color(BARK.pine) });
+    const tiers = 4 + (rand() < 0.4 ? 1 : 0);
+    const hue = 0.36 + rand() * 0.04;
     for (let i = 0; i < tiers; i++) {
-      const r = (1.3 - i * 0.32) * s;
-      const col = new THREE.Color().setHSL(0.36 + rand() * 0.04, 0.35 + rand() * 0.1, 0.14 + rand() * 0.05 + i * 0.015);
-      parts.push({ geo: 'cone', pos: new THREE.Vector3(x, y + h * 0.3 + i * h * 0.22, z), rot: new THREE.Euler(0, rand() * 6, 0), scale: new THREE.Vector3(r, h * 0.36, r), color: col });
+      const k = i / (tiers - 1);
+      const r = (1.35 - k * 0.95) * s * (0.9 + rand() * 0.2);
+      const col = new THREE.Color().setHSL(hue + (rand() - 0.5) * 0.02, 0.36 + rand() * 0.1, 0.13 + rand() * 0.04 + k * 0.03);
+      parts.push({
+        geo: 'cone', pos: new THREE.Vector3(x + (rand() - 0.5) * 0.12 * s, y + h * (0.26 + k * 0.62), z + (rand() - 0.5) * 0.12 * s),
+        rot: new THREE.Euler((rand() - 0.5) * 0.08, rand() * 6, (rand() - 0.5) * 0.08), scale: new THREE.Vector3(r, h * (0.34 - k * 0.08), r), color: col,
+      });
     }
     return parts;
   }
-  const birch = t.kind === 'birch';
-  const h = (birch ? 3.4 + rand() * 1.8 : 2.8 + rand() * 1.6) * s;
-  parts.push({
-    geo: 'trunk', pos: new THREE.Vector3(x, y, z), rot: lean,
-    scale: new THREE.Vector3(s * (birch ? 0.6 : 1), h, s * (birch ? 0.6 : 1)),
-    color: new THREE.Color(birch ? '#d8d4c6' : '#4a3a2c'),
-  });
-  const blobs = birch ? 2 + Math.floor(rand() * 2) : 3 + Math.floor(rand() * 2);
-  const hue = birch ? 0.2 + rand() * 0.04 : 0.23 + rand() * 0.07;
-  for (let b = 0; b < blobs; b++) {
-    const r = (birch ? 0.8 + rand() * 0.5 : 1.1 + rand() * 0.8) * s;
-    const col = new THREE.Color().setHSL(hue + (rand() - 0.5) * 0.03, 0.42 + rand() * 0.15, (birch ? 0.3 : 0.2) + rand() * 0.1);
+
+  if (t.kind === 'birch') {
+    const h = (3.8 + rand() * 1.8) * s;
+    const bark = new THREE.Color(BARK.birch);
+    parts.push({ geo: 'trunk', pos: base, rot: lean, scale: new THREE.Vector3(s * 0.55, h * 0.86, s * 0.55), color: bark });
+    // A narrow, irregular crown: a few long clumps that overlap and wander
+    // around the stem, the lowest hanging off short limbs.
+    const n = 3 + (rand() < 0.3 ? 1 : 0);
+    const hue = 0.2 + rand() * 0.04;
+    const a0 = rand() * Math.PI * 2;
+    for (let i = 0; i < n; i++) {
+      const k = i / (n - 1);
+      const a = a0 + i * 2.4 + (rand() - 0.5) * 0.6;
+      const off = (0.3 + rand() * 0.28) * s * (1 - k * 0.55);
+      const cy = y + h * (0.52 + k * 0.4);
+      const at = new THREE.Vector3(x + Math.cos(a) * off, cy, z + Math.sin(a) * off);
+      const from = new THREE.Vector3(x, cy - 0.45 * s, z);
+      if (k < 0.99) parts.push(limb(from, at.clone().sub(from).normalize(), at.distanceTo(from), 0.2 * s, bark));
+      const r = (0.72 + rand() * 0.28) * s * (1 - k * 0.3);
+      parts.push({
+        geo: 'blob', pos: at, rot: new THREE.Euler((rand() - 0.5) * 0.4, rand() * 6, (rand() - 0.5) * 0.4),
+        scale: new THREE.Vector3(r * 0.82, r * 1.5, r * 0.82),
+        color: new THREE.Color().setHSL(hue + (rand() - 0.5) * 0.03, 0.42 + rand() * 0.15, 0.32 + rand() * 0.1),
+      });
+    }
+    return parts;
+  }
+
+  // Oak (and the occasional dead snag).
+  const dead = rand() < 0.025;
+  const bark = new THREE.Color(dead ? BARK.dead : BARK.oak);
+  const th = (1.5 + rand() * 0.9) * s;
+  parts.push({ geo: 'trunk', pos: base, rot: lean, scale: new THREE.Vector3(s * 1.15, th, s * 1.15), color: bark });
+  // Root flare.
+  parts.push({ geo: 'trunk', pos: base.clone(), rot: new THREE.Euler(0, rand() * 6, 0), scale: new THREE.Vector3(s * 1.5, 0.26 * s, s * 1.5), color: bark });
+  const top = new THREE.Vector3(x, y + th * 0.92, z);
+  const nb = 3 + (rand() < 0.55 ? 1 : 0) + (dead ? 1 : 0);
+  const a0 = rand() * Math.PI * 2;
+  const hue = 0.23 + rand() * 0.07;
+  const leaf = () => new THREE.Color().setHSL(hue + (rand() - 0.5) * 0.03, 0.42 + rand() * 0.15, 0.2 + rand() * 0.1);
+  for (let i = 0; i < nb; i++) {
+    const a = a0 + (i / nb) * Math.PI * 2 + (rand() - 0.5) * 0.7;
+    const el = 0.5 + rand() * 0.45;
+    const dir = new THREE.Vector3(Math.cos(el) * Math.cos(a), Math.sin(el), Math.cos(el) * Math.sin(a));
+    const len = (1.0 + rand() * 0.7) * s;
+    const from = top.clone().addScaledVector(UP, -rand() * 0.4 * s);
+    const b = limb(from, dir, len, (dead ? 0.42 : 0.5) * s, bark);
+    parts.push(b);
+    if (dead) {
+      // A crooked second limb, no leaves.
+      const d2 = dir.clone().add(new THREE.Vector3((rand() - 0.5) * 0.8, 0.5, (rand() - 0.5) * 0.8)).normalize();
+      parts.push(limb(b.tip!, d2, len * 0.55, 0.3 * s, bark));
+      continue;
+    }
+    const r = (0.85 + rand() * 0.45) * s;
     parts.push({
-      geo: 'blob',
-      pos: new THREE.Vector3(x + (rand() - 0.5) * 1.3 * s, y + h + (rand() - 0.3) * 1.1 * s, z + (rand() - 0.5) * 1.3 * s),
-      rot: new THREE.Euler(rand() * 3, rand() * 3, rand() * 3),
-      scale: new THREE.Vector3(r, r * (0.75 + rand() * 0.3), r),
-      color: col,
+      geo: 'blob', pos: b.tip!.clone().add(new THREE.Vector3(0, r * 0.3, 0)),
+      rot: new THREE.Euler(rand() * 3, rand() * 3, rand() * 3), scale: new THREE.Vector3(r, r * (0.72 + rand() * 0.2), r), color: leaf(),
+    });
+  }
+  if (!dead) {
+    const r = (1.05 + rand() * 0.4) * s;
+    parts.push({
+      geo: 'blob', pos: top.clone().add(new THREE.Vector3((rand() - 0.5) * 0.4 * s, (0.9 + rand() * 0.4) * s, (rand() - 0.5) * 0.4 * s)),
+      rot: new THREE.Euler(rand() * 3, rand() * 3, rand() * 3), scale: new THREE.Vector3(r, r * 0.8, r), color: leaf(),
     });
   }
   return parts;
@@ -66,6 +143,7 @@ function grown(parts: Part[], g: number): Part[] {
     ...p,
     pos: base.clone().add(p.pos.clone().sub(base).multiplyScalar(k)),
     scale: p.scale.clone().multiplyScalar(k),
+    tip: p.tip ? base.clone().add(p.tip.clone().sub(base).multiplyScalar(k)) : undefined,
   }));
 }
 
@@ -94,7 +172,11 @@ function fitted(parts: Part[], obs: Obstacle[]): Part[] {
   const base = parts[0].pos;
   if (trunkBlocked(obs, base.x, base.z)) return parts.map((p) => ({ ...p, scale: new THREE.Vector3(0, 0, 0) }));
   return parts.map((p, i) => {
-    if (i === 0 || p.geo === 'trunk') return p;
+    if (i === 0) return p;
+    if (p.geo === 'trunk') {
+      // A limb reaching into a wall goes (as a woodsman would take it).
+      return p.tip && clumpOverlaps(obs, p.tip, 0.15) ? { ...p, scale: new THREE.Vector3(0, 0, 0) } : p;
+    }
     const pos = p.pos.clone();
     const k = fitClump(obs, pos, Math.max(p.scale.x, p.scale.z), base);
     if (k === 1 && pos.equals(p.pos)) return p;
@@ -119,7 +201,20 @@ export class TreeField {
   constructor(private world: World) {
     const trunk = new THREE.CylinderGeometry(0.16, 0.28, 1, 6);
     trunk.translate(0, 0.5, 0);
-    const cone = new THREE.ConeGeometry(1, 1, 7);
+    const cone = new THREE.ConeGeometry(1, 1, 12);
+    // Jagged boughs: the rim alternates between outer points (drooping a
+    // little) and inner notches, so a pine tier reads as layered branches.
+    {
+      const cp = cone.attributes.position as THREE.BufferAttribute;
+      for (let i = 0; i < cp.count; i++) {
+        const vx = cp.getX(i), vy = cp.getY(i), vz = cp.getZ(i);
+        if (vy > -0.49 || Math.hypot(vx, vz) < 0.5) continue;
+        const k = Math.round(Math.atan2(vz, vx) / (Math.PI / 6));
+        const inner = Math.abs(k) % 2 === 1;
+        cp.setXYZ(i, vx * (inner ? 0.68 : 1), vy + (inner ? 0.1 : -0.04), vz * (inner ? 0.68 : 1));
+      }
+      cone.computeVertexNormals();
+    }
     this.geos = { trunk, blob: lumpy(new THREE.IcosahedronGeometry(1, 1)), cone };
 
     // Bucket trees into chunks.

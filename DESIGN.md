@@ -662,3 +662,21 @@ the ground instead:
   (1.2 m for footprint buildings) and prefer gentler ground.
   - Over 10 seeds at day 30 (36 homes), the largest drop went from 3.05 m
     to 1.48 m; the median is 0.28 m.
+
+### Trees v2 (after buildings on slopes)
+- **Oaks**: a short trunk with a root flare, 3–4 limbs splaying out at
+  30–55° from the top, each ending in a leaf clump, plus a crown clump. The
+  result is a broad, spreading silhouette. 2.5% are dead snags: bare, grey,
+  crooked limbs.
+- **Birches**: tall and slim, with 3–4 long ovoid clumps that overlap and
+  wander around the stem; the lower ones hang from short limbs.
+- **Pines**: 4–5 tiers. Each tier is a 12-sided cone whose rim alternates
+  drooping points and notches, so tiers read as layered boughs.
+- **Winter**: leaf clumps shrink, so the new limbs give bare trees a
+  branching silhouette.
+- **Cost**: limbs reuse the trunk geometry and its instanced mesh, so draw
+  calls are unchanged. Triangles rise by up to about 35% in forest-heavy
+  views (1.8M → 2.45M), with more leaf clumps per oak. If that proves costly
+  on the user's hardware, the next step is distance-based detail.
+- **Clearance**: limbs whose tips would pierce a building are dropped;
+  `__game.clearance()` still reports 0 overlapping clumps.
