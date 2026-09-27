@@ -103,5 +103,8 @@ reference: Tiny Glade.
     are now drawn as outlines and fenced (`sim/fields.ts`; DESIGN §17). NOT published.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
-  - Published: version 13 (commit 82f3d22): Blender survivors, soft look, pixel art
-    default, old world phases 1–2. Awaiting the user's feedback on all of it.
+  - Published: version 14 (fields as outlines + playtest 2 fixes).
+  - NEW PLAN, under discussion: DESIGN §19. Haunted districts are cleared by a small
+    turn-based team (Sight = fog of war, Nerve not HP, convert/lay to rest/banish),
+    and the Folk are a second society (mounds, Folk paths, the Wild, Standing).
+    Open questions are marked [open] there.

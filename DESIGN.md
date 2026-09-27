@@ -307,7 +307,8 @@ camera.
 | C2: The Veil | Resonance field, Sight, phenomena on the perception gradient, see-through-their-eyes, council proposals, Influence and nudges | **[built]** |
 | **C2.5: Homes and purpose** | Households, petitions for homes, burgage plots and procedural houses, yards, the old shelter becomes a hall, know-how replaces eras, aspirations and leisure, the Veil given mechanical stakes and lore, five starting sites (see §17). | **[built]** |
 | C3: Art pass | Lighting (GTAO, grading, fog, depth of field), procedural building parts, flowers and moss, character-model trial | [after C2.5] |
-| D: Expeditions | Parties, ruins, blueprints, entity encounters, tactical hook | [planned] |
+| D: Expeditions | Parties, ruins, blueprints, entity encounters, tactical hook | [reshaped by §19: clearing haunted districts] |
+| F: The Folk | A second society of the Veil: mounds, Folk paths, the Wild, Standing, working alongside (§19) | [proposed] |
 | E: Generations | Skills by doing, aging, families, children, mentorship, personal arcs | [planned] |
 
 ### C2 as built
@@ -1025,3 +1026,189 @@ done by deleting and redrawing for now.
   - On the farm site, the starting field is fenced by about day 9.
 - **Known limitation.** A corner placed on unexplored ground still draws
   soil there, but the mist covers it and it is never tilled.
+
+## 19. The spirit layer made physical: the Folk and haunted districts (proposed)
+
+The user's ideas, after version 14. The two gaps they name:
+1. The supernatural is underbaked. The Veil gives flavour and small
+   modifiers but asks for little.
+2. There are few acute moments. The game plays as a city builder.
+
+The proposal answers both with one idea: **the land is already occupied.**
+- The old world's districts are held by spirits: some benign, some lost,
+  some rotten. They must be *cleared* before anyone can settle there.
+- The woods belong to the Folk, a people of the Veil with their own
+  settlements. The village has to learn to live beside them.
+
+Status: draft for discussion. Items marked **[open]** await the user.
+
+### 19.1 Why the pieces fit together
+- **It explains the ruins.** Ruins are not settled or repurposed because
+  something still lives in them. Clearing a district is the gate to the
+  repurposing in §18: the gas station becomes a smithy, the mall a market
+  hall.
+- **The conflict is not combat.** Home stays safe, with no raids. Danger
+  lives in the districts, in keeping with the Vision ("danger lives on
+  expeditions"). Clearing replaces the generic expedition of milestone D.
+- **The existing Veil quantities gain teeth.**
+  - Sight decides what the team can perceive.
+  - Resonance decides how strong the spirits are.
+  - Glimmer and objects with provenance are what you offer.
+  - Influence is how the player acts.
+- **Clearing feeds coexistence.** A spirit converted in a district can
+  come home as a household spirit or go to the Folk and grow their society.
+
+### 19.2 Who occupies the districts
+| Kind | What it is | Can be |
+|---|---|---|
+| **Remnants** | The old world's dead and their habits: the woman who still waits at the bus stop, the crowd that still shops. Mostly sad, not malicious. | Laid to rest (help them finish), or converted into a household spirit |
+| **Wild spirits** | Things that moved into the emptiness: hedge spirits, a heron-woman in the flooded car park, the Lantern Man's kin. Kin to the Folk. | Befriended (they may leave for the Folk's woods, or stay as wardens) |
+| **Hollows** | Rot: places where suffering, poison or the Quiet itself wore the Veil through. Already in the game near an unhappy home. | Only unravelled or sealed. Never converted. |
+
+Each district rolls a spirit roster from its type:
+- a suburb: remnants and hedge spirits;
+- a factory: a Hollow at its heart;
+- a mall: a crowd remnant and a thing in the escalator well.
+
+Each spirit gets a mood, a *need* and a *weakness* from folklore (iron,
+running water, thresholds, salt, true names, light, music, a returned
+object).
+
+### 19.3 Clearing: a small team, turn by turn
+- **The team.** Two to four survivors walk into the district. The
+  simulation pauses at home (or runs slowly) while the clearing plays out
+  on the real map. The camera closes in on the district's own tiles and
+  ruins, and there is no separate board.
+- **The player's role (proposal).** At home the player never commands. In
+  the Veil the presence is strongest, so here it can steer: each turn, the
+  player guides one survivor per point of Influence spent, and the others
+  act on their temperaments. This keeps "never command" as a scarcity
+  instead of breaking it, and it feeds the long-arc question of what the
+  player is. **[open]**
+- **Perception is the fog of war.** Each spirit is seen as the best
+  perceiver sees it (the §4 gradient):
+  - nothing;
+  - a cold spot;
+  - a luminous shape;
+  - a coherent being whose need can be read.
+  A low-Sight team is fighting blind.
+- **Three roles fall out of Sight:**
+  - **Seers** (high Sight) read spirits and speak with them, but dread
+    shakes them more.
+  - **Anchors** (low Sight, sceptics) barely feel dread. They hold the
+    line, carry the iron and lanterns, and steady a seer who is standing
+    next to them.
+  - **Hands** carry the offerings and do the work: return the kettle to
+    its kitchen, hang the bells, open the door.
+- **Nerve, not hit points.** Spirits act on the team's composure:
+  - dread (Nerve damage);
+  - a lure (pulls someone toward the spirit, like the Lantern Man);
+  - confusion (swaps or turns people around);
+  - grief (spreads sorrow).
+- **Verbs** (first cut):
+  - **Listen**: read a spirit's need, gated by Sight.
+  - **Offer**: glimmer, food, or an object with provenance. Salvage from
+    this very district counts double: "we brought back your sign".
+  - **Speak or Name**: a true name, learned from lore, grants a spirit
+    conversion outright.
+  - **Ward**: a lantern, iron or salt makes a safe square; thresholds and
+    running water block some spirits.
+  - **Lay to rest**: finish the remnant's errand.
+  - **Unravel**: attack a Hollow's heart, costly to Nerve.
+  - **Banish**: force any spirit out. It always works, but it scars
+    Resonance, angers the Folk, and leaves the district colder.
+- **Outcomes per spirit:** converted, laid to rest, befriended,
+  unravelled, banished, or left alone. A district is settleable once its
+  Hollow is gone and the rest are resolved or at peace. Leaving some
+  spirits is allowed. The district then carries its residents, for good
+  or ill.
+- **Harm.** When Nerve breaks, a survivor flees. If they were lured, they
+  can be **taken**: missing, in the Veil. Folklore suggests rescue (a later
+  clearing, a bargain with the Folk), or a return after a year and a day,
+  changed. Death is rare or absent. **[open]**
+
+### 19.4 The Folk: a second society beside ours
+Inspired by fairy folklore (the good neighbours, the mound people) and by
+the Nunnehi of Cherokee tradition. **[open]** Recommendation: take the
+feeling and give them our own name, rather than using "Nunnehi", which
+belongs to a living culture's sacred tradition.
+
+- **Settlements.**
+  - Mounds, rings, hollow oaks and stone circles, placed in deep forest
+    and high-Resonance ground by worldgen.
+  - Joined by **Folk paths**: lines between mounds that must not be built
+    on. The survivors' desire paths and lanes must route around them,
+    which bends the village layout in a way no player plans.
+- **Distance.** They do not want to live on top of us. Each mound wants a
+  buffer (a new zone-like field, "the Wild") free of buildings, felling
+  and noise.
+  - Pushing the village into it costs **Standing** with the Folk.
+  - Leaving woods whole and paths open earns Standing.
+- **Growth.** With Standing and Resonance high, their society grows:
+  - new mounds appear;
+  - converted spirits from clearings move in;
+  - their lights are seen more often.
+  With Standing low, mounds go quiet or sour into Hollows.
+- **Visibility.** A mound reads as a grassy hump to everyone. The Folk
+  themselves, their lights, and their village life beneath the trees
+  are drawn as a second layer, faded in by the §4 "seeing through their
+  eyes" and by the Veil view. It is almost physical: always there, not
+  always seen.
+- **Working alongside.** Rewards grow with Standing:
+  - A brownie tradition: leave bread and milk at a doorstep, and night
+    chores get done. Some haul, mend, or tend the garden.
+  - Woodlot regrowth is faster where they are welcome.
+  - Guides for foragers and scouts.
+  - They herd fish (the lights under the water already do this).
+  - Weather warnings. Help in clearings: a Folk guide raises the team's
+    Sight.
+- **Rules** (geasa), learned through lore and council:
+  - do not cut the lone hawthorn;
+  - leave the last sheaf in the field;
+  - do not bring iron to the mound;
+  - do not speak their name aloud.
+  Breaking one brings mischief:
+  - soured stores;
+  - lost tools;
+  - a survivor *pixie-led*, walking into the woods at night. The search
+    for them is an acute moment at home without raids.
+- **Council.** Their emissaries bring requests (§8 entity requests
+  already exist): a festival together, a path reopened, a grove kept, a
+  stolen thing returned. In return they make offers: a guide, a fosterage,
+  a gift of glimmer.
+
+### 19.5 What acute moments this creates
+- Clearings: tactical and tense, with loss possible (taken, shaken).
+- Pixie-led survivors and searches in the night woods.
+- Breaking a rule or a promise, and making amends.
+- Hollows spreading from a neglected district toward home.
+- Choosing between the Folk's wishes and the village's needs, such as
+  wood in a hard winter.
+
+### 19.6 Suggested build order
+1. **Occupied districts, data and look.**
+   - Each district gets a spirit roster.
+   - Haunted districts are visibly wrong: cold light, drifting shapes
+     for seers.
+   - Settlement and salvage deep inside are blocked until cleared. The
+     edges can still be scavenged.
+2. **Clearing slice.**
+   - One district type (the suburb), four spirit kinds and the core verbs
+     (Listen, Offer, Ward, Lay to rest, Banish).
+   - Nerve, taken, and the outcome ladder.
+   - The camera moves to the district, and a turn UI is added.
+   - This is the largest single build in the plan so far.
+3. **Rewards of clearing.**
+   - Household spirits in homes (comfort, luck, warmth).
+   - The district opens for repurposing (§18).
+4. **The Folk, groundwork.**
+   - Mounds, Folk paths, the Wild buffer and Standing.
+   - Offerings, the first rules, and the Veil-layer rendering.
+5. **The Folk, together.**
+   - Working alongside, growth, pixie-led searches.
+   - Emissaries at council, Folk help in clearings.
+6. **More clearings.** Factory and mall Hollows, the true names found
+   through lore.
+
+The order is a recommendation. Steps 4–5 could come first if the user wants
+the Folk before the conflict.
