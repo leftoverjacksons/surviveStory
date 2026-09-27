@@ -147,6 +147,11 @@
     background: radial-gradient(ellipse at center, transparent 45%, rgba(110, 70, 190, 0.45) 100%); }
   @media (prefers-reduced-motion: reduce) { #vignette { transition: none; } }
 
+  #veil .effects { font-size: 11px; color: var(--ink-dim); margin: -2px 0 6px; }
+  #veil .lore { margin-top: 8px; font-size: 12px; }
+  #veil .lore summary { cursor: pointer; color: var(--ink-dim); font-size: 11.5px; }
+  #veil .lore ol { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-style: italic; max-height: 180px; overflow: auto; }
+
   /* building inspector */
   #inspect { left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); width: min(380px, calc(100% - 32px)); padding: 12px 14px; display: grid; gap: 6px; z-index: 3; }
   #inspect h3 { margin: 0; font: 400 18px var(--f-display); display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }

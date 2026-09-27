@@ -720,7 +720,11 @@ export class HeapsView {
   group = new THREE.Group();
   private views = new Map<number, { g: THREE.Group; cabin?: THREE.Object3D; parts: THREE.Object3D[]; last: number }>();
 
+  /** Heaps from world generation; later ones (caches) are added as they appear. */
+  private initial: number;
+
   constructor(private world: World) {
+    this.initial = world.heaps.length;
     for (const h of world.heaps) {
       // The station's own car is already modelled with the station.
       if (h.kind === 'car' && Math.hypot(tileX(world, h.tx) - CAR.x, tileZ(world, h.tz) - CAR.z) < 1.5) continue;
@@ -775,9 +779,14 @@ export class HeapsView {
     return { g, parts, last: -1 };
   }
 
-  /** Piles shrink and cars get stripped as scrap is taken. */
+  /** Piles shrink and cars get stripped as scrap is taken; new caches appear. */
   sync() {
     for (const h of this.world.heaps) {
+      if (!this.views.has(h.id) && h.id >= this.initial) {
+        const nv = h.kind === 'car' ? this.car(h) : this.pile(h);
+        this.views.set(h.id, nv);
+        this.group.add(nv.g);
+      }
       const v = this.views.get(h.id);
       if (!v || v.last === h.scrap) continue;
       v.last = h.scrap;

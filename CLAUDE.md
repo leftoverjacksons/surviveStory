@@ -59,5 +59,8 @@ reference: Tiny Glade.
     procedural houses (`src/render/house.ts`), yards (`src/render/plots.ts`),
     suppers and evenings at home, crowding and comfort, the store as a
     commons hall.
-  - Next: know-how in place of eras, aspirations and crafts, stakes for the
-    Veil, then procedural starting sites.
+  - Also done: know-how in place of eras (`src/sim/purpose.ts`),
+    aspirations, leisure, the Veil's stakes and lore (see DESIGN §17
+    "Round 1: what was built").
+  - Next: procedural starting sites; a balance pass (life is now
+    comfortable, and Influence saturates); the C3 art pass.

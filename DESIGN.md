@@ -170,8 +170,11 @@ woodlots exist, felling outside them will be rare and costly to Resonance.
   the home zone with doors facing the fire.
 - Construction: clear site trees → salvage scrap from wrecks and junk heaps →
   carry materials → build in stages. Idle people help.
-- **Salvage era → timber era** after a workshop, practice (6 projects) and
-  time (day 8+). Old shacks are rebuilt in timber.
+- **Know-how, not eras** (C2.5): everything starts as salvage. Timber
+  building needs someone who knows joinery and a workbench. Joinery is
+  learned by building and practising, fastest beside someone who knows it;
+  a former carpenter arrives knowing it. If everyone who knows it dies or
+  leaves, it is lost. Old shacks are rebuilt in timber once it is known.
 - Newcomers arrive when morale is good and there is room.
 
 Planned additions: storehouse and root cellar (winter stores), smokehouse,
@@ -302,7 +305,7 @@ camera.
 | B: Village | Home zone, store-first, planner, construction, salvage → timber, newcomers | **[built]** |
 | C1: The Living Year | Calendar and seasons (48-day year), weather, seasonal visuals, woodlots with replanting, fields, sacred ground, winter needs (firewood, stores, warmth), desire paths → lanes, lane-aware siting | **[built]** |
 | C2: The Veil | Resonance field, Sight, phenomena on the perception gradient, see-through-their-eyes, council proposals, Influence and nudges | **[built]** |
-| **C2.5: Homes and purpose** | Households, petitions for homes, the store becomes a commons hall, know-how replaces eras, aspirations and crafts for idle seasons, the Veil given mechanical stakes, procedural starting sites (see §17) | **[proposed next]** |
+| **C2.5: Homes and purpose** | Households, petitions for homes, burgage plots and procedural houses, yards, the store becomes a commons hall, know-how replaces eras, aspirations and leisure, the Veil given mechanical stakes and lore (see §17). Procedural starting sites still to do. | **[built, except start sites]** |
 | C3: Art pass | Lighting (GTAO, grading, fog, depth of field), procedural building parts, flowers and moss, character-model trial | [after C2.5] |
 | D: Expeditions | Parties, ruins, blueprints, entity encounters, tactical hook | [planned] |
 | E: Generations | Skills by doing, aging, families, children, mentorship, personal arcs | [planned] |
@@ -453,4 +456,54 @@ Proposal:
   can calm a panicked expedition, a Finder who senses salvage).
 - A *lore arc*: what the Quiet was, what the orbs are, why the Veil thinned.
   It is revealed in fragments through testimony, ruins and entity encounters.
+
+### Round 1: what was built (C2.5)
+
+- **Households.** Pairs with a bond of 35 or more set up house together;
+  people alone for 12 days set up on their own; close friends can join a
+  household. Households petition the council ("A home for Mako and
+  Amara") and start anyway after 8 days of waiting. At most two homes are
+  under construction at once, with a site crew of 3 plus the household.
+- **Plots.** Irregular quadrilaterals (frontage 7–9, depth 10–15, taper
+  and skew), fronting lanes and roads (the road's direction comes from a
+  principal-axis fit to nearby worn or paved tiles), the green around the
+  fire, or continuing a neighbour's row with a slight bend. People living
+  alone get compact plots. No room left → log asks the player for more
+  Home zone. The starting Home zone is radius 26.
+- **Houses.** A spec per plot: width, depth, eaves height, ridge along or
+  across the street, pitch, optional wing (L-plan), porch, chimney side.
+  Salvage houses: mismatched panels, tin roof with patches. Timber: frame
+  and daub, braces, thatch or shingle, window boxes. Furnished interior
+  (beds, table, stools, hearth, shelf, chest, rug) visible in cutaway.
+- **Home life.** Suppers at home (or in the hall for sociable people),
+  some evenings in or on the bench, bonding within the household. Home
+  comfort +3 to +7 morale; shared rooms of more than 4 sleepers cost up
+  to −4; waiting for a house −2.
+- **Yards.** Planned per plot and ordered by the household's traits: veg
+  beds (food in summer and autumn), woodpile, wattle fence (built a stretch
+  at a time), bench, fruit tree (autumn food once grown), flowers
+  (resonance), washing line, hen coop (eggs), shed.
+- **Commons hall.** Council proposal once half the village is housed: the
+  store gets a long table and stove; supper and bad-weather evenings there.
+- **Aspirations.** Home, kin, craft (joinery), garden, explore, veil
+  (meet an entity), feast. Pursued in free time; fulfilled: +12 morale and
+  a memory, then a pause of 5–11 days before a new one.
+- **Leisure.** Fishing at the pond, picking herbs in the meadow (a little
+  medicine), cards by the fire or in the hall. Summer daytime idling went
+  from about 50% to about 1%.
+- **Veil stakes.** Resonance scales crop growth, berry regrowth and yard
+  yields (×0.75 to ×1.25) and healing (×0.5 to ×1.5). Below 0.3: thin
+  sleep and blight. Boons: the Stag heals and leads to watercress, the
+  Choir eases grief, the Lantern Man's offering yields a cache, and keeping
+  the Moth Woman's grove blesses growth for 24 days. Psi abilities work
+  once Sight ≥ 40 (Lumen heals, Hush eases grief, Farsight reveals the map,
+  Echo reads lore from ruins, Push speeds building).
+- **Lore.** Twelve fragments about the Quiet, the Listeners, the orbs and
+  the Relay Station, learned one at a time (at most one every 6 days) from
+  entities and Echo. Shown in the Veil panel.
+
+**Open issues after round 1:** morale (~80) and food (~470 at year end)
+run high, so the game may be too easy; Influence saturates at 100;
+procedural starting sites are still to do; houses are many meshes each, so
+performance on weak GPUs needs watching.
 

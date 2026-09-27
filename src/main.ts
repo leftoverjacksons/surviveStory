@@ -484,4 +484,4 @@ requestAnimationFrame(() => {
 });
 
 // Exposed for automated checks and debugging.
-Object.assign(window, { __game: { colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), tick: (m: number) => tick(colony, m), refresh: () => { syncScene(); hud.render(); } } });
+Object.assign(window, { __game: { colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });

@@ -7,7 +7,8 @@ import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../s
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { exploredFraction } from '../sim/world';
 import { bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project } from '../sim/buildings';
-import { communitySight, homeResonance } from '../sim/veil';
+import { LORE, communitySight, growthFactor, healFactor, homeResonance } from '../sim/veil';
+import { ASPIRATIONS, SKILLED, knowers, skill } from '../sim/purpose';
 import { YARD, homeComfort, householdName, householdOf, waitingHouseholds } from '../sim/homes';
 import { CALM_COST, DREAM_COST, OMEN_COST, resolvable } from '../sim/council';
 
@@ -60,6 +61,7 @@ export class Hud {
   private omenMode = false;
   private councilKey = '';
   private councilOpen = false;
+  private loreOpen = false;
   private inspecting: { building?: number; project?: number } | null = null;
 
   constructor(private col: Colony, act: HudActions) {
@@ -93,6 +95,9 @@ export class Hud {
       killBtn.textContent = 'Lose survivor';
       act.onKill(id);
     });
+    $('veil').addEventListener('toggle', (e) => {
+      if ((e.target as HTMLElement).classList.contains('lore')) this.loreOpen = (e.target as HTMLDetailsElement).open;
+    }, true);
     $('veil').addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
       if (!b || b.disabled) return;
@@ -231,7 +236,7 @@ export class Hud {
         act.classList.toggle('idle', a.anim === 'idle' || a.anim === 'sleep');
       }
       const home = card.querySelector<HTMLElement>('.home')!;
-      const ht = this.homeLine(s.id);
+      const ht = this.homeLine(s.id) + this.hopeLine(s);
       if (home.innerHTML !== ht) home.innerHTML = ht;
       this.setBar(card, 'mor', s.morale, 100, `${Math.round(s.morale)}`);
       this.setBar(card, 'hp', s.hp, s.maxHp, `${Math.max(0, Math.round(s.hp))}/${s.maxHp}`);
@@ -261,7 +266,9 @@ export class Hud {
     const bedsTxt = `beds ${beds}/${pop}`;
     if ($('beds').textContent !== bedsTxt) $('beds').textContent = bedsTxt;
     const active = v.projects.filter((p) => !p.done);
-    const tier = `<span class="tier t${v.tier}">${v.tier === 0 ? 'Salvage era' : 'Timber era'}</span>`;
+    const joiners = knowers(this.col.community, 'joinery').map((s) => s.name.split(' ')[0]);
+    const tier = `<span class="tier t${v.tier}" title="What they know how to build with. Joinery is learned by building, fastest beside someone who knows it, and lost if everyone who knows it is gone.">${
+      v.tier === 1 ? `Joinery · ${esc(joiners.join(', '))}` : joiners.length ? `Joinery · ${esc(joiners.join(', '))} (needs a workbench)` : 'Salvage only'}</span>`;
     const built = v.buildings.filter((b) => b.kind !== 'store').length;
     const html = (active.length
       ? active.map((p) => {
@@ -346,14 +353,20 @@ export class Hud {
     const hr = homeResonance(col);
     const sel = this.selected;
     const pct = (hr * 100).toFixed(0);
+    const effects = [`land ×${(growthFactor(hr) * (col.community.day < col.veil.mothBlessing ? 1.12 : 1)).toFixed(2)}`, `healing ×${healFactor(hr).toFixed(2)}`];
+    if (col.community.day < col.veil.mothBlessing) effects.push('moth-blessed');
+    if (col.veil.thinSleep) effects.push('thin sleep, blight');
+    const lore = col.veil.lore.map((i) => `<li>${esc(LORE[i])}</li>`).join('');
     const html = `<div class="h">The Veil</div>
       <div class="ready veil"><span>Resonance</span><div class="bar"><i style="width:${pct}%"></i></div><span>${pct}%</span></div>
+      <div class="effects" title="Resonance at home: how the land answers. Crops, berries and gardens grow with it; wounds heal with it. Too low, and sleep comes thin and blight gets in.">${esc(effects.join(' · '))}</div>
       <div class="ready veil"><span>Sight</span><div class="bar"><i style="width:${communitySight(col).toFixed(0)}%"></i></div><span>${communitySight(col).toFixed(0)}</span></div>
       <div class="row">
         <button type="button" data-v="view" aria-pressed="${this.veilView}" title="Show Resonance on the land (V)">Veil view</button>
         <button type="button" data-v="calm" ${sel && inf >= CALM_COST ? '' : 'disabled'} title="${sel ? 'Quiet the selected survivor\'s troubles' : 'Select a survivor first'}">Calm · ${CALM_COST}</button>
         <button type="button" data-v="omen" aria-pressed="${this.omenMode}" ${inf >= OMEN_COST ? '' : 'disabled'} title="Click the map: light a way through the mist for the scouts">Omen · ${OMEN_COST}</button>
-      </div>`;
+      </div>
+      ${lore ? `<details class="lore" ${this.loreOpen ? 'open' : ''}><summary>What they've learned · ${col.veil.lore.length} of ${LORE.length}</summary><ol>${lore}</ol></details>` : ''}`;
     if ($('veil').innerHTML !== html) $('veil').innerHTML = html;
   }
 
@@ -448,6 +461,16 @@ export class Hud {
       const t = card.querySelector<HTMLElement>(`[data-val="${key}"]`);
       if (t && t.textContent !== text) t.textContent = text;
     }
+  }
+
+  /** What someone hopes for, and what they know. */
+  private hopeLine(s: Survivor): string {
+    const parts: string[] = [];
+    if (s.aspiration) parts.push(`Hopes for <em>${esc(ASPIRATIONS[s.aspiration.kind].want)}</em>`);
+    const j = skill(s, 'joinery');
+    if (j >= SKILLED) parts.push('Knows joinery');
+    else if (j > 0.05) parts.push(`Learning joinery · ${Math.round((j / SKILLED) * 100)}%`);
+    return parts.length ? `<br>${parts.join(' · ')}` : '';
   }
 
   /** Where someone lives, or what they're waiting for. */

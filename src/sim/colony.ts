@@ -14,7 +14,7 @@ import {
   type Season, type Weather,
 } from './calendar';
 import {
-  assignBeds, bedsTotal, checkTier, completeProject, heatNeed, storageCapacity, createVillage, footCenter, hasBuilt, materialsReady,
+  assignBeds, bedsTotal, completeProject, heatNeed, storageCapacity, createVillage, footCenter, hasBuilt, materialsReady,
   outstanding, plan, store, GARDEN_YIELD, MATERIALS, type Building, type Material, type Project, type Village,
 } from './buildings';
 import {
@@ -22,8 +22,11 @@ import {
   type Plot,
 } from './homes';
 import { bedSpot, KITCHEN, seatSpot } from './layout';
+import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill } from './purpose';
 import { highwayZ } from './worldgen';
-import { createVeil, disturb, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil } from './veil';
+import {
+  PSI_SIGHT, createVeil, disturb, growthFactor, healFactor, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil,
+} from './veil';
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
 import {
@@ -51,6 +54,8 @@ export type Task =
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench'; building: number }
   | { kind: 'yard'; plot: number; item: number; stage: 'go' | 'work'; t: number }
+  | { kind: 'practice'; building: number; stage: 'go' | 'work'; t: number }
+  | { kind: 'leisure'; what: 'fish' | 'cards' | 'herbs'; stage: 'go' | 'do'; t: number }
   | { kind: 'scout'; stage: 'go' | 'look'; t: number }
   | { kind: 'attune'; stage: 'go' | 'sit'; t: number }
   | { kind: 'tend'; stage: 'go' | 'sit'; t: number }
@@ -217,7 +222,14 @@ const first = (s: Survivor) => s.name.split(' ')[0];
 
 function workRate(s: Survivor, role: RoleId, col?: Colony) {
   const weather = col ? weatherWorkFactor(col.weather) : 1;
-  return traitSum(s, (t) => t.roleBonus?.[role], 1, 'add') * (0.7 + s.morale / 200) * weather;
+  // Push: a shove from nowhere helps with the heavy lifting.
+  const push = role === 'builder' && s.psi === 'push' && s.sight >= PSI_SIGHT ? 1.2 : 1;
+  return traitSum(s, (t) => t.roleBonus?.[role], 1, 'add') * (0.7 + s.morale / 200) * weather * push;
+}
+
+/** The land's answer where it grows: resonance, and the Moth Woman's blessing. */
+function landFactor(col: Colony, x: number, z: number) {
+  return growthFactor(resonanceAt(col, x, z)) * (col.community.day < col.veil.mothBlessing ? 1.12 : 1);
 }
 
 // ---------- movement ----------
@@ -725,6 +737,58 @@ function pickYard(col: Colony, a: Agent, s: Survivor): Task | null {
   return null;
 }
 
+/** Practise joints at the workbench (learning joinery), if there is one. */
+function pickPractice(col: Colony, a: Agent, s: Survivor): Task | null {
+  if (knows(s, 'joinery') && skill(s, 'joinery') >= 0.95) return null;
+  const bench = col.village.buildings.find((b) => b.kind === 'workshop');
+  if (!bench) return null;
+  const c = footCenter(col.world, bench.foot);
+  if (!setDest(col, a, c.x + ((a.id % 3) - 1) * 0.8, c.z + 0.2)) return null;
+  return { kind: 'practice', building: bench.id, stage: 'go', t: 0 };
+}
+
+/** Time off: fishing at the pond, cards by the fire, gathering herbs in the meadow. */
+function pickLeisure(col: Colony, a: Agent, s: Survivor): Task | null {
+  const w = col.world;
+  const season = seasonNow(col);
+  const k = habit(col, s.id * 7 + Math.floor(col.minute / 240));
+  if (season !== 'winter' && col.weather !== 'rain' && k < 35) {
+    const home = { tx: toTileX(w, w.home.x), tz: toTileZ(w, w.home.z) };
+    const shore = findNearest(w, home.tx, home.tz, 45, (tx, tz) => passable(w, tx, tz) && isExplored(w, tx, tz)
+      && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => w.ground[idx(w, tx + dx, tz + dz)] === Ground.Water));
+    if (shore && setDest(col, a, tileX(w, shore.tx) + ((a.id % 3) - 1) * 0.6, tileZ(w, shore.tz))) return { kind: 'leisure', what: 'fish', stage: 'go', t: 0 };
+  }
+  if (season !== 'winter' && k < 60) {
+    for (let i = 0; i < 4; i++) {
+      const ang = ((s.id * 2.3 + i * 1.7 + col.minute / 500) % 6.283);
+      const r = 14 + ((s.id * 5 + i * 3) % 9);
+      const x = w.home.x + Math.cos(ang) * r, z = w.home.z + Math.sin(ang) * r;
+      const tx = toTileX(w, x), tz = toTileZ(w, z);
+      if (passable(w, tx, tz) && isExplored(w, tx, tz) && w.ground[idx(w, tx, tz)] === Ground.Meadow && setDest(col, a, x, z)) {
+        return { kind: 'leisure', what: 'herbs', stage: 'go', t: 0 };
+      }
+    }
+  }
+  const st = store(col.village);
+  const spot = hallOpen(col) && (season === 'winter' || col.weather === 'rain') ? st.door : seatOf(col, a);
+  return setDest(col, a, spot.x, spot.z) ? { kind: 'leisure', what: 'cards', stage: 'go', t: 0 } : null;
+}
+
+/** Free time goes to what someone hopes for. */
+function pursue(col: Colony, a: Agent, s: Survivor): Task | null {
+  switch (s.aspiration?.kind) {
+    case 'craft': return pickBuild(col, a) ?? pickPractice(col, a, s);
+    case 'garden': case 'home': case 'kin': return pickYard(col, a, s) ?? pickBuild(col, a);
+    case 'explore': return s.role === 'scout' ? null : pickScout(col, a);
+    case 'veil': {
+      const r = col.world.fairyRing;
+      const ang = (s.id * 1.3) % (Math.PI * 2);
+      return setDest(col, a, r.x + Math.cos(ang) * 1.4, r.z + Math.sin(ang) * 1.4) ? { kind: 'attune', stage: 'go', t: 0 } : null;
+    }
+    default: return pickYard(col, a, s);
+  }
+}
+
 function seatOf(col: Colony, a: Agent): Point {
   const living = col.agents;
   return seatSpot(living.indexOf(a), living.length);
@@ -746,9 +810,9 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     const e = eveningPlace(col, a, s);
     if (setDest(col, a, e.spot.x, e.spot.z)) return { kind: 'social', stage: 'go', place: e.place, building: e.building };
   }
-  // After the day's work, people potter about their own yards.
+  // After the day's work, people follow what they hope for, or potter about their yards.
   if (h >= 17 && s.role !== 'rest' && res.food >= col.agents.length * 4 && habit(col, s.id * 3) < 55) {
-    const y = pickYard(col, a, s);
+    const y = pursue(col, a, s) ?? pickYard(col, a, s);
     if (y) return y;
   }
   let t: Task | null = null;
@@ -773,7 +837,8 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
   }
   switch (s.role) {
     case 'builder':
-      t = pickHaul(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a) ?? pickBuild(col, a)
+      t = pickHaul(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
+        ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickBuild(col, a)
         ?? pickSalvage(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
     case 'farmer':
@@ -802,8 +867,8 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     }
   }
   // Anyone at a loose end brings in a ripe harvest or lends a hand on a building site.
-  if (!t && s.role !== 'rest') t = pickFarm(col, a, 'harvest') ?? pickBuild(col, a) ?? pickYard(col, a, s);
-  return t ?? pickWander(col, a);
+  if (!t && s.role !== 'rest') t = pickFarm(col, a, 'harvest') ?? pickBuild(col, a) ?? pursue(col, a, s) ?? pickYard(col, a, s);
+  return t ?? pickLeisure(col, a, s) ?? pickWander(col, a);
 }
 
 // ---------- running tasks ----------
@@ -916,7 +981,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
           const seasonYield = seasonNow(col) === 'spring' ? 0.3 : 0.35;
           const amount = Math.max(1, Math.round(bush.berries * seasonYield * (1 + (workRate(s, 'forager') - 1) * 0.5)));
           bush.berries = 0;
-          bush.regrowAt = col.minute + 5 * MIN_PER_DAY;
+          bush.regrowAt = col.minute + (5 / landFactor(col, tileX(w, bush.tx), tileZ(w, bush.tz))) * MIN_PER_DAY;
           bush.reserved = 0;
           a.carry = { kind: 'food', amount };
           if (!deliver(col, a)) { res.food += amount; a.carry = null; return endTask(col, a); }
@@ -983,7 +1048,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       }
       a.anim = 'sleep';
       a.activity = a.indoors ? `Asleep in ${buildingById(col, col.beds.get(s.id) ?? -1)?.name ?? 'bed'}` : 'Asleep by the fire';
-      a.needs.rest = Math.min(100, a.needs.rest + dt * (13 / 60));
+      a.needs.rest = Math.min(100, a.needs.rest + dt * ((col.veil.thinSleep ? 10.5 : 13) / 60));
       const h = hourOf(col);
       if ((!isNight(h) && a.needs.rest >= 85) || a.needs.food < 8) endTask(col, a);
       return;
@@ -1017,6 +1082,55 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         a.needs.social = Math.min(100, a.needs.social + dt * ((t.place === 'hall' ? 25 : mates.length ? 20 : 6) / 60));
       }
       if (!isEvening(hourOf(col))) endTask(col, a);
+      return;
+    }
+    case 'leisure': {
+      if (t.stage === 'go') {
+        a.anim = 'walk';
+        a.activity = { fish: 'Off to the pond with a line', herbs: 'Wandering out into the meadow', cards: 'Looking for someone to play cards with' }[t.what];
+        if (walk(col, a, dt)) {
+          t.stage = 'do';
+          if (t.what === 'cards' && hallOpen(col) && Math.hypot(a.x - store(col.village).door.x, a.z - store(col.village).door.z) < 1.5) goInside(a, store(col.village));
+        }
+        return;
+      }
+      t.t += dt;
+      if (t.what === 'fish') {
+        a.anim = 'sit'; a.activity = 'Fishing at the pond';
+        if (t.t >= 90) { if (habit(col, a.id + Math.floor(col.minute)) < 45) res.food += 2; endTask(col, a); }
+      } else if (t.what === 'herbs') {
+        a.anim = 'forage'; a.activity = 'Picking yarrow and meadowsweet';
+        if (t.t >= 60) { if (habit(col, a.id * 3 + Math.floor(col.minute)) < 15) res.medicine += 1; endTask(col, a); }
+      } else {
+        a.anim = 'sit';
+        const others = col.agents.filter((o) => o !== a && o.task?.kind === 'leisure' && o.task.what === 'cards' && o.task.stage === 'do' && Math.hypot(o.x - a.x, o.z - a.z) < 4);
+        if (!a.indoors) face(a, w.campfire);
+        a.activity = others.length ? `Playing cards with ${others.slice(0, 2).map((o) => first(survivorOf(col, o.id))).join(' and ')}` : 'Laying out a hand of patience';
+        a.needs.social = Math.min(100, a.needs.social + dt * ((others.length ? 18 : 3) / 60));
+        if (others.length && habit(col, a.id + Math.floor(col.minute / 30)) < 2) adjustBond(col.community, a.id, others[0].id, 1);
+        if (t.t >= 60) endTask(col, a);
+      }
+      return;
+    }
+    case 'practice': {
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = 'Heading to the workbench to practise';
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      const b = buildingById(col, t.building);
+      if (!b) return endTask(col, a);
+      face(a, footCenter(w, b.foot));
+      a.anim = 'build';
+      const teacher = col.agents.find((o) => o !== a && o.task?.kind === 'practice' && o.task.building === t.building && knows(survivorOf(col, o.id), 'joinery'));
+      a.activity = knows(s, 'joinery') ? 'Cutting joints at the workbench, for the love of it'
+        : `Practising joints at the workbench · ${Math.round((skill(s, 'joinery') / SKILLED) * 100)}%`;
+      if (learn(s, 'joinery', dt * (0.00006 + (teacher ? 0.0001 : 0)) * (s.traits.includes('tinkerer') ? 1.8 : 1))) {
+        log(col.community, `${first(s)} has the knack of joinery now, from evenings at the workbench.`, 'good');
+        remember(s, col.community.day, 'Learned to joint timber.');
+      }
+      t.t += dt;
+      if (t.t >= 90) endTask(col, a);
       return;
     }
     case 'yard': {
@@ -1116,6 +1230,18 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       face(a, p.kind === 'clear_store' || p.kind === 'patch_roof' ? buildingById(col, p.target)!.inside : footCenter(w, p.foot));
       a.anim = 'build';
       p.work += dt * workRate(s, 'builder', col);
+      // Building teaches joinery: slowly alone, quickly beside someone who knows it.
+      if (!knows(s, 'joinery')) {
+        const teacher = col.agents.find((o) => o !== a && o.task?.kind === 'build' && o.task.project === p.id
+          && o.task.stage === 'work' && knows(survivorOf(col, o.id), 'joinery'));
+        const rate = (0.00002 + (teacher ? 0.00008 : 0)) * (s.traits.includes('tinkerer') ? 1.8 : 1)
+          * (hasBuilt(col.village, 'workshop') ? 1.5 : 0.6) * (p.tier === 1 ? 1.3 : 1);
+        if (learn(s, 'joinery', dt * rate)) {
+          const by = teacher ? `, taught at ${first(survivorOf(col, teacher.id))}'s elbow` : '';
+          log(col.community, `${first(s)} has the knack of joinery now${by}.`, 'good');
+          remember(s, col.community.day, 'Learned to joint timber.');
+        }
+      }
       a.activity = `${p.kind === 'clear_store' ? 'Clearing out the store' : `Building: ${p.name.toLowerCase()}`} · ${Math.min(99, Math.round((p.work / p.workNeeded) * 100))}%`;
       if (p.work >= p.workNeeded) {
         completeProject(w, col.village, col.community, p);
@@ -1368,7 +1494,7 @@ function hourly(col: Colony) {
         s.hp -= 0.12;
         if (s.hp <= 0) { killSurvivor(c, s.id, 'hunger'); continue; }
       } else if (a.needs.food > 30 && a.needs.rest > 30) {
-        s.hp = Math.min(s.maxHp, s.hp + 0.25);
+        s.hp = Math.min(s.maxHp, s.hp + 0.25 * healFactor(homeRes));
       }
       const needs = (a.needs.food + a.needs.rest + a.needs.social) / 3;
       let friends = 0;
@@ -1512,7 +1638,8 @@ function daily(col: Colony) {
   householdsDaily(col);
   dailyYards(col, lastSeason);
   syncAgents(col, true);
-  checkTier(col.village, c);
+  knowhowDaily(col);
+  aspirationsDaily(col);
   col.unreachable.clear();
   arrivals(col);
   replan(col);
@@ -1535,7 +1662,8 @@ function dailyFields(col: Colony, lastSeason: Season, season: Season) {
     }
     if (st === Crop.Growing && lastSeason !== 'winter') {
       const care = col.tended.has(i) ? 1.2 : 0.75;
-      w.cropGrowth[i] = Math.min(1, w.cropGrowth[i] + (1 / 20) * fertility(w, i) * care * rain);
+      const land = landFactor(col, tileX(w, i % w.w), tileZ(w, (i / w.w) | 0));
+      w.cropGrowth[i] = Math.min(1, w.cropGrowth[i] + (1 / 20) * fertility(w, i) * care * rain * land);
       if (w.cropGrowth[i] >= 1) w.cropState[i] = Crop.Ripe;
     }
   }
@@ -1553,7 +1681,7 @@ function dailyYards(col: Colony, lastSeason: Season) {
       if (y.progress < 1) continue;
       if (y.kind === 'beds') {
         const tended = y.tended >= 45;
-        if (tended && (lastSeason === 'summer' || lastSeason === 'autumn')) r.food += 1.5;
+        if (tended && (lastSeason === 'summer' || lastSeason === 'autumn')) r.food += 1.5 * landFactor(col, plot.hc.x, plot.hc.z);
         y.growth = lastSeason === 'winter' ? 0 : Math.max(0.1, Math.min(1, y.growth + (tended ? 0.12 : -0.08)));
         y.tended = 0;
       } else if (y.kind === 'fruit' && lastSeason !== 'winter') {

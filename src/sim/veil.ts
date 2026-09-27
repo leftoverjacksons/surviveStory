@@ -11,9 +11,9 @@
  * - Influence: the player's power, grown from the community's collective Sight.
  */
 import type { Colony } from './colony';
-import { alive, log, remember, type Survivor } from './community';
+import { alive, log, remember, withRng, type Survivor } from './community';
 import type { Rng } from './rng';
-import { Ground, Zone, idx, reveal, tileX, tileZ, toTileX, toTileZ, type Point, type World } from './world';
+import { Crop, Ground, Zone, idx, isExplored, reveal, tileX, tileZ, toTileX, toTileZ, type Point, type World } from './world';
 
 export const CELL = 4; // tiles per resonance cell
 
@@ -32,7 +32,38 @@ export interface Veil {
   requests: EntityRequest[];
   /** Survivors whose deaths have already been felt by the land. */
   mourned: Set<number>;
+  /** Lore fragments learned, in order (indices into LORE). */
+  lore: number[];
+  /** Day the Moth Woman's blessing lapses (her grove kept). */
+  mothBlessing: number;
+  /** Home resonance is so low that sleep comes thin and dreams go bad. */
+  thinSleep: boolean;
+  /** Earliest day the next lore fragment can be learned. */
+  loreNext: number;
 }
+
+/**
+ * What the other side knows about the Quiet, learned a fragment at a time
+ * from those who can hear it. Revealed in order.
+ */
+export const LORE: string[] = [
+  'Before the Quiet, the sky was full of voices. The wisps remember the noise.',
+  'The Quiet did not come with fire. One autumn the machines simply stopped listening to us.',
+  'The Veil is not new. It was always there. The noise drowned it out.',
+  'The orbs were seen for years before. People filmed them and argued about them, and then stopped arguing.',
+  'Some people went into the Quiet on purpose. They called themselves the Listeners.',
+  'The Ring was planted. Someone made it, long ago, as a place to listen.',
+  'The Lantern Man walked this road before it was a road.',
+  'The Listeners built relays in the hills, to hear what the orbs were saying.',
+  'The wisps are not spirits. They are thoughts that nobody finished.',
+  'The orbs are not visitors. They are what is left of something that learned to listen too well.',
+  'The Relay Station still hums at night. Something there is still listening.',
+  'The Quiet is not over. It is waiting to see what we become.',
+];
+
+/** How strongly the land answers: crops, berries and healing scale with local resonance. */
+export const growthFactor = (res: number) => 0.75 + 0.5 * res;
+export const healFactor = (res: number) => 0.5 + res;
 
 export type PhenomKind = 'moth_woman' | 'lantern_man' | 'stag' | 'choir' | 'shade' | 'hollow' | 'orb';
 export type Reading = 'none' | 'chill' | 'luminous' | 'coherent';
@@ -150,7 +181,7 @@ export function createVeil(w: World): Veil {
   }
   return {
     cw, ch, res: base.slice(), base, version: 0, phenomena: [], nextId: 1,
-    influence: 10, requests: [], mourned: new Set(),
+    influence: 10, requests: [], mourned: new Set(), lore: [], mothBlessing: 0, thinSleep: false, loreNext: 0,
   };
 }
 
@@ -194,6 +225,33 @@ export function disturb(col: Colony, x: number, z: number, amount: number, radiu
 
 export const nurture = (col: Colony, x: number, z: number, amount: number, radiusCells = 1) =>
   disturb(col, x, z, -amount, radiusCells);
+
+// ---------- lore and gifts ----------
+
+/** Learn the next fragment of lore, if any remain. */
+export function learnLore(col: Colony, s: Survivor, how: string): boolean {
+  const v = col.veil;
+  // The other side gives up its story slowly: a fragment every few days at most.
+  if (v.lore.length >= LORE.length || col.community.day < v.loreNext) return false;
+  v.loreNext = col.community.day + 6;
+  const i = v.lore.length;
+  v.lore.push(i);
+  log(col.community, `${first(s)} ${how}: "${LORE[i]}"`, 'strange');
+  remember(s, col.community.day, `Learned: ${LORE[i]}`);
+  return true;
+}
+
+/** The Lantern Man's thanks for an offering: a cache where he pointed. */
+export function lanternGift(col: Colony, req: EntityRequest) {
+  const w = col.world;
+  const target = w.pois.find((q) => q.discovered && q.kind === 'ruin') ?? w.pois.find((q) => q.kind === 'ruin');
+  const at = target ? { tx: target.tx + 2, tz: target.tz + 1 } : { tx: toTileX(w, req.x), tz: toTileZ(w, req.z) };
+  w.heaps.push({ id: w.heaps.length, tx: at.tx, tz: at.tz, kind: 'pile', scrap: 24, max: 24, rot: 0, reserved: 0 });
+  reveal(w, tileX(w, at.tx), tileZ(w, at.tz), 6);
+  col.community.resources.medicine += 2;
+  const by = col.community.survivors.find((x) => x.id === req.by);
+  log(col.community, `Where the Lantern Man had pointed${target ? `, past ${target.name}` : ''}, ${by ? first(by) : 'someone'} found a cache: tools, sheet tin, two tins of medicine. The glimmer they left was gone by morning.`, 'good');
+}
 
 // ---------- daily drift ----------
 
@@ -240,7 +298,66 @@ export function veilDaily(col: Colony, hardship: { cold: boolean; rationing: boo
     v.mourned.add(s.id);
     disturb(col, h.x, h.z, 0.2, 4);
   }
+  // A thin Veil at home: sleep comes thin, and blight gets into the fields.
+  const hr = homeResonance(col);
+  const wasThin = v.thinSleep;
+  v.thinSleep = hr < 0.3;
+  if (v.thinSleep && !wasThin) log(c, 'Nobody is sleeping well. The land around the village feels worn thin, and the dreams have gone strange.', 'bad');
+  if (!v.thinSleep && wasThin) log(c, 'The dreams have eased. The land around the village feels less raw.', 'good');
+  withRng(c, (rng) => {
+    if (hr < 0.32 && rng.chance(0.3)) {
+      const w = col.world;
+      let lost = 0;
+      for (let i = 0; i < w.cropState.length; i++) {
+        if (w.cropState[i] === Crop.Growing && rng.chance(0.15)) { w.cropState[i] = Crop.Untilled; w.cropGrowth[i] = 0; lost++; }
+      }
+      if (lost) { w.cropVersion++; log(c, `Blight in the fields: ${lost} rows came up grey and withered overnight.`, 'bad'); }
+    }
+    psiDaily(col, rng);
+  });
   v.version++;
+}
+
+/** Psi abilities, once someone's Sight is strong enough to use them. */
+export const PSI_SIGHT = 40;
+function psiDaily(col: Colony, rng: Rng) {
+  const c = col.community, w = col.world;
+  const living = alive(c);
+  for (const s of living) {
+    if (!s.psi || s.sight < PSI_SIGHT) continue;
+    const say = rng.chance(0.3);
+    switch (s.psi) {
+      case 'lumen': {
+        const hurt = living.filter((o) => o.hp < o.maxHp).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+        if (!hurt) break;
+        hurt.hp = Math.min(hurt.maxHp, hurt.hp + 4);
+        if (say) log(c, `${first(s)} held ${hurt === s ? 'their own hands' : `${first(hurt)}'s hands`} until the warm light came. It helps.`, 'strange');
+        break;
+      }
+      case 'hush': {
+        const grieving = living.find((o) => o.griefDays > 0 && o !== s);
+        if (!grieving) break;
+        grieving.griefDays = Math.max(0, grieving.griefDays - 1);
+        grieving.morale = Math.min(100, grieving.morale + 3);
+        if (say) log(c, `${first(s)} sat with ${first(grieving)} a while. The room went very quiet, and ${first(grieving)} slept.`, 'strange');
+        break;
+      }
+      case 'farsight': {
+        const ang = rng.range(0, Math.PI * 2);
+        for (let r = 20; r < 110; r += 4) {
+          const x = w.home.x + Math.cos(ang) * r, z = w.home.z + Math.sin(ang) * r;
+          if (!isExplored(w, toTileX(w, x), toTileZ(w, z))) { reveal(w, x, z, 8); break; }
+        }
+        if (say) log(c, `${first(s)} spent the morning with their eyes shut, seeing through a kestrel's. They drew what they saw.`, 'strange');
+        break;
+      }
+      case 'echo': {
+        if (w.pois.some((q) => q.discovered && q.kind === 'ruin') && rng.chance(0.2)) learnLore(col, s, 'held an old kettle from the ruins and read the last memory in it');
+        break;
+      }
+      case 'push': break; // builds faster (see workRate)
+    }
+  }
 }
 
 // ---------- hourly: sight, influence, phenomena ----------
@@ -362,11 +479,25 @@ function experience(col: Colony, rng: Rng, s: Survivor, p: Phenomenon, reading: 
     s.sight = Math.min(100, s.sight + 1);
   } else {
     s.sight = Math.min(100, s.sight + 3);
+    s.metEntity = c.day;
     switch (p.kind) {
-      case 'stag': bump(10); s.griefDays = Math.max(0, s.griefDays - 2); break;
-      case 'choir': c.resources.glimmer += 3; bump(5); break;
+      case 'stag':
+        bump(10); s.griefDays = Math.max(0, s.griefDays - 2); s.hp = s.maxHp;
+        // It leads them somewhere green.
+        c.resources.food += 8;
+        if (rng.chance(0.5)) log(c, `The White Stag led ${first(s)} to a spring thick with watercress. They came back with armfuls.`, 'good');
+        break;
+      case 'choir':
+        c.resources.glimmer += 3; bump(5);
+        // A verse that eases everyone a little.
+        for (const o of alive(c)) if (o.griefDays > 0) o.griefDays--;
+        if (rng.chance(0.5)) learnLore(col, s, 'wrote down a verse of the wisps\' song');
+        break;
       case 'shade': s.griefDays = 0; bump(8); break;
-      case 'orb': s.sight = Math.min(100, s.sight + 10); col.veil.influence = Math.min(100, col.veil.influence + 15); break;
+      case 'orb':
+        s.sight = Math.min(100, s.sight + 10); col.veil.influence = Math.min(100, col.veil.influence + 15);
+        learnLore(col, s, 'came back from the Ring and would only say one thing');
+        break;
       case 'hollow': bump(-8); s.sight = Math.min(100, s.sight + 4); break;
       case 'lantern_man': {
         // He points the way: reveal a patch of the map toward something undiscovered.
@@ -377,11 +508,13 @@ function experience(col: Colony, rng: Rng, s: Survivor, p: Phenomenon, reading: 
         }
         col.veil.requests.push({ kind: 'offering', from: 'lantern_man', x: p.x, z: p.z, by: s.id });
         bump(3);
+        if (rng.chance(0.4)) learnLore(col, s, 'asked the Lantern Man where he was going. He answered');
         break;
       }
       case 'moth_woman':
         col.veil.requests.push({ kind: 'grove', from: 'moth_woman', x: p.x, z: p.z, by: s.id });
         bump(4);
+        if (rng.chance(0.5)) learnLore(col, s, 'heard the Moth Woman say something else, very softly');
         break;
     }
     remember(s, c.day, text);

@@ -82,6 +82,9 @@ for (let seed = 1; seed <= colonies; seed++) {
     alive(c).filter((s) => v.buildings.find((b) => b.id === col.beds.get(s.id))?.kind === 'home').length,
     v.plots.reduce((n, p) => n + p.yard.filter((y) => y.progress >= 1).length, 0),
     v.buildings.some((b) => b.kind === 'store' && b.level >= 3) ? 1 : 0,
+    alive(c).filter((s) => (s.skills?.joinery ?? 0) >= 0.5).length,
+    c.survivors.reduce((n, s) => n + s.memories.filter((m) => m.text.startsWith('Got my wish')).length, 0),
+    col.veil.lore.length,
   ]);
   if (showLog && seed === 1) {
     for (const l of c.log) if (l.tone !== 'info' || l.text.startsWith('Day')) console.log(`  D${l.day} ${l.text}`);
@@ -92,6 +95,6 @@ for (let seed = 1; seed <= colonies; seed++) {
 const mean = (i: number) => rows.reduce((s, r) => s + r[i], 0) / rows.length;
 const min = (i: number) => Math.min(...rows.map((r) => r[i]));
 const max = (i: number) => Math.max(...rows.map((r) => r[i]));
-const names = ['alive', 'food @ winter', 'died', 'left', 'beds', 'morale', 'food', 'min food (winter)', 'hungry days', 'wood', 'cold nights', 'buildings', 'tier', 'explored %', 'saplings', 'home resonance', 'mean sight', 'influence', 'strange lines', 'councils', 'households', 'homes', 'sleep at home', 'yard features', 'hall'];
+const names = ['alive', 'food @ winter', 'died', 'left', 'beds', 'morale', 'food', 'min food (winter)', 'hungry days', 'wood', 'cold nights', 'buildings', 'tier', 'explored %', 'saplings', 'home resonance', 'mean sight', 'influence', 'strange lines', 'councils', 'households', 'homes', 'sleep at home', 'yard features', 'hall', 'joiners', 'wishes granted', 'lore'];
 console.log(`${colonies} colonies × ${days} days${prepared ? ' (prepared)' : ''}  (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
 names.forEach((n, i) => console.log(`${n.padEnd(18)} mean ${mean(i).toFixed(1).padStart(7)}   min ${min(i).toFixed(1).padStart(7)}   max ${max(i).toFixed(1).padStart(7)}`));

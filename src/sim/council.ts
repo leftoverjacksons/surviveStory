@@ -12,7 +12,7 @@ import { dayOfSeason, seasonOf } from './calendar';
 import { bedsTotal, hasBuilt, sharedBeds, storageCapacity, store, type SiteKind } from './buildings';
 import { householdName, householdOf, waitingHouseholds } from './homes';
 import type { Rng } from './rng';
-import { communitySight, homeResonance, nurture, type EntityRequest } from './veil';
+import { communitySight, homeResonance, lanternGift, nurture, type EntityRequest } from './veil';
 import { Zone, idx, paintZone, reveal, toTileX, toTileZ, type Point } from './world';
 
 export type ProposalKind =
@@ -353,12 +353,15 @@ function applyProposal(col: Colony, p: Proposal) {
       nurture(col, w.home.x, w.home.z, 0.06, 3);
       const s = living.find((x) => x.id === p.proposer);
       if (s) s.sight = Math.min(100, s.sight + 8);
+      if (p.request) lanternGift(col, p.request);
       col.veil.requests = col.veil.requests.filter((q) => q !== p.request);
       break;
     }
     case 'grove':
       if (p.request) paintZone(w, p.request.x, p.request.z, 4.5, Zone.Sacred);
       col.veil.requests = col.veil.requests.filter((q) => q !== p.request);
+      col.veil.mothBlessing = c.day + 24;
+      log(c, 'That night the moths came into the village in thousands, and settled on the gardens, and left before dawn. Everything growing seems to stand a little taller.', 'strange');
       break;
     case 'home':
       if (p.household && !col.village.homeQueue.includes(p.household)) col.village.homeQueue.push(p.household);

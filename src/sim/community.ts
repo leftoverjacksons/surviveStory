@@ -1,6 +1,7 @@
 import { Rng } from './rng';
+import type { Aspiration } from './purpose';
 import {
-  BACKGROUNDS, EPITHETS, FIRST_NAMES, PSI, ROLES, TRAITS,
+  BACKGROUNDS, EPITHETS, FIRST_NAMES, PSI, ROLES, TRADE_SKILLS, TRAITS,
   type PsiId, type RoleId, type TraitId,
 } from './data';
 
@@ -39,6 +40,13 @@ export interface Survivor {
   sight: number;
   /** Day they joined the village. */
   arrived?: number;
+  /** Know-how, 0..1 per craft (0.5 = can do it). */
+  skills?: { joinery?: number };
+  /** What they hope for, and when they'll set their heart on something new. */
+  aspiration?: Aspiration;
+  hopeAgain?: number;
+  /** Last day they truly met something from the other side. */
+  metEntity?: number;
 }
 
 export type BondKind = 'stranger' | 'friend' | 'close' | 'rival';
@@ -183,6 +191,8 @@ export function createSurvivor(c: Community, rng: Rng): Survivor {
     arrived: c.day,
     sight: Math.min(100, stats.attunement * 7 + (traits.includes('orb_touched') ? 15 : 0) + (psi ? 10 : 0) + rng.int(0, 12)),
   };
+  const trade = TRADE_SKILLS[s.background];
+  if (trade) s.skills = { ...trade };
   return s;
 }
 

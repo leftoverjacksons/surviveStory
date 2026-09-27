@@ -67,4 +67,11 @@ export const BACKGROUNDS = [
   'former line cook', 'former EMT', 'former radio host', 'former lineworker',
   'former schoolteacher', 'former sky-watcher forum mod', 'former long-haul trucker',
   'former park ranger', 'former data-center tech', 'born after the Quiet',
+  'former carpenter',
 ];
+
+/** Trades from before the Quiet that come with know-how (0..1; 0.5 = can do it). */
+export const TRADE_SKILLS: Record<string, { joinery?: number }> = {
+  'former carpenter': { joinery: 0.7 },
+  'former cabinetmaker': { joinery: 0.6 },
+};

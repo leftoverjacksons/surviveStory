@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createCommunity } from '../src/sim/community';
+import { createCommunity, killSurvivor } from '../src/sim/community';
 import { createColony, tick, type Colony } from '../src/sim/colony';
-import { bedsTotal, footTiles, store } from '../src/sim/buildings';
+import { bedsTotal, footTiles, hasBuilt, store } from '../src/sim/buildings';
+import { knowers, knowhowDaily } from '../src/sim/purpose';
 import { generateWorld } from '../src/sim/worldgen';
 import { Zone, idx, inZone, paintZone, toTileX, toTileZ } from '../src/sim/world';
 
@@ -53,11 +54,20 @@ describe('village', () => {
     }
   });
 
-  it('learns timber only after a workshop and some time', () => {
+  it('builds in timber once someone has learned joinery and there is a workbench', () => {
     expect(v.tier).toBe(1);
+    expect(knowers(col.community, 'joinery').length).toBeGreaterThan(0);
     const early = createColony(generateWorld(31), createCommunity(31));
-    runDays(early, 5);
-    expect(early.village.tier).toBe(0);
+    runDays(early, 3);
+    expect(early.village.tier).toBe(knowers(early.community, 'joinery').length && hasBuilt(early.village, 'workshop') ? 1 : 0);
+  });
+
+  it('forgets joinery if everyone who knew it is gone', () => {
+    const lost = createColony(generateWorld(31), createCommunity(31));
+    runDays(lost, 16);
+    for (const s of knowers(lost.community, 'joinery')) killSurvivor(lost.community, s.id, 'a fall');
+    knowhowDaily(lost);
+    expect(lost.village.tier).toBe(0);
   });
 
   it('never leaves materials half-promised', () => {
