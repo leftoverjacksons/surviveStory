@@ -253,6 +253,7 @@ function motel(site: Site, k: Kit) {
   oroof.position.y = 3.1;
   office.add(oroof);
   office.position.set(-12.75, 0, 1.25);
+  office.userData.noCut = true;
   k.g.add(office);
   k.surfaces.push(boxSurface(new THREE.Vector3(-12.75, 1.5, 1.25), new THREE.Vector3(3.5, 3, 3.5), ['px', 'nx', 'pz', 'nz'], 1));
   k.surfaces.push({ ...boxSurface(new THREE.Vector3(-12.75, 3.1, 1.25), new THREE.Vector3(4, 0.25, 4), ['py'], 0.8), roof: true });
@@ -269,6 +270,7 @@ function motel(site: Site, k: Kit) {
   sign.add(new THREE.Mesh(new THREE.BoxGeometry(3.22, 0.3, 0.27), lambert('#8a4a3a')).translateY(6.1));
   sign.add(new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.55, 0.2), lambert('#4f7f7a')).translateY(5.2).translateX(0.4));
   sign.position.set(10.5, 0, 8.5);
+  sign.userData.noCut = true;
   sign.rotation.set(0.04, -0.5, 0.06);
   k.g.add(sign);
   k.surfaces.push(boxSurface(new THREE.Vector3(10.5, 2.2, 8.5), new THREE.Vector3(0.3, 4.4, 0.3), ['px', 'nx', 'pz', 'nz'], 0.5));
@@ -317,6 +319,7 @@ function farm(site: Site, k: Kit) {
   dome.position.y = 7;
   silo.add(dome);
   silo.position.set(6, 0, -9);
+  silo.userData.noCut = true;
   k.g.add(silo);
   k.surfaces.push(boxSurface(new THREE.Vector3(6, 2.5, -9), new THREE.Vector3(2.6, 5, 2.6), ['px', 'nx', 'pz', 'nz'], 1.2));
   // A stone water trough.
@@ -386,6 +389,7 @@ function glasshouse(site: Site, k: Kit) {
   shed.add(sroof);
   shed.add(new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 0.05), lambert('#4f7a5a')).translateY(0.9).translateZ(1.52));
   shed.position.set(8, 0, -8);
+  shed.userData.noCut = true;
   k.g.add(shed);
   k.surfaces.push(boxSurface(new THREE.Vector3(8, 1.1, -8), new THREE.Vector3(3, 2.2, 3), ['px', 'nx', 'pz', 'nz'], 1));
   // Nursery benches in the yard, with pots.

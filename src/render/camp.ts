@@ -14,6 +14,7 @@ import { glowTexture, lambert } from './util';
 export class Camp {
   group = new THREE.Group();
   private fireLight: THREE.PointLight;
+  private shadowTick = 0;
   private flames: THREE.Mesh[] = [];
   private flameHalo: THREE.Sprite;
   private stones = new Map<number, THREE.PointLight>();
@@ -59,6 +60,9 @@ export class Camp {
     this.fireLight.castShadow = true;
     this.fireLight.shadow.mapSize.set(512, 512);
     this.fireLight.shadow.bias = -0.002;
+    // Six shadow passes (a cube) per update: refresh a few times a second, not every frame.
+    this.fireLight.shadow.autoUpdate = false;
+    this.fireLight.shadow.needsUpdate = true;
     pit.add(this.fireLight);
     pit.position.set(world.campfire.x, heightAt(world, world.campfire.x, world.campfire.z), world.campfire.z);
     pit.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
@@ -170,7 +174,7 @@ export class Camp {
     g.add(stone, candle, flame, light);
     const M = this.world.site.memorial;
     g.position.set(M.x + (i % 4) * 0.75, heightAt(this.world, M.x, M.z), M.z + Math.floor(i / 4) * 0.7);
-    g.traverse((o) => { o.castShadow = true; });
+    g.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; }); // not the candle's light: a shadow cube per stone
     this.stones.set(id, light);
     this.group.add(g);
   }
@@ -179,6 +183,7 @@ export class Camp {
     const flick = 1 + Math.sin(t * 13) * 0.12 + Math.sin(t * 29) * 0.08 + Math.sin(t * 5.3) * 0.1;
     const lit = fireLit ? 1 : 0.25;
     this.fireLight.intensity = 9 * flick * lit;
+    if (++this.shadowTick % 6 === 0) this.fireLight.shadow.needsUpdate = true;
     this.flames.forEach((f, i) => {
       f.scale.set(lit, flick * lit * (1 + Math.sin(t * (9 + i * 3)) * 0.15), lit);
       f.rotation.y = t * (1 + i);

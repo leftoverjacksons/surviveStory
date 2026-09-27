@@ -141,6 +141,7 @@ export const enhanced = new WeakSet<THREE.Material>();
 
 export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions = {}): T {
   enhanced.add(mat);
+  mat.userData.enhance = { ...opts };
   const wind = opts.wind ?? 0;
   const fog = opts.fog ?? true;
   const zone = opts.zone ?? false;

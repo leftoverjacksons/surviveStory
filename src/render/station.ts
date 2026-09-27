@@ -208,6 +208,7 @@ export function buildStation(): StationBuild {
   stripe.position.y = 7.7;
   sign.add(pole, board, stripe);
   sign.position.set(SIGN.x, 0, SIGN.z);
+  sign.userData.noCut = true;
   sign.rotation.set(0.05, 0.4, -0.09);
   g.add(sign);
   surfaces.push(boxSurface(new THREE.Vector3(SIGN.x, 2.5, SIGN.z), new THREE.Vector3(0.35, 5, 0.35), ['px', 'nx', 'pz', 'nz'], 0.6));
@@ -229,6 +230,7 @@ export function buildStation(): StationBuild {
     car.add(rim);
   }
   car.position.set(CAR.x, -0.1, CAR.z);
+  car.userData.noCut = true;
   car.rotation.set(0, CAR.rot, 0.04);
   g.add(car);
   surfaces.push(boxSurface(new THREE.Vector3(CAR.x, 0.8, CAR.z), new THREE.Vector3(4.2, 1.4, 1.8), ['py', 'pz', 'nx'], 0.8));

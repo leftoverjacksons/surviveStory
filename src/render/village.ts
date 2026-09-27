@@ -9,6 +9,7 @@ import { WATER_Y, heightAt, tileX, tileZ, type Heap, type World } from '../sim/w
 import type { StoreParts } from './station';
 import { homeLayout, housePoint } from '../sim/homes';
 import { buildHouse } from './house';
+import { mergeStatic } from './merge';
 import type { RoofControl } from './roofs';
 import { glowTexture, makeRand } from './util';
 
@@ -323,6 +324,13 @@ function leanTo(W: number, D: number, p: number, glow: THREE.Mesh[]): THREE.Grou
 }
 
 /** Mending the part of the shelter's roof that fell in: scaffold first, then the patch. */
+/** Whether a group is (or contains) a building the cutaway slices. */
+function isBuilding(g: THREE.Object3D): boolean {
+  let found = false;
+  g.traverse((o) => { if (o.userData.building) found = true; });
+  return found;
+}
+
 // ---------- the fishery ----------
 
 /** A plank jetty running out over the water (+z), from a little way up the bank. */
@@ -735,6 +743,8 @@ export class VillageView {
     if (e) this.dispose(e.group);
     const glow: THREE.Mesh[] = [];
     const group = build(glow);
+    // Finished buildings don't change: bake them into a few meshes.
+    if (id.startsWith('b')) mergeStatic(group, new Set(glow), isBuilding(group));
     this.register(group);
     this.group.add(group);
     this.entries.set(id, { key, group, glow });
@@ -771,6 +781,7 @@ export class VillageView {
     if (st.level >= 2 && !this.roofDone) {
       this.roofDone = roofPatch(this.village.site, 1);
       this.roofDone.userData.roofGroup = true;
+      mergeStatic(this.roofDone);
       this.register(this.roofDone);
       this.group.add(this.roofDone);
     }
@@ -828,6 +839,7 @@ export class VillageView {
         gi.add(box(0.5, 0.5, 0.5, mat('#7b6243', false), site.inside.x + 0.8, 0.25, site.inside.z + 0.6));
       }
       gi.userData.building = true;
+      mergeStatic(gi, new Set(), true);
       this.register(gi);
       this.storeInterior = gi;
       this.group.add(gi);

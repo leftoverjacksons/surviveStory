@@ -580,3 +580,30 @@ User asked for a fishing zone with docks and huts as a food source.
   (Resonance ≥ 0.4). Truly seen, they drive fish to the jetty (+25% stock)
   and may give a fragment of lore.
 
+
+### Performance pass 1 (after fishing)
+Measured with `__game.probeRender()` on seed 8 after 40 days, same build,
+with and without `?nomerge`:
+
+| | `?nomerge` | merged | change |
+|---|---|---|---|
+| Draw calls, full frame | 3,130 | 842 | −73% |
+| Draw calls, no shadow pass | 1,565 | 444 | −72% |
+| Triangles | ~1.8M | ~1.8M | unchanged |
+
+- **Static merging** (`render/merge.ts`). A finished building's boxes are
+  baked into one mesh per material. Plain Lambert surfaces share one
+  vertex-coloured material per (enhance options, cutaway) pair. Roofs merge
+  into a separate `roofGroup`, so the cutaway can still lift them. Window
+  glow, cloth, hens and lantern halos stay separate (`userData.keep`), and
+  `noCut` exempts tall outdoor pieces from the cutaway.
+  - Applied to houses, yards, the starting site, the store interior, deer
+    parts and people's heads.
+  - Village buildings went from about 1,480 calls to 65, and yards from
+    about 670 to 36.
+- **Lights.** The campfire's point-light shadow re-renders every 6th frame,
+  and candles no longer cast shadows.
+- **Trees.** At most 6 fall animations run at once.
+- **Largest remaining cost.** People, at about 310–360 calls across the
+  x-ray, figure and shadow passes; instancing them is the next step if
+  needed. Simulation takes about 0.3–0.6 ms per frame.

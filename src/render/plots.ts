@@ -8,6 +8,7 @@ import type { Village } from '../sim/buildings';
 import { heightAt, type World } from '../sim/world';
 import { box, cyl, mat } from './kit';
 import { makeRand } from './util';
+import { mergeStatic } from './merge';
 
 const CLOTH = ['#e8e0cc', '#8aa0b8', '#c07a5a', '#d8c060', '#9ab08a'];
 const FLOWERS = ['#d8607a', '#e8c050', '#f0f0e0', '#b070c0', '#e08040', '#7090e0'];
@@ -206,6 +207,7 @@ export class PlotsView {
     if (e && e.key === key) return;
     if (e) this.drop(e);
     const group = build();
+    mergeStatic(group);
     this.group.add(group);
     this.entries.set(id, { key, group });
   }

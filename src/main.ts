@@ -10,6 +10,7 @@ import { FogTexture, WearTexture, ZoneTexture, buildTerrain } from './render/ter
 import { FieldsView, Precipitation } from './render/land';
 import { buildVines } from './render/station';
 import { buildSite } from './render/sites';
+import { mergeStatic } from './render/merge';
 import { TreeField } from './render/trees';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
@@ -60,8 +61,16 @@ const resonance = new ResonanceTexture(colony);
 worldUniforms.uResTex.value = resonance.texture;
 worldUniforms.uFogSize.value = world.w;
 
-scene.add(buildTerrain(world));
+const terrainGroup = buildTerrain(world);
+terrainGroup.name = 'terrain';
+scene.add(terrainGroup);
 const station = buildSite(world.site);
+// The site's static parts, baked; roofs, the fallen section, door and lamps stay separate.
+mergeStatic(station.group, new Set<THREE.Object3D>([...station.roofs, station.store.fallen, station.store.door, ...station.store.glow]), true);
+station.group.traverse((o) => {
+  const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+  if (o.userData.merged && m?.userData.cutShared) station.cutMaterials.push(m);
+});
 scene.add(station.group);
 const vines = buildVines(station.surfaces, station.edges);
 scene.add(vines.walls, vines.roofs);
@@ -70,14 +79,19 @@ roofs.addRoof(vines.roofs);
 for (const m of station.cutMaterials) roofs.addCutMaterial(m);
 roofs.addCutMaterial(vines.walls.material as THREE.Material);
 const trees = new TreeField(world);
+trees.group.name = 'trees';
 scene.add(trees.group);
 const bushes = new Bushes(world);
+bushes.group.name = 'bushes';
 scene.add(bushes.group);
-scene.add(buildRuins(world));
+const ruinsGroup = buildRuins(world);
+ruinsGroup.name = 'ruins';
+scene.add(ruinsGroup);
 
 const mushroomGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color('#b9fff0'), toneMapped: false });
 scene.add(buildFairyRing(world, mushroomGlow));
 const herds = new Herds(world);
+herds.group.name = 'herds';
 scene.add(herds.group);
 
 const ring = new THREE.Vector3(world.fairyRing.x, 0, world.fairyRing.z);
@@ -96,14 +110,17 @@ const orb = new Orb();
 scene.add(orb.group);
 
 const camp = new Camp(world);
+camp.group.name = 'camp';
 scene.add(camp.group);
 const villageView = new VillageView(world, colony.village, station.store, roofs);
 scene.add(villageView.group);
 const heaps = new HeapsView(world);
 scene.add(heaps.group);
 const plotsView = new PlotsView(world, colony.village);
+villageView.group.name = 'village'; plotsView.group.name = 'plots'; heaps.group.name = 'heaps'; station.group.name = 'site';
 scene.add(plotsView.group);
 const fields = new FieldsView(world);
+fields.group.name = 'fields';
 scene.add(fields.group);
 const precip = new Precipitation();
 scene.add(precip.group);
@@ -112,6 +129,7 @@ scene.add(phenomena.group);
 let veilView = false;
 let omenMode = false;
 const people = new People(world);
+people.group.name = 'people';
 scene.add(people.group);
 
 function syncScene() {
@@ -395,7 +413,10 @@ function frame() {
   adaptQuality(dt);
 
   // Simulation.
+  renderer.info.reset();
+  const tSim = performance.now();
   if (speed > 0) tick(colony, dt * SPEEDS[speed]);
+  perf.sim += (performance.now() - tSim - perf.sim) * 0.05;
   for (const ev of colony.events) {
     if (ev.type === 'felled') trees.fell(ev.tree, ev.dirX, ev.dirZ);
   }
@@ -459,7 +480,11 @@ function frame() {
   bloom.strength = 0.45 + sky.night * 0.5;
 
   syncXray();
+  const tDraw = performance.now();
   composer.render();
+  perf.draw += (performance.now() - tDraw - perf.draw) * 0.05;
+  perf.calls = renderer.info.render.calls;
+  perf.triangles = renderer.info.render.triangles;
 
   uiTimer += dt;
   if (uiTimer > 0.25) {
@@ -494,4 +519,39 @@ requestAnimationFrame(() => {
 });
 
 // Exposed for automated checks and debugging.
-Object.assign(window, { __game: { colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });
+/** Frame statistics for profiling (see __game.stats). */
+const perf = { sim: 0, draw: 0, calls: 0, triangles: 0 };
+function stats() {
+  let meshes = 0, casters = 0;
+  scene.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.visible) { meshes++; if (o.castShadow) casters++; } });
+  const byGroup: Record<string, number> = {};
+  scene.children.forEach((c, i) => {
+    let n = 0;
+    c.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.visible) n++; });
+    if (n) byGroup[c.name || `${c.type}#${i}`] = n;
+  });
+  // How many tree chunks each camera actually sees.
+  const inView = (cam: THREE.Camera) => {
+    cam.updateMatrixWorld();
+    const f = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    let n = 0;
+    trees.group.traverse((o) => { const m = o as THREE.InstancedMesh; if (m.isInstancedMesh && m.visible && m.count > 0) { if (!m.boundingSphere) m.computeBoundingSphere(); const bs = m.boundingSphere!.clone().applyMatrix4(m.matrixWorld); if (f.intersectsSphere(bs)) n++; } });
+    return n;
+  };
+  const treeChunks = { main: inView(iso.camera), sun: inView(sky.sun.shadow.camera) };
+  const shadowLights: string[] = [];
+  scene.traverse((o) => { const l = o as THREE.Light; if (l.isLight && l.castShadow) shadowLights.push(`${l.type}${(l as THREE.PointLight).shadow?.autoUpdate === false ? '(manual)' : ''}`); });
+  return { ...perf, meshes, casters, programs: renderer.info.programs?.length ?? 0, geometries: renderer.info.memory.geometries, treeChunks, shadowLights, byGroup };
+}
+/** One controlled render, returning the draw calls it took (for profiling). */
+function probeRender(opts: { shadows?: boolean; composer?: boolean } = {}) {
+  const was = renderer.shadowMap.enabled;
+  renderer.shadowMap.enabled = opts.shadows ?? was;
+  renderer.shadowMap.needsUpdate = true;
+  renderer.info.reset();
+  if (opts.composer === false) renderer.render(scene, iso.camera); else composer.render();
+  const out = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+  renderer.shadowMap.enabled = was;
+  return out;
+}
+Object.assign(window, { __game: { stats, scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });

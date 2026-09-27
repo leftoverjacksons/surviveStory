@@ -142,9 +142,11 @@ export class TreeField {
     const slots = this.slots.get(treeId) ?? [];
     const t = this.world.trees[treeId];
     if (!slots.length && !t.planted) return;
-    const parts = grown(recipe(t, this.world), t.growth);
+    // Too many falling at once (fast-forward, or a clearing gang): skip the animation.
+    const animate = this.falling.length < 6;
+    const parts = animate ? grown(recipe(t, this.world), t.growth) : [];
     const g = new THREE.Group();
-    const base = parts[0].pos.clone();
+    const base = animate ? parts[0].pos.clone() : grown(recipe(t, this.world), 1)[0].pos.clone();
     for (const p of parts) {
       const col = p.color.clone();
       // Clones lose the shader patch, so re-apply it with the same seasonal style.
@@ -161,7 +163,7 @@ export class TreeField {
       g.add(mesh);
     }
     g.position.copy(base);
-    this.group.add(g);
+    if (animate) this.group.add(g);
     this.youngKey = '';
     for (const s of slots) {
       s.mesh.setMatrixAt(s.index, ZERO);
@@ -169,7 +171,7 @@ export class TreeField {
     }
     this.slots.delete(treeId);
     const axis = new THREE.Vector3(dirZ, 0, -dirX).normalize();
-    this.falling.push({ g, t: 0, axis, pivot: base });
+    if (animate) this.falling.push({ g, t: 0, axis, pivot: base });
 
     if (this.stumpCount < 4096) {
       const m = new THREE.Matrix4().compose(base, new THREE.Quaternion(), new THREE.Vector3(t.size, t.size, t.size));

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeDirect } from './merge';
 import type { Agent } from '../sim/colony';
 import { Ground, heightAt, idx, isExplored, passable, toTileX, toTileZ, type World } from '../sim/world';
 import { enhance, lambert, makeRand, shadowed } from './util';
@@ -187,6 +188,10 @@ class Deer {
     this.root.add(this.neck);
     this.root.scale.setScalar(0.85 + rand() * 0.25);
     this.root.traverse((o) => { o.castShadow = true; });
+    // Each rigid part becomes one mesh: body, each leg, the neck and head.
+    mergeDirect(this.root);
+    for (const hip of this.legs) mergeDirect(hip);
+    mergeDirect(this.neck);
     this.root.position.copy(home).add(new THREE.Vector3((rand() - 0.5) * 8, 0, (rand() - 0.5) * 8));
     this.phase = rand() * 10;
     this.pickTarget();

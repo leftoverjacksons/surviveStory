@@ -70,6 +70,8 @@ reference: Tiny Glade.
     reports a food ledger, morale by season, Influence and winter hardship.
   - Fishing grounds done (`src/sim/fishing.ts`, meshes in
     `render/village.ts`; DESIGN §17 "Fishing grounds").
-  - Next: the user's playtest feedback; performance (merge house meshes);
+  - Performance pass 1 done (`src/render/merge.ts`; draw calls −73%, DESIGN §17).
+  - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
   - Published: the artifact has the balance-pass and fishing build (commit 4f765d7).
+    The performance pass is committed but NOT published (user is testing).

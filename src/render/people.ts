@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeDirect } from './merge';
 import type { Agent } from '../sim/colony';
 import type { Survivor } from '../sim/community';
 import { WATER_Y, heightAt, standHeight, type World } from '../sim/world';
@@ -58,6 +59,7 @@ export class People {
     const hair = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2.1), lambert(HAIR[s.id % HAIR.length]));
     hair.position.set(0, 0.03, -0.015);
     head.add(skull, hair);
+    mergeDirect(head);
     const armL = limb(0.6, 0.06, cloth); armL.position.set(-0.29, 1.36, 0);
     const armR = limb(0.6, 0.06, cloth); armR.position.set(0.29, 1.36, 0);
 
