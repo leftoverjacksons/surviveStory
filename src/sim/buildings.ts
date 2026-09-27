@@ -4,7 +4,7 @@
  * the player only shapes the home zone.
  */
 import { alive, log, type Community } from './community';
-import { ANNEX, CAMP, KITCHEN, STORE, STORE_DOOR, STORE_INSIDE } from './layout';
+import type { Site } from './sites';
 import type { Rng } from './rng';
 import type { Household, Plot } from './homes';
 import {
@@ -38,6 +38,8 @@ export interface Building {
   tended: number;
   growth: number;
   name: string;
+  /** The found shelter: firewood per winter day, before and after its roof is patched. */
+  heat?: [number, number];
   /** Homes: the plot it stands on, who lives there, and its heading. */
   plot?: number;
   household?: number;
@@ -78,6 +80,8 @@ export interface Village {
   nextId: number;
   craftXp: number;
   tier: Tier;
+  /** The starting site (same object as the world's). */
+  site: Site;
   households: Household[];
   plots: Plot[];
   /** Tile index → plot id (0 = none). */
@@ -95,7 +99,7 @@ interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]
 const c = (wood: number, scrap: number, glimmer = 0): Cost => ({ wood, scrap, glimmer });
 
 export const DEFS: Record<Exclude<ProjectKind, 'upgrade' | 'clear_store' | 'patch_roof' | 'home'>, Def> = {
-  annex:    { name: ['Lean-to on the store', 'Lean-to on the store'], w: ANNEX.w, d: ANNEX.d, cost: [c(18, 6), c(18, 6)], work: [600, 600], beds: [2, 2] },
+  annex:    { name: ['Lean-to', 'Lean-to'], w: 3, d: 5, cost: [c(18, 6), c(18, 6)], work: [600, 600], beds: [2, 2] },
   hut:      { name: ['Bunk shack', 'Bunkhouse'], w: 3, d: 3, cost: [c(14, 8), c(34, 2)], work: [600, 900], beds: [2, 3] },
   garden:   { name: ['Tire garden', 'Fenced garden'], w: 4, d: 3, cost: [c(6, 4), c(18, 0)], work: [300, 420] },
   workshop: { name: ['Scrap workbench', 'Timber workshop'], w: 3, d: 3, cost: [c(10, 6), c(30, 4)], work: [420, 660] },
@@ -114,14 +118,15 @@ const zero = (): Cost => c(0, 0, 0);
 
 export function createVillage(w: World): Village {
   const v: Village = {
-    buildings: [], projects: [], nextId: 1, craftXp: 0, tier: 0,
+    buildings: [], projects: [], nextId: 1, craftXp: 0, tier: 0, site: w.site,
     households: [], plots: [], plotAt: new Int32Array(w.w * w.h), homeQueue: [],
   };
-  // The old store is there from the start: derelict, no beds yet.
-  const foot = footOfRect(w, STORE.x - STORE.w / 2, STORE.z - STORE.d / 2, STORE.w, STORE.d);
+  // The found shelter is there from the start: derelict, no beds yet.
+  const S = w.site.shelter;
+  const foot = footOfRect(w, S.x - S.w / 2, S.z - S.d / 2, S.w, S.d);
   v.buildings.push({
-    id: v.nextId++, kind: 'store', tier: 0, foot, facing: 0, door: { ...STORE_DOOR }, inside: { ...STORE_INSIDE },
-    beds: 0, level: 0, tended: 0, growth: 0, name: 'the old store',
+    id: v.nextId++, kind: 'store', tier: 0, foot, facing: 0, door: { ...w.site.door }, inside: { ...w.site.inside },
+    beds: 0, level: 0, tended: 0, growth: 0, name: w.site.shelterName, heat: [...w.site.heat],
   });
   return v;
 }
@@ -190,7 +195,7 @@ function footprintFree(w: World, v: Village, f: Footprint, margin: number): { ok
   }
   // Keep the fire circle, bedrolls and stockpile open.
   const cx = x0 + f.w / 2, cz = z0 + f.d / 2;
-  if (Math.hypot(cx - CAMP.x, cz - CAMP.z) < 5.5 + Math.max(f.w, f.d) / 2) return { ok: false, trees };
+  if (Math.hypot(cx - w.campfire.x, cz - w.campfire.z) < 5.5 + Math.max(f.w, f.d) / 2) return { ok: false, trees };
   const sp = w.stockpile;
   if (x0 < sp.x1 + pad && x0 + f.w > sp.x0 - pad && z0 < sp.z1 + pad && z0 + f.d > sp.z0 - pad) return { ok: false, trees };
   return { ok: true, trees };
@@ -208,7 +213,7 @@ function sideWear(w: World, f: Footprint): number[] {
 /** Firewood a building burns per winter day when people sleep in it. */
 export function heatNeed(b: Building): number {
   switch (b.kind) {
-    case 'store': return b.level >= 2 ? 2 : 3;
+    case 'store': return b.heat ? b.heat[b.level >= 2 ? 1 : 0] : b.level >= 2 ? 2 : 3;
     case 'annex': return 1;
     case 'hut': return b.tier === 0 ? 2 : 1;
     case 'home': return b.tier === 0 ? 2 : 1;
@@ -226,6 +231,7 @@ export type SiteKind = 'hut' | 'garden' | 'workshop' | 'lantern' | 'cellar' | 's
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
   const def = DEFS[kind];
+  const CAMP = w.campfire;
   const cxT = toTileX(w, CAMP.x), czT = toTileZ(w, CAMP.z);
   let best: { foot: Footprint; facing: number; trees: number[] } | null = null;
   let bestScore = Infinity;
@@ -314,19 +320,20 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
 
   if (st.level === 0 && !has('clear_store')) {
     wants.push(() => newProject(v, {
-      kind: 'clear_store', tier: 0, name: 'Clear out the old store', foot: st.foot, facing: 0,
+      kind: 'clear_store', tier: 0, name: v.site.clear.name, foot: st.foot, facing: 0,
       cost: zero(), workNeeded: 480, target: st.id, clearTrees: [],
     }));
   }
   const shelter = () => {
     if (st.level === 1 && !has('patch_roof')) {
       return newProject(v, {
-        kind: 'patch_roof', tier: 0, name: 'Patch the store roof', foot: st.foot, facing: 0,
-        cost: c(10, 6), workNeeded: 360, target: st.id, clearTrees: [],
+        kind: 'patch_roof', tier: 0, name: v.site.patch.name, foot: st.foot, facing: 0,
+        cost: c(v.site.patch.wood, v.site.patch.scrap), workNeeded: 360, target: st.id, clearTrees: [],
       });
     }
     if (st.level >= 2 && !hasBuilt(v, 'annex') && !has('annex')) {
-      const foot = footOfRect(w, ANNEX.x0, ANNEX.z0, ANNEX.w, ANNEX.d);
+      const A = v.site.annex;
+      const foot = footOfRect(w, A.x0, A.z0, A.w, A.d);
       const def = DEFS.annex;
       return newProject(v, {
         kind: 'annex', tier: 0, name: def.name[0], foot, facing: 0,
@@ -351,6 +358,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
     });
     const dir = ['south', 'east', 'north', 'west'][s.facing];
     const cen = footCenter(w, s.foot);
+    const CAMP = w.campfire;
     const where = Math.abs(cen.x - CAMP.x) > Math.abs(cen.z - CAMP.z)
       ? (cen.x > CAMP.x ? 'east' : 'west') : (cen.z > CAMP.z ? 'south' : 'north');
     log(com, `${lead} scratched a plan in the dirt: ${def.name[tier].toLowerCase()} ${where} of the fire, door to the ${dir}.`, 'good');
@@ -361,7 +369,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   const kitchen = () => (!hasBuilt(v, 'kitchen') && !has('kitchen') && st.level >= 1
     ? newProject(v, {
       kind: 'kitchen', tier: 0, name: DEFS.kitchen.name[0],
-      foot: footOfRect(w, KITCHEN.x - 2, KITCHEN.z - 1, 4, 2), facing: 0,
+      foot: footOfRect(w, v.site.kitchen.x - 2, v.site.kitchen.z - 1, 4, 2), facing: 0,
       cost: { ...DEFS.kitchen.cost[0] }, workNeeded: DEFS.kitchen.work[0], target: 0, clearTrees: [],
     }) : null);
   const garden = () => (!hasBuilt(v, 'garden') && !has('garden') ? site('garden') : null);
@@ -417,8 +425,8 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
 }
 
 function projectBeds(p: Project, v: Village): number {
-  if (p.kind === 'clear_store') return 4;
-  if (p.kind === 'patch_roof') return 2;
+  if (p.kind === 'clear_store') return v.site.clear.beds;
+  if (p.kind === 'patch_roof') return v.site.patch.beds - v.site.clear.beds;
   if (p.kind === 'annex') return DEFS.annex.beds![0];
   if (p.kind === 'hut') return DEFS.hut.beds![p.tier];
   if (p.kind === 'home') return v.households.find((h) => h.id === p.household)?.members.length ?? 0;
@@ -438,15 +446,18 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
   switch (p.kind) {
     case 'clear_store': {
       const st = store(v);
-      st.level = 1; st.beds = 4;
-      res.scrap += 6;
-      log(com, 'The old store is swept out. Four can sleep dry inside, and there was scrap behind the counter.', 'good');
+      const cl = v.site.clear;
+      st.level = 1; st.beds = cl.beds;
+      res.scrap += cl.gives.scrap ?? 0;
+      res.glimmer += cl.gives.glimmer ?? 0;
+      res.food += cl.gives.food ?? 0;
+      log(com, cl.done, 'good');
       break;
     }
     case 'patch_roof': {
       const st = store(v);
-      st.level = 2; st.beds = 6;
-      log(com, 'Tarp and tin over the broken roof. The store sleeps six now, and nobody drips.', 'good');
+      st.level = 2; st.beds = v.site.patch.beds;
+      log(com, v.site.patch.done, 'good');
       break;
     }
     case 'upgrade': {
@@ -478,7 +489,7 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
       const cen = footCenter(w, p.foot);
       const b: Building = {
         id: v.nextId++, kind, tier: p.tier, foot: p.foot, facing: p.facing,
-        door: kind === 'kitchen' ? { x: KITCHEN.x, z: KITCHEN.z } : doorOf(w, p.foot, p.facing),
+        door: kind === 'kitchen' ? { ...v.site.kitchen } : doorOf(w, p.foot, p.facing),
         inside: cen, beds: def.beds ? def.beds[p.tier] : 0, level: 0, tended: 0, growth: 0.1, name: def.name[p.tier],
       };
       v.buildings.push(b);

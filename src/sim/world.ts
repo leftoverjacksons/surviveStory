@@ -1,3 +1,5 @@
+import type { Site } from './sites';
+
 /**
  * The world grid. One tile = one world unit (about a metre and a half of
  * fiction). World coordinates are centred on the map: tile (tx, tz) has its
@@ -98,6 +100,8 @@ export interface World {
   campfire: Point;
   stockpile: Rect;
   fairyRing: Point;
+  /** The found structure they start in, and how the start is laid out. */
+  site: Site;
 }
 
 export const idx = (w: World, tx: number, tz: number) => tz * w.w + tx;

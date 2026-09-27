@@ -21,7 +21,7 @@ import {
   SITE_CREW, YARD, homeComfort, homeOf, householdName, householdOf, householdsDaily, onHomeBuilt, planHome, plotPoint,
   type Plot,
 } from './homes';
-import { bedSpot, KITCHEN, seatSpot } from './layout';
+import { bedSpot, seatSpot } from './sites';
 import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill } from './purpose';
 import { highwayZ } from './worldgen';
 import {
@@ -146,6 +146,9 @@ export function createColony(world: World, community: Community): Colony {
     hints: new Set(), private_fieldCache: { version: -1, tiles: [] },
     veil: createVeil(world), council: createCouncil(),
   };
+  // The first line of the story names where it starts.
+  const opening = community.log.find((l) => l.day === 1 && l.tone === 'info');
+  if (opening && community.day === 1) opening.text = world.site.intro;
   syncAgents(col);
   replan(col);
   return col;
@@ -153,7 +156,7 @@ export function createColony(world: World, community: Community): Colony {
 
 function makeAgent(col: Colony, s: Survivor, i: number): Agent {
   const living = alive(col.community).length;
-  const seat = seatSpot(i, Math.max(living, 1));
+  const seat = seatSpot(col.world.campfire, i, Math.max(living, 1));
   return {
     id: s.id, x: seat.x, z: seat.z, facing: 0, path: [], pathI: 0, task: null,
     needs: { food: 70 + (s.id * 7) % 25, rest: 80, social: 60 },
@@ -662,7 +665,7 @@ function mealPlace(col: Colony, a: Agent, s: Survivor): { place: MealPlace; buil
     if (!(hallOpen(col) && sociable && habit(col, s.id + 7) < 50)) return { place: 'home', building: home.id, spot: home.door };
   }
   if (hallOpen(col) && supper) return { place: 'hall', building: st.id, spot: st.door };
-  if (hasBuilt(v, 'kitchen')) return { place: 'kitchen', building: 0, spot: { x: KITCHEN.x - 3.5 + (col.agents.indexOf(a) % 8), z: KITCHEN.z } };
+  if (hasBuilt(v, 'kitchen')) return { place: 'kitchen', building: 0, spot: { x: v.site.kitchen.x - 3.5 + (col.agents.indexOf(a) % 8), z: v.site.kitchen.z } };
   return { place: 'fire', building: 0, spot: seatOf(col, a) };
 }
 
@@ -791,7 +794,7 @@ function pursue(col: Colony, a: Agent, s: Survivor): Task | null {
 
 function seatOf(col: Colony, a: Agent): Point {
   const living = col.agents;
-  return seatSpot(living.indexOf(a), living.length);
+  return seatSpot(col.world.campfire, living.indexOf(a), living.length);
 }
 
 function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
@@ -799,7 +802,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
   const res = col.community.resources;
   if (a.needs.rest < 12 || isNight(h) || s.hp < s.maxHp * 0.25) {
     const b = col.beds.get(s.id);
-    const bed = b !== undefined ? buildingById(col, b)!.door : bedSpot(s.id);
+    const bed = b !== undefined ? buildingById(col, b)!.door : bedSpot(col.world.campfire, s.id);
     if (setDest(col, a, bed.x, bed.z)) return { kind: 'sleep', stage: 'go' };
   }
   if (a.needs.food < 38 && res.food >= 1) {
@@ -1242,7 +1245,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
           remember(s, col.community.day, 'Learned to joint timber.');
         }
       }
-      a.activity = `${p.kind === 'clear_store' ? 'Clearing out the store' : `Building: ${p.name.toLowerCase()}`} · ${Math.min(99, Math.round((p.work / p.workNeeded) * 100))}%`;
+      a.activity = `${p.kind === 'clear_store' || p.kind === 'patch_roof' ? p.name : `Building: ${p.name.toLowerCase()}`} · ${Math.min(99, Math.round((p.work / p.workNeeded) * 100))}%`;
       if (p.work >= p.workNeeded) {
         completeProject(w, col.village, col.community, p);
         if (p.kind === 'home') {
@@ -1675,6 +1678,8 @@ function dailyFields(col: Colony, lastSeason: Season, season: Season) {
 /** Yards: vegetable beds, fruit trees and hens feed the village a little. */
 function dailyYards(col: Colony, lastSeason: Season) {
   const r = col.community.resources;
+  // The glasshouse's old beds still bear, once it's cleared.
+  if (col.village.site.kind === 'glasshouse' && store(col.village).level >= 1 && lastSeason !== 'winter') r.food += 1.5;
   for (const plot of col.village.plots) {
     if (!plot.household) continue;
     for (const y of plot.yard) {

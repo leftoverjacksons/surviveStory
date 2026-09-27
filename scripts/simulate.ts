@@ -2,12 +2,14 @@
  * Headless balance probe: runs whole colonies and reports how they fare.
  * Usage: npm run sim -- [colonies=12] [days=48] [--log] [--prepared]
  *   --prepared  paints two fields and a woodlot on day 1, as a player would.
+ *   --site=K    start every colony at site K (station, chapel, motel, farm, glasshouse).
  */
 import { alive, communityMorale, createCommunity } from '../src/sim/community';
 import { createColony, tick, type Colony } from '../src/sim/colony';
 import { bedsTotal } from '../src/sim/buildings';
 import { communitySight, homeResonance } from '../src/sim/veil';
 import { generateWorld } from '../src/sim/worldgen';
+import type { SiteKind } from '../src/sim/sites';
 import { Zone, exploredFraction, idx, paintZone, toTileX, toTileZ, zoneAllowed, type World } from '../src/sim/world';
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
@@ -15,6 +17,7 @@ const colonies = Number(args[0] ?? 12);
 const days = Number(args[1] ?? 48);
 const showLog = process.argv.includes('--log');
 const prepared = process.argv.includes('--prepared');
+const siteArg = process.argv.find((a) => a.startsWith('--site='))?.slice(7) as SiteKind | undefined;
 
 /** Best spot on a ring around home for a zone disc, by count of allowed tiles (and trees for woodlots). */
 function bestSpot(w: World, r0: number, r1: number, radius: number, kind: number, wantTrees: boolean, avoid: { x: number; z: number }[]) {
@@ -56,7 +59,7 @@ function growHome(col: Colony) {
 const rows: number[][] = [];
 const t0 = Date.now();
 for (let seed = 1; seed <= colonies; seed++) {
-  const col = createColony(generateWorld(seed), createCommunity(seed));
+  const col = createColony(generateWorld(seed, undefined, siteArg), createCommunity(seed));
   if (prepared) prepare(col);
   let minFoodWinter = Infinity, coldNights = 0, hungryDays = 0, foodAtWinter = 0;
   for (let d = 0; d < days; d++) {

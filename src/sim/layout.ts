@@ -1,6 +1,7 @@
 /**
- * Fixed layout of the starting gas station, in world coordinates. Shared by
- * world generation (which tiles are blocked or paved) and the renderer.
+ * Fixed layout of the gas station, one of the starting sites (see sites.ts),
+ * in world coordinates. The station renderer builds from these directly;
+ * everything else reads the site on the world.
  */
 import type { Point, Rect } from './world';
 
@@ -25,19 +26,6 @@ export const STATION_BLOCKERS: Rect[] = [
   { x0: SIGN.x - 0.3, z0: SIGN.z - 0.3, x1: SIGN.x + 0.3, z1: SIGN.z + 0.3 },
   { x0: CAMP.x - 0.5, z0: CAMP.z - 0.5, x1: CAMP.x + 0.5, z1: CAMP.z + 0.5 },  // fire pit
 ];
-
-/** Where each survivor sits in the evening (index = seat number). */
-export function seatSpot(i: number, n: number): Point {
-  const a = (i / Math.max(n, 1)) * Math.PI * 2 + 0.4;
-  return { x: CAMP.x + Math.cos(a) * 1.7, z: CAMP.z + Math.sin(a) * 1.7 };
-}
-
-/** Where each survivor sleeps: bedrolls in a wider ring around the fire. */
-export function bedSpot(i: number): Point {
-  const a = i * 0.9 + 2.2;
-  const r = 3.3 + (i % 2) * 0.9;
-  return { x: CAMP.x + Math.cos(a) * r, z: CAMP.z + Math.sin(a) * r };
-}
 
 /** The store's front door (outside) and a point inside, for sleeping indoors. */
 export const STORE_DOOR: Point = { x: STORE.x + 0.7, z: STORE.z + STORE.d / 2 + 0.9 };

@@ -305,7 +305,7 @@ camera.
 | B: Village | Home zone, store-first, planner, construction, salvage → timber, newcomers | **[built]** |
 | C1: The Living Year | Calendar and seasons (48-day year), weather, seasonal visuals, woodlots with replanting, fields, sacred ground, winter needs (firewood, stores, warmth), desire paths → lanes, lane-aware siting | **[built]** |
 | C2: The Veil | Resonance field, Sight, phenomena on the perception gradient, see-through-their-eyes, council proposals, Influence and nudges | **[built]** |
-| **C2.5: Homes and purpose** | Households, petitions for homes, burgage plots and procedural houses, yards, the store becomes a commons hall, know-how replaces eras, aspirations and leisure, the Veil given mechanical stakes and lore (see §17). Procedural starting sites still to do. | **[built, except start sites]** |
+| **C2.5: Homes and purpose** | Households, petitions for homes, burgage plots and procedural houses, yards, the old shelter becomes a hall, know-how replaces eras, aspirations and leisure, the Veil given mechanical stakes and lore, five starting sites (see §17). | **[built]** |
 | C3: Art pass | Lighting (GTAO, grading, fog, depth of field), procedural building parts, flowers and moss, character-model trial | [after C2.5] |
 | D: Expeditions | Parties, ruins, blueprints, entity encounters, tactical hook | [planned] |
 | E: Generations | Skills by doing, aging, families, children, mentorship, personal arcs | [planned] |
@@ -506,4 +506,22 @@ Proposal:
 run high, so the game may be too easy; Influence saturates at 100;
 procedural starting sites are still to do; houses are many meshes each, so
 performance on weak GPUs needs watching.
+
+### Starting sites (C2.5, round 2)
+
+Each map starts at one found structure, chosen by the seed (`?site=` in the
+URL overrides it for testing). Definitions live in `src/sim/sites.ts`; the
+gas station renders from `render/station.ts`, the rest from
+`render/sites.ts`.
+
+| Site | Shelter | Repairs (beds) | Becomes | Advantage |
+|---|---|---|---|---|
+| Crossroads Station | the old store | clear (4), patch roof (6) | the commons hall | scrap in wrecks around it |
+| Wayside Chapel | the chapel (bellcote, graveyard) | clear (4), mend roof (6) | the meeting house | graveyard is sacred ground; candles give glimmer |
+| Wayfarer Motel | the motel row (office, drained pool, sign) | clear rooms (6), roof end room (8) | the motel lodge | more beds early |
+| Aldermoor Farm | the barn (silo, burnt farmhouse) | muck out (4), re-roof end (6) | the barn hall | a field already marked; seed potatoes (+10 food) |
+| The Glasshouses | the glasshouse (potting shed, nursery benches) | clear (4), reglaze (6) | the winter garden | old beds yield +1.5 food a day, spring to autumn; costs more firewood |
+
+In a one-year probe (6 colonies each), all five sites finished the year with
+no deaths, hunger or cold nights, and a similar number of homes (5.8–6.5).
 

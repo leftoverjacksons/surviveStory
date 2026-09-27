@@ -1,8 +1,7 @@
 import { Rng } from './rng';
 import { fbm, smoothstep } from './noise';
-import {
-  APRON, CAMP, CAR, HIGHWAY_Z, STATION_BLOCKERS, STOCKPILE,
-} from './layout';
+import { HIGHWAY_Z } from './layout';
+import { SITE_KINDS, siteOf, type SiteKind } from './sites';
 import {
   Ground, Zone, idx, inBounds, reveal, tileX, tileZ, toTileX, toTileZ,
   type Bush, type Rect, type Tree, type TreeKind, type World,
@@ -18,9 +17,15 @@ export function highwayZ(x: number): number {
 
 const RUIN_NAMES = ['Pell Street', 'the Motor Court', 'Harrow Farm', 'the Relay Station', 'Old Ashby', 'the Clinic Row'];
 
-export function generateWorld(seed: number, size = MAP_SIZE): World {
+/** Which found structure a map starts at: chosen by the seed unless given. */
+export function siteKindFor(seed: number): SiteKind {
+  return SITE_KINDS[new Rng(seed ^ 0x517e).int(0, SITE_KINDS.length - 1)];
+}
+
+export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind = siteKindFor(seed)): World {
   const rng = new Rng(seed ^ 0x5eed);
   const n = size * size;
+  const site = siteOf(siteKind);
   const w: World = {
     seed, w: size, h: size,
     ground: new Uint8Array(n),
@@ -35,9 +40,10 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
     wear: new Float32Array(n), wearVersion: 0,
     cropState: new Uint8Array(n), cropGrowth: new Float32Array(n), cropVersion: 0,
     home: { x: 0, z: 0 },
-    campfire: { ...CAMP },
-    stockpile: { ...STOCKPILE },
+    campfire: { ...site.camp },
+    stockpile: { ...site.stockpile },
     fairyRing: { x: 0, z: 0 },
+    site,
   };
 
   const inRect = (x: number, z: number, r: Rect, pad = 0) =>
@@ -93,12 +99,12 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
   const sx = 38;
   drawRoad([[sx, highwayZ(sx)], [sx + 4, 40], [south.x, south.z - 8]], 1.8);
 
-  // --- station apron ---
+  // --- the starting site: its paving and what can't be walked through ---
   for (let tz = 0; tz < size; tz++) for (let tx = 0; tx < size; tx++) {
     const x = tileX(w, tx), z = tileZ(w, tz);
     const i = idx(w, tx, tz);
-    if (inRect(x, z, APRON)) w.ground[i] = Ground.Asphalt;
-    for (const b of STATION_BLOCKERS) if (inRect(x, z, b, 0.4)) w.blocked[i] = 1;
+    for (const p of site.paved) if (inRect(x, z, p.rect)) w.ground[i] = p.kind === 'asphalt' ? Ground.Asphalt : Ground.Concrete;
+    for (const b of site.blockers) if (inRect(x, z, b, 0.4)) w.blocked[i] = 1;
     // Keep water well away from roads.
     if (w.ground[i] === Ground.Water) {
       const near = [[-2, 0], [2, 0], [0, -2], [0, 2]].some(([dx, dz]) =>
@@ -194,8 +200,12 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
     const p = (g === Ground.Forest ? 0.42 : g === Ground.Grass ? 0.035 : g === Ground.Meadow ? 0.008 : 0) * (0.3 + 0.7 * edge);
     if (rng.chance(p)) addTree(tx, tz, kindAt(x, z), rng.range(0.75, 1.45));
   }
-  // The old tree that grew up against the canopy. Nobody will cut it.
-  addTree(toTileX(w, 10.5), toTileZ(w, 5.5), 'oak', 1.35, true);
+  // The old tree at the site. Nobody will cut it.
+  if (site.oldTree) {
+    const ot = w.treeAt[idx(w, toTileX(w, site.oldTree.x), toTileZ(w, site.oldTree.z))];
+    if (ot >= 0) { w.trees[ot].felled = true; w.treeAt[idx(w, toTileX(w, site.oldTree.x), toTileZ(w, site.oldTree.z))] = -1; }
+    addTree(toTileX(w, site.oldTree.x), toTileZ(w, site.oldTree.z), site.kind === 'chapel' ? 'pine' : 'oak', 1.35, true);
+  }
 
   // --- berry bushes ---
   let bushId = 0;
@@ -258,7 +268,7 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
       }
     }
   };
-  addHeap(CAR.x, CAR.z, 'car', 12, CAR.rot);
+  for (const v of site.vehicles) addHeap(v.x, v.z, 'car', v.scrap, v.rot);
   for (let x = -size / 2 + 10; x < size / 2 - 10; x += rng.range(16, 30)) {
     if (Math.abs(x) < 16 || !rng.chance(0.55)) continue;
     const side = rng.chance(0.5) ? 1 : -1;
@@ -267,8 +277,7 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
   for (const site of sites) {
     for (let k = 0; k < 3; k++) addHeap(site.x + rng.range(-12, 12), site.z + rng.range(-10, 10), 'pile', rng.int(6, 10), rng.range(0, 6));
   }
-  addHeap(-3.5, -14, 'pile', 8, 0.4);  // junk behind the store
-  addHeap(13, -6, 'pile', 6, 1.1);
+  for (const j of site.junk) addHeap(j.x, j.z, 'pile', j.scrap, 0.4 + j.x);
   // Wrecks that never made it past the station, just up the road each way.
   addHeap(-19, highwayZ(-19) - 1.6, 'car', 12, 0.1);
   addHeap(21, highwayZ(21) + 1.6, 'car', 12, Math.PI - 0.15);
@@ -279,6 +288,33 @@ export function generateWorld(seed: number, size = MAP_SIZE): World {
   for (let tz = 0; tz < size; tz++) for (let tx = 0; tx < size; tx++) {
     const i = idx(w, tx, tz);
     if (Math.hypot(tileX(w, tx), tileZ(w, tz)) <= 26 && w.ground[i] !== Ground.Water) w.zone[i] = Zone.Home;
+  }
+  // Site advantages written into the land.
+  if (site.kind === 'chapel') {
+    // The graveyard is sacred ground.
+    for (let tz = 0; tz < size; tz++) for (let tx = 0; tx < size; tx++) {
+      const x = tileX(w, tx), z = tileZ(w, tz);
+      if (x > 3.5 && x < 11.5 && z > -12.5 && z < -2.5 && !w.blocked[idx(w, tx, tz)]) w.zone[idx(w, tx, tz)] = Zone.Sacred;
+    }
+  } else if (site.kind === 'farm') {
+    // The old home field, still marked by its hedges.
+    for (let tz = 0; tz < size; tz++) for (let tx = 0; tx < size; tx++) {
+      const x = tileX(w, tx), z = tileZ(w, tz);
+      const i = idx(w, tx, tz);
+      if (x > 6 && x < 14 && z > -19 && z < -12 && !w.blocked[i] && w.ground[i] !== Ground.Water) {
+        w.zone[i] = Zone.Field;
+        if (w.treeAt[i] >= 0) { w.trees[w.treeAt[i]].felled = true; w.treeAt[i] = -1; }
+        if (w.bushAt[i] >= 0) { w.bushes[w.bushAt[i]].berries = 0; w.bushes[w.bushAt[i]].max = 0; w.bushAt[i] = -1; }
+      }
+    }
+    // The farmhouse burned long ago: a foundation and a chimney stack.
+    for (let tz = toTileZ(w, 0); tz <= toTileZ(w, 4); tz++) for (let tx = toTileX(w, -14); tx <= toTileX(w, -9); tx++) {
+      const edge = tz === toTileZ(w, 0) || tz === toTileZ(w, 4) || tx === toTileX(w, -14) || tx === toTileX(w, -9);
+      if (!edge || (tx === toTileX(w, -11) && tz === toTileZ(w, 4))) continue;
+      const i = idx(w, tx, tz);
+      w.blocked[i] = 1;
+      w.walls.push({ tx, tz, h: tx === toTileX(w, -14) && tz === toTileZ(w, 0) ? 4.2 : rng.range(0.4, 1.4) });
+    }
   }
   return w;
 }

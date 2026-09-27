@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Item } from '../sim/colony';
 import type { Community } from '../sim/community';
-import { bedSpot, CAMP, MEMORIAL } from '../sim/layout';
+import { bedSpot } from '../sim/sites';
 import { heightAt, type World } from '../sim/world';
 import { CLOTH } from './people';
 import { glowTexture, lambert } from './util';
@@ -60,7 +60,7 @@ export class Camp {
     this.fireLight.shadow.mapSize.set(512, 512);
     this.fireLight.shadow.bias = -0.002;
     pit.add(this.fireLight);
-    pit.position.set(CAMP.x, 0, CAMP.z);
+    pit.position.set(world.campfire.x, heightAt(world, world.campfire.x, world.campfire.z), world.campfire.z);
     pit.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
     this.group.add(pit);
 
@@ -97,7 +97,7 @@ export class Camp {
         const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.3), lambert('#cfc6a8'));
         pillow.position.set(0, 0.09, -0.75);
         g.add(roll, pillow);
-        const p = bedSpot(s.id);
+        const p = bedSpot(this.world.campfire, s.id);
         g.position.set(p.x, heightAt(this.world, p.x, p.z), p.z);
         g.traverse((o) => { o.receiveShadow = true; });
         this.beds.set(s.id, g);
@@ -168,7 +168,8 @@ export class Camp {
     const light = new THREE.PointLight('#ffc070', 1.2, 2.5, 2);
     light.position.set(0.12, 0.3, 0.28);
     g.add(stone, candle, flame, light);
-    g.position.set(MEMORIAL.x + (i % 4) * 0.75, 0, MEMORIAL.z + Math.floor(i / 4) * 0.7);
+    const M = this.world.site.memorial;
+    g.position.set(M.x + (i % 4) * 0.75, heightAt(this.world, M.x, M.z), M.z + Math.floor(i / 4) * 0.7);
     g.traverse((o) => { o.castShadow = true; });
     this.stones.set(id, light);
     this.group.add(g);

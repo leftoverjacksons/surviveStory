@@ -130,8 +130,8 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
     out.push({
       score: 2,
       make: () => ({
-        kind: 'commons', title: 'Make the old store a commons hall', cost: { wood: 8 },
-        pitch: 'Hardly anyone sleeps in the store now. Let\'s put a long table in it, and a stove, and eat together on cold nights.',
+        kind: 'commons', title: `Turn ${v.site.shelterName} into ${v.site.hallName}`, cost: { wood: 8 },
+        pitch: `Hardly anyone sleeps in ${v.site.shelterName} now. Let's put a long table in it, and a stove, and eat together on cold nights.`,
         proposer: voice(living, (s) => (has(s, 'storyteller') ? 2 : 0) + s.stats.empathy / 5 + (s.role === 'tender' ? 1 : 0), rng, taken).id,
       }),
     });
@@ -370,9 +370,9 @@ function applyProposal(col: Colony, p: Proposal) {
       const st = store(col.village);
       st.level = 3;
       st.beds = 2;
-      st.name = 'the commons hall';
+      st.name = col.village.site.hallName;
       col.village.bedsDirty = true;
-      log(c, 'The cots came out of the old store and a long table went in. The commons hall: supper on cold nights, and a place to talk.', 'good');
+      log(c, `The cots came out of ${col.village.site.shelterName} and a long table went in. ${col.village.site.hallName.charAt(0).toUpperCase() + col.village.site.hallName.slice(1)}: supper on cold nights, and a place to talk.`, 'good');
       for (const s of living) s.morale = Math.min(100, s.morale + 4);
       break;
     }

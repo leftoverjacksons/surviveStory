@@ -14,7 +14,7 @@ export interface VineSurface {
 export interface VineEdge { a: THREE.Vector3; b: THREE.Vector3 } // hanging-vine anchor lines
 
 
-function boxSurface(center: THREE.Vector3, size: THREE.Vector3, faces: ('px' | 'nx' | 'pz' | 'nz' | 'py')[], weight: number): VineSurface {
+export function boxSurface(center: THREE.Vector3, size: THREE.Vector3, faces: ('px' | 'nx' | 'pz' | 'nz' | 'py')[], weight: number): VineSurface {
   return {
     weight,
     sample(rand) {

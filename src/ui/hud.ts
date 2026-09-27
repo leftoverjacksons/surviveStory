@@ -14,8 +14,8 @@ import { CALM_COST, DREAM_COST, OMEN_COST, resolvable } from '../sim/council';
 
 /** What each kind of building is for, in plain words. */
 const BUILDING_INFO: Record<string, string> = {
-  store: 'The gas station\'s old shop. Their first shelter: clearing it gives 4 beds, patching the roof 6. Once most people have homes, the council may make it a commons hall for shared suppers and winter evenings.',
-  annex: 'A lean-to built against the store. 2 more beds.',
+  store: 'The building they found and first sheltered in. Clearing it out gives beds; patching its fallen roof gives more. Once most people have homes, the council may turn it into a hall for shared suppers and winter evenings.',
+  annex: 'A lean-to built against the old shelter. 2 more beds.',
   hut: 'A bunkhouse: shared beds for people without a home of their own yet.',
   home: 'A household\'s own house on its own plot. They sleep and cook here, spend some evenings in, and improve the yard behind it over the seasons. Burns firewood in winter.',
   garden: 'A kitchen garden. Tended daily, it adds a little food in summer and autumn.',
@@ -317,7 +317,10 @@ export class Hud {
       if (heatNeed(b)) facts.push(['Winter firewood', `${heatNeed(b)} a day when occupied`]);
       if (b.kind === 'cellar') facts.push(['Stores keep', `${Math.floor(storageCapacity(col.village))} food in all`]);
       if (b.kind === 'garden') facts.push(['Tended today', b.tended >= 60 ? 'Yes' : 'Not yet']);
-      if (b.kind === 'store') facts.push(['State', ['Derelict', 'Cleared', 'Roof patched', 'Commons hall'][b.level] ?? '']);
+      if (b.kind === 'store') {
+        facts.push(['State', ['Derelict', 'Cleared', 'Roof patched', 'Hall'][b.level] ?? '']);
+        facts.push(['This place', col.village.site.perk]);
+      }
       if (b.kind === 'home') {
         const plot = col.village.plots.find((p) => p.id === b.plot);
         const h = col.village.households.find((x) => x.id === b.household);

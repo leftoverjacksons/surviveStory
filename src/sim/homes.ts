@@ -13,7 +13,6 @@
 import { alive, bondValue, log, remember, type Community, type Survivor } from './community';
 import type { Colony } from './colony';
 import type { Building, Cost, Footprint, Project, Tier, Village } from './buildings';
-import { CAMP } from './layout';
 import type { Rng } from './rng';
 import {
   Ground, LANE_WEAR, PATH_WEAR, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
@@ -372,6 +371,7 @@ function streetness(w: World, tx: number, tz: number): number {
 }
 
 function streetCandidates(w: World, rng: Rng): Candidate[] {
+  const CAMP = w.campfire;
   const out: Candidate[] = [];
   const cx = toTileX(w, CAMP.x), cz = toTileZ(w, CAMP.z);
   const R = 26;
@@ -404,7 +404,8 @@ function streetCandidates(w: World, rng: Rng): Candidate[] {
   return out;
 }
 
-function ringCandidates(): Candidate[] {
+function ringCandidates(w: World): Candidate[] {
+  const CAMP = w.campfire;
   const out: Candidate[] = [];
   for (const r of [10, 12.5, 15]) for (let k = 0; k < 24; k++) {
     const a = (k / 24) * Math.PI * 2 + r * 0.1;
@@ -432,6 +433,7 @@ function neighbourCandidates(v: Village, rng: Rng): Candidate[] {
 export interface PlotPlan { plot: Plot; trees: number[]; houseTiles: number[]; score: number; from: string }
 
 function tryPlot(w: World, v: Village, cand: Candidate, beds: number, rng: Rng, compact: boolean): PlotPlan | null {
+  const CAMP = w.campfire;
   const n = norm(cand.n);
   const t = { x: -n.z, z: n.x };
   const W0 = compact ? rng.range(6.2, 7.2) : rng.range(6.8, 9.2), taper = rng.range(0.85, 1.3);
@@ -513,7 +515,7 @@ function tryPlot(w: World, v: Village, cand: Candidate, beds: number, rng: Rng, 
 
 /** Survey the home ground for the best free plot for a household of this size. */
 export function findPlot(w: World, v: Village, beds: number, rng: Rng): PlotPlan | null {
-  const cands = [...neighbourCandidates(v, rng), ...streetCandidates(w, rng), ...ringCandidates()];
+  const cands = [...neighbourCandidates(v, rng), ...streetCandidates(w, rng), ...ringCandidates(w)];
   let best: PlotPlan | null = null;
   // A full plot if there's room; a narrow one if that's all that's left (or
   // all a single person wants).
@@ -602,7 +604,7 @@ export function planHome(col: Colony, rng: Rng, lead: string, urgent: boolean): 
     plot: plot.id, household: h.id, blockTiles: plan.houseTiles, door, inside: { ...plot.hc }, yaw: plot.yaw,
   };
   v.projects.push(proj);
-  const dx = plot.origin.x - CAMP.x, dz = plot.origin.z - CAMP.z;
+  const dx = plot.origin.x - w.campfire.x, dz = plot.origin.z - w.campfire.z;
   const where = Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? 'east' : 'west') : (dz > 0 ? 'south' : 'north');
   const facing = plan.from === 'street' ? 'fronting the lane' : plan.from === 'row' ? 'next to their neighbours' : 'facing the green';
   if (selfStart) log(c, `Tired of waiting on the council, ${name} paced out a plot ${where} of the fire anyway, ${facing}.`, 'info');

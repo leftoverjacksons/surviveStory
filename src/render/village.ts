@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import {
   footCenter, type Footprint, type Project, type Village,
 } from '../sim/buildings';
-import { CAR, KITCHEN, STORE } from '../sim/layout';
+import { CAR } from '../sim/layout';
+import type { Site } from '../sim/sites';
 import type { Building } from '../sim/buildings';
 import { heightAt, tileX, tileZ, type Heap, type World } from '../sim/world';
 import type { StoreParts } from './station';
@@ -220,8 +221,20 @@ function workshop(W: number, D: number, tier: number, p: number): THREE.Group {
   return g;
 }
 
-function kitchen(p: number): THREE.Group {
+function kitchen(p: number, roofed = false): THREE.Group {
   const g = new THREE.Group();
+  // Away from the station canopy, the kitchen gets a pergola of its own.
+  if (roofed && p > 0.5) {
+    const post = mat('#6b4f33');
+    for (const [x, z] of [[-3.3, -1.2], [3.3, -1.2], [-3.3, 1.2], [3.3, 1.2]]) g.add(box(0.14, 2.5, 0.14, post, x, 1.25, z));
+    if (p > 0.75) {
+      g.add(box(7, 0.12, 0.16, post, 0, 2.5, -1.2));
+      g.add(box(7, 0.12, 0.16, post, 0, 2.5, 1.2));
+      const top = box(7.4, 0.06, 3.2, mat('#7d8a8c'), 0, 2.62, 0);
+      top.rotation.x = 0.08;
+      g.add(top);
+    }
+  }
   const wood = mat('#8a6a44', false), rust = mat('#6d3f2a', false);
   const k = smooth(0.1, 1, p);
   for (const x of [-2.2, 2.2]) {
@@ -309,39 +322,63 @@ function leanTo(W: number, D: number, p: number, glow: THREE.Mesh[]): THREE.Grou
   return g;
 }
 
-function roofPatch(p: number): THREE.Group {
-  // Over the collapsed east end of the store.
+/** Mending the part of the shelter's roof that fell in: scaffold first, then the patch. */
+function roofPatch(site: Site, p: number): THREE.Group {
   const g = new THREE.Group();
-  const cx = STORE.x + STORE.w * 0.3, cz = STORE.z;
-  const W = STORE.w * 0.38, D = STORE.d + 0.5;
+  const S = site.shelter, C = site.collapse;
+  const H = S.h;
+  const wood = mat('#8a6a44', false);
+  const cover = site.kind === 'glasshouse'
+    ? new THREE.MeshLambertMaterial({ color: '#dcebe6', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })
+    : mat(site.kind === 'farm' ? '#7a5a3a' : site.kind === 'chapel' ? '#5f666e' : '#7d8a8c', false);
   if (p < 1) {
-    for (const [x, z] of [[-W / 2, -D / 2], [W / 2, -D / 2], [-W / 2, D / 2], [W / 2, D / 2]]) {
-      g.add(box(0.08, STORE.h + 0.6, 0.08, mat('#8a6a44', false), cx + x, (STORE.h + 0.6) / 2, cz + z));
+    for (const [x, z] of [[-C.w / 2, -C.d / 2], [C.w / 2, -C.d / 2], [-C.w / 2, C.d / 2], [C.w / 2, C.d / 2]]) {
+      g.add(box(0.08, H + 0.6, 0.08, wood, C.x + x, (H + 0.6) / 2, C.z + z));
     }
-    g.add(box(W, 0.06, 0.3, mat('#8a6a44', false), cx, STORE.h * 0.6, cz + D / 2));
+    g.add(box(C.w, 0.06, 0.3, wood, C.x, H * 0.6, C.z + C.d / 2));
   }
   const k = smooth(0.4, 1, p);
-  if (k > 0) {
-    const tin = box(W, 0.08, D * k, mat('#7d8a8c', false), cx, STORE.h + 0.12, cz - D / 2 + (D * k) / 2);
-    g.add(tin);
+  if (k <= 0) return g;
+  if (site.roof === 'flat') {
+    const W = C.w, D = C.d;
+    g.add(box(W, 0.08, D * k, cover, C.x, H + 0.12, C.z - D / 2 + (D * k) / 2));
     if (p >= 1) {
-      const tarp = box(W * 0.7, 0.04, D * 0.6, mat('#3f6f9a', false), cx - 0.3, STORE.h + 0.2, cz + 0.4);
+      const tarp = box(W * 0.7, 0.04, D * 0.6, mat('#3f6f9a', false), C.x - 0.3, H + 0.2, C.z + 0.4);
       tarp.rotation.z = 0.05;
       g.add(tarp);
-      for (let i = 0; i < 4; i++) g.add(box(0.35, 0.18, 0.25, mat('#8a8070', false), cx - W / 2 + 0.4 + i * 1.0, STORE.h + 0.28, cz + D / 2 - 0.4));
+      for (let i = 0; i < 4; i++) g.add(box(0.35, 0.18, 0.25, mat('#8a8070', false), C.x - W / 2 + 0.4 + i * (W - 0.8) / 3, H + 0.28, C.z + D / 2 - 0.4));
     }
+    return g;
   }
+  // Gable: two new slopes filling the gap in the roof.
+  const alongX = site.ridge === 'x';
+  const len = alongX ? C.w : C.d, span = alongX ? S.d : S.w;
+  const half = span / 2 + 0.3, rise = (span / 2) * Math.tan(site.pitch);
+  const grp = new THREE.Group();
+  for (const s of [-1, 1]) {
+    const slab = box(len * k, 0.1, half / Math.cos(site.pitch), cover, 0, H + rise / 2, (s * half) / 2);
+    slab.rotation.x = s * site.pitch;
+    grp.add(slab);
+  }
+  if (p >= 1 && site.kind !== 'glasshouse') {
+    const tarp = box(len * 0.6, 0.04, half * 0.7, mat('#3f6f9a', false), 0, H + rise * 0.55, half * 0.4);
+    tarp.rotation.x = site.pitch;
+    grp.add(tarp);
+  }
+  if (!alongX) grp.rotation.y = Math.PI / 2;
+  grp.position.set(C.x, 0, C.z);
+  g.add(grp);
   return g;
 }
 
-function junkPile(k: number): THREE.Group {
-  // Debris dragged out of the store, shrinking as it is cleared away.
+function junkPile(site: Site, k: number): THREE.Group {
+  // Debris dragged out of the shelter, shrinking as it is cleared away.
   const g = new THREE.Group();
   const rand = makeRand(5);
   const n = Math.ceil(9 * k);
   for (let i = 0; i < n; i++) {
     const m = mat(PANELS[i % PANELS.length], false);
-    const b = box(0.3 + rand() * 0.5, 0.2 + rand() * 0.4, 0.3 + rand() * 0.5, m, STORE.x - 3 + rand() * 2.2, 0.2, STORE.z + STORE.d / 2 + 1.2 + rand() * 1.2);
+    const b = box(0.3 + rand() * 0.5, 0.2 + rand() * 0.4, 0.3 + rand() * 0.5, m, site.door.x - 3 + rand() * 2.2, 0.2, site.door.z + 0.4 + rand() * 1.2);
     b.rotation.set(rand(), rand() * 3, rand());
     g.add(b);
   }
@@ -391,25 +428,25 @@ function localBeds(kind: string, tier: number): { x: number; z: number }[] {
   return [];
 }
 
-const STORE_BEDS: { x: number; z: number }[] = [
-  { x: -4, z: -1.3 }, { x: -2.6, z: -1.3 }, { x: -1.2, z: -1.3 },
-  { x: -4, z: 1.1 }, { x: -2.6, z: 1.1 }, { x: -1.2, z: 1.1 },
-];
-
-/** The commons hall: a long table down the middle of the old store. */
-const HALL_TABLE = { x: STORE.x - 0.6, z: STORE.z + 0.2, len: 5.6 };
-const HALL_SEATS: Slot[] = [];
-for (let i = 0; i < 7; i++) for (const s of [-1, 1]) {
-  HALL_SEATS.push({ x: HALL_TABLE.x - HALL_TABLE.len / 2 + 0.5 + i * 0.78, z: HALL_TABLE.z + s * 0.72, yaw: s > 0 ? Math.PI : 0, y: 0.18 });
+/** The hall: a long table down the middle of the old shelter, with benches both sides. */
+function hallSeats(site: Site): Slot[] {
+  const T = site.hallTable;
+  const out: Slot[] = [];
+  const n = Math.max(2, Math.floor((T.len - 0.6) / 0.78) + 1);
+  for (let i = 0; i < n; i++) for (const s of [-1, 1]) {
+    const a = -T.len / 2 + 0.5 + i * 0.78;
+    out.push(T.axis === 'x'
+      ? { x: T.x + a, z: T.z + s * 0.72, yaw: s > 0 ? Math.PI : 0, y: 0.18 }
+      : { x: T.x + s * 0.72, z: T.z + a, yaw: s > 0 ? -Math.PI / 2 : Math.PI / 2, y: 0.18 });
+  }
+  return out;
 }
-/** Guest cots at the back of the hall. */
-const HALL_BEDS = [{ x: -4.2, z: -1.6 }, { x: 3.2, z: -1.6 }];
 
 /** World position and heading of bed `index` in a building. */
 export function bedSlot(world: World, village: Village, b: Building, index: number): Slot | null {
   if (b.kind === 'store') {
-    const p = (b.level >= 3 ? HALL_BEDS : STORE_BEDS)[index];
-    return p ? { x: STORE.x + p.x, z: STORE.z + p.z, yaw: 0 } : null;
+    const p = (b.level >= 3 ? village.site.hallBeds : village.site.beds)[index];
+    return p ? { x: p.x, z: p.z, yaw: 0 } : null;
   }
   if (b.kind === 'home') {
     const plot = village.plots.find((x) => x.id === b.plot);
@@ -428,7 +465,7 @@ export function bedSlot(world: World, village: Village, b: Building, index: numb
 /** Where someone sits indoors (eating, or spending the evening): seat `index`. */
 export function seatSlot(world: World, village: Village, b: Building, index: number): Slot | null {
   void world;
-  if (b.kind === 'store') return HALL_SEATS[index % HALL_SEATS.length];
+  if (b.kind === 'store') { const seats = hallSeats(village.site); return seats[index % seats.length]; }
   if (b.kind === 'home') {
     const plot = village.plots.find((x) => x.id === b.plot);
     if (!plot) return null;
@@ -478,8 +515,10 @@ export class VillageView {
       case 'lantern': g = lantern(p); break;
       case 'annex': g = leanTo(W + 0.3, D + 0.3, p, glow); break;
       case 'kitchen': {
-        g = kitchen(p);
-        g.position.set(KITCHEN.x, 0, KITCHEN.z);
+        g = kitchen(p, !this.village.site.kitchenCovered);
+        const K = this.village.site.kitchen;
+        g.position.set(K.x, heightAt(this.world, K.x, K.z), K.z);
+        g.userData.building = true;
         return g;
       }
       default: g = new THREE.Group();
@@ -568,12 +607,14 @@ export class VillageView {
     this.store.door.material = mat(st.level >= 1 ? '#6b4f33' : '#141816', false);
     this.store.fallen.visible = st.level < 2 && this.roofs.mode === 'shown';
     if (st.level >= 2 && !this.roofDone) {
-      this.roofDone = roofPatch(1);
+      this.roofDone = roofPatch(this.village.site, 1);
       this.roofDone.userData.roofGroup = true;
       this.register(this.roofDone);
       this.group.add(this.roofDone);
     }
-    // Inside the store: junk before it's cleared, cots after.
+    // Inside the shelter: junk before it's cleared, cots after, a long table once it's the hall.
+    const site = this.village.site;
+    const S = site.shelter;
     const ikey = `${st.level}:${st.beds}`;
     const hall = st.level >= 3;
     if (ikey !== this.storeInteriorKey) {
@@ -584,40 +625,45 @@ export class VillageView {
         const rand = makeRand(8);
         for (let i = 0; i < 14; i++) {
           const b = box(0.3 + rand() * 0.7, 0.2 + rand() * 0.5, 0.3 + rand() * 0.6, mat(PANELS[i % PANELS.length], false),
-            STORE.x - 4 + rand() * 6, 0.2, STORE.z - 2 + rand() * 4);
+            S.x - S.w * 0.4 + rand() * S.w * 0.6, 0.2, S.z - S.d * 0.36 + rand() * S.d * 0.72);
           b.rotation.set(rand() * 0.5, rand() * 3, rand() * 0.5);
           gi.add(b);
         }
       } else if (hall) {
         // The commons hall: long table, benches, a stove, bunting, two guest cots.
-        const T = HALL_TABLE;
-        gi.add(box(T.len, 0.08, 0.9, mat('#7a5a3a', false), T.x, 0.74, T.z));
-        for (const dx of [-T.len / 2 + 0.3, 0, T.len / 2 - 0.3]) for (const dz of [-0.3, 0.3]) gi.add(box(0.08, 0.72, 0.08, mat('#5b4330', false), T.x + dx, 0.36, T.z + dz));
-        for (const s of [-1, 1]) gi.add(box(T.len - 0.2, 0.07, 0.3, mat('#6b4f33', false), T.x, 0.42, T.z + s * 0.72));
-        for (let i = 0; i < 6; i++) gi.add(cyl(0.09, 0.14, mat(['#b0603a', '#c8b890', '#6f8a6a'][i % 3], false), T.x - T.len / 2 + 0.6 + i * 0.9, 0.85, T.z + (i % 2 ? 0.15 : -0.15), 7));
+        const T = site.hallTable;
+        const tbl = new THREE.Group();
+        tbl.add(box(T.len, 0.08, 0.9, mat('#7a5a3a', false), 0, 0.74, 0));
+        for (const dx of [-T.len / 2 + 0.3, 0, T.len / 2 - 0.3]) for (const dz of [-0.3, 0.3]) tbl.add(box(0.08, 0.72, 0.08, mat('#5b4330', false), dx, 0.36, dz));
+        for (const s of [-1, 1]) tbl.add(box(T.len - 0.2, 0.07, 0.3, mat('#6b4f33', false), 0, 0.42, s * 0.72));
+        const cups = Math.floor(T.len / 0.9);
+        for (let i = 0; i < cups; i++) tbl.add(cyl(0.09, 0.14, mat(['#b0603a', '#c8b890', '#6f8a6a'][i % 3], false), -T.len / 2 + 0.6 + i * 0.9, 0.85, i % 2 ? 0.15 : -0.15, 7));
+        tbl.position.set(T.x, 0, T.z);
+        if (T.axis === 'z') tbl.rotation.y = Math.PI / 2;
+        gi.add(tbl);
         const stove = new THREE.Group();
         stove.add(cyl(0.42, 0.9, mat('#3a3a38', false), 0, 0.45, 0, 10));
         stove.add(cyl(0.08, 2.6, mat('#3a3a38', false), 0, 2.2, 0, 6));
         const fl = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.26, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffae4a').multiplyScalar(2.4), toneMapped: false }));
         fl.position.set(0, 0.4, 0.38);
         stove.add(fl);
-        stove.position.set(STORE.x + 3.4, 0, STORE.z + 0.9);
+        stove.position.set(site.stove.x, 0, site.stove.z);
         gi.add(stove);
         const colors = ['#6f7d5c', '#8a6a4a'];
-        HALL_BEDS.forEach((b, i) => {
-          const bed = bedroll(colors[i]);
-          bed.position.set(STORE.x + b.x, 0.08, STORE.z + b.z);
+        site.hallBeds.forEach((b, i) => {
+          const bed = bedroll(colors[i % colors.length]);
+          bed.position.set(b.x, 0.08, b.z);
           gi.add(bed);
         });
       } else {
-        const colors = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a'];
-        for (let i = 0; i < st.beds && i < STORE_BEDS.length; i++) {
-          const bed = bedroll(colors[i]);
-          bed.position.set(STORE.x + STORE_BEDS[i].x, 0.08, STORE.z + STORE_BEDS[i].z);
+        const colors = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a', '#8a7a4a', '#5a6b5a'];
+        for (let i = 0; i < st.beds && i < site.beds.length; i++) {
+          const bed = bedroll(colors[i % colors.length]);
+          bed.position.set(site.beds[i].x, 0.08, site.beds[i].z);
           gi.add(bed);
         }
         // A lamp on an upturned crate.
-        gi.add(box(0.5, 0.5, 0.5, mat('#7b6243', false), STORE.x - 0.2, 0.25, STORE.z - 0.2));
+        gi.add(box(0.5, 0.5, 0.5, mat('#7b6243', false), site.inside.x + 0.8, 0.25, site.inside.z + 0.6));
       }
       gi.userData.building = true;
       this.register(gi);
@@ -656,7 +702,7 @@ export class VillageView {
       this.upsert(id, key, (glow) => {
         const g = new THREE.Group();
         g.userData.projectId = p.id;
-        if (p.kind === 'clear_store') { g.add(junkPile(1 - prog)); return g; }
+        if (p.kind === 'clear_store') { g.add(junkPile(this.village.site, 1 - prog)); return g; }
         if (p.kind === 'home') {
           g.add(this.homeOutline(p.plot));
           g.add(materialPile(p, p.foot, this.world));
@@ -664,7 +710,7 @@ export class VillageView {
           return g;
         }
         if (p.kind === 'patch_roof') {
-          const rp = roofPatch(prog);
+          const rp = roofPatch(this.village.site, prog);
           rp.userData.roofGroup = true;
           g.add(rp);
           return g;
@@ -727,7 +773,7 @@ export class HeapsView {
     this.initial = world.heaps.length;
     for (const h of world.heaps) {
       // The station's own car is already modelled with the station.
-      if (h.kind === 'car' && Math.hypot(tileX(world, h.tx) - CAR.x, tileZ(world, h.tz) - CAR.z) < 1.5) continue;
+      if (world.site.kind === 'station' && h.kind === 'car' && Math.hypot(tileX(world, h.tx) - CAR.x, tileZ(world, h.tz) - CAR.z) < 1.5) continue;
       const v = h.kind === 'car' ? this.car(h) : this.pile(h);
       this.views.set(h.id, v);
       this.group.add(v.g);

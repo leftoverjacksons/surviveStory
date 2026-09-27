@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
 import { createCommunity, killSurvivor, recruit, setRole } from './sim/community';
-import { CAMP } from './sim/layout';
-import { generateWorld } from './sim/worldgen';
+import { SITE_KINDS, type SiteKind } from './sim/sites';
+import { generateWorld, siteKindFor } from './sim/worldgen';
 import { Zone, heightAt, paintZone } from './sim/world';
 import { daylightHours, seasonLook } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
 import { FogTexture, WearTexture, ZoneTexture, buildTerrain } from './render/terrain';
 import { FieldsView, Precipitation } from './render/land';
-import { buildStation, buildVines } from './render/station';
+import { buildVines } from './render/station';
+import { buildSite } from './render/sites';
 import { TreeField } from './render/trees';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
@@ -24,8 +25,13 @@ import { worldUniforms } from './render/util';
 import { Hud, type ZoneTool } from './ui/hud';
 
 // ---------- simulation ----------
-const seed = Number(new URLSearchParams(location.search).get('seed')) || Date.now() % 100000;
-const world = generateWorld(seed);
+const params = new URLSearchParams(location.search);
+const seed = Number(params.get('seed')) || Date.now() % 100000;
+// ?site=chapel (station, chapel, motel, farm, glasshouse) picks the start; otherwise the seed does.
+const siteParam = params.get('site') as SiteKind | null;
+const world = generateWorld(seed, undefined, siteParam && SITE_KINDS.includes(siteParam) ? siteParam : siteKindFor(seed));
+document.querySelector('#place h1')!.textContent = world.site.place;
+document.title = `Survive Story · ${world.site.place}`;
 const community = createCommunity(seed);
 const colony = createColony(world, community);
 
@@ -55,7 +61,7 @@ worldUniforms.uResTex.value = resonance.texture;
 worldUniforms.uFogSize.value = world.w;
 
 scene.add(buildTerrain(world));
-const station = buildStation();
+const station = buildSite(world.site);
 scene.add(station.group);
 const vines = buildVines(station.surfaces, station.edges);
 scene.add(vines.walls, vines.roofs);
@@ -78,7 +84,7 @@ const ring = new THREE.Vector3(world.fairyRing.x, 0, world.fairyRing.z);
 const wisps = new Wisps(world, [
   ring, ring.clone().add(new THREE.Vector3(3, 0, 2)),
   new THREE.Vector3(-4, 0.8, 2),
-  new THREE.Vector3(CAMP.x - 2, 0.6, CAMP.z - 3),
+  new THREE.Vector3(world.campfire.x - 2, 0.6, world.campfire.z - 3),
   new THREE.Vector3(18, 0, -14),
   new THREE.Vector3(-20, 0, 8),
   new THREE.Vector3(8, 0, 22),
@@ -310,13 +316,13 @@ canvas.addEventListener('pointerup', (e) => {
     if (proj) { hud.inspect({ project: proj.id }); return; }
   } else if (q) { hud.inspect(q.userData.buildingId !== undefined ? { building: q.userData.buildingId } : { project: q.userData.projectId }); return; }
   if (bh) {
-    // The station itself: the store, or the kitchen under the canopy.
+    // The site itself: the shelter, or the kitchen (under the station canopy).
     const p = bh.point;
+    const S = world.site.shelter, K = world.site.kitchen;
     const st = colony.village.buildings.find((b) => b.kind === 'store')!;
     const kitchen = colony.village.buildings.find((b) => b.kind === 'kitchen');
-    const inStore = Math.abs(p.x - (-1)) < 5.2 && Math.abs(p.z - (-9)) < 3;
-    if (inStore) { hud.inspect({ building: st.id }); return; }
-    if (kitchen && Math.abs(p.x) < 5.6 && Math.abs(p.z - 1.5) < 3.6) { hud.inspect({ building: kitchen.id }); return; }
+    if (Math.abs(p.x - S.x) < S.w / 2 + 0.4 && Math.abs(p.z - S.z) < S.d / 2 + 0.6) { hud.inspect({ building: st.id }); return; }
+    if (kitchen && Math.abs(p.x - K.x) < 5.6 && Math.abs(p.z - K.z) < 3.6) { hud.inspect({ building: kitchen.id }); return; }
   }
   hud.inspect(null);
 });

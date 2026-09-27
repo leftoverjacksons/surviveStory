@@ -62,5 +62,12 @@ reference: Tiny Glade.
   - Also done: know-how in place of eras (`src/sim/purpose.ts`),
     aspirations, leisure, the Veil's stakes and lore (see DESIGN §17
     "Round 1: what was built").
-  - Next: procedural starting sites; a balance pass (life is now
-    comfortable, and Influence saturates); the C3 art pass.
+  - Also done: five starting sites (`src/sim/sites.ts`, `src/render/sites.ts`);
+    the site lives on `world.site` and everything reads from it (no
+    station constants outside `layout.ts`/`station.ts`). `?site=` and
+    `?seed=` URL parameters.
+  - Next: a balance pass once the user reports back (life is now
+    comfortable, and Influence saturates); performance (merge house
+    meshes); the C3 art pass.
+  - Not yet republished: the artifact still has the homes-and-purpose
+    build the user is playing. Publish only when they ask.

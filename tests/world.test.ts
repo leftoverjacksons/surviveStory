@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { generateWorld } from '../src/sim/worldgen';
+import { SITE_KINDS } from '../src/sim/sites';
 import { findPath } from '../src/sim/path';
 import { Ground, idx, isExplored, passable, toTileX, toTileZ } from '../src/sim/world';
-import { CAMP, STOCKPILE } from '../src/sim/layout';
 
 const world = generateWorld(1234);
 
@@ -28,7 +28,8 @@ describe('world generation', () => {
   });
 
   it('keeps the camp and stockpile reachable from the station', () => {
-    const sx = toTileX(world, 0), sz = toTileZ(world, 1.5);
+    const { campfire: CAMP, stockpile: STOCKPILE } = world;
+    const sx = toTileX(world, world.site.door.x), sz = toTileZ(world, world.site.door.z);
     const gx = toTileX(world, (STOCKPILE.x0 + STOCKPILE.x1) / 2), gz = toTileZ(world, (STOCKPILE.z0 + STOCKPILE.z1) / 2);
     expect(passable(world, gx, gz)).toBe(true);
     expect(findPath(world, sx, sz, gx, gz)).not.toBeNull();
@@ -51,3 +52,33 @@ describe('world generation', () => {
     expect(p!.length).toBeGreaterThan(50);
   });
 });
+
+describe('starting sites', () => {
+  for (const kind of SITE_KINDS) {
+    it(`lays out ${kind} so everything can be reached`, () => {
+      const w = generateWorld(77, undefined, kind);
+      const S = w.site;
+      const at = (p: { x: number; z: number }) => [toTileX(w, p.x), toTileZ(w, p.z)] as const;
+      const [dx, dz] = at(S.door);
+      expect(passable(w, dx, dz)).toBe(true);
+      const targets = [
+        { x: (w.stockpile.x0 + w.stockpile.x1) / 2, z: (w.stockpile.z0 + w.stockpile.z1) / 2 },
+        { x: S.camp.x + 2, z: S.camp.z },
+        S.kitchen,
+        { x: S.annex.x0 + S.annex.w / 2, z: S.annex.z0 + S.annex.d / 2 },
+        { x: 0, z: 13 }, // the highway
+      ];
+      for (const t of targets) {
+        const [tx, tz] = at(t);
+        expect(passable(w, tx, tz), `${kind}: ${t.x},${t.z}`).toBe(true);
+        expect(findPath(w, dx, dz, tx, tz), `${kind}: path to ${t.x},${t.z}`).not.toBeNull();
+      }
+      // Cots stand inside the shelter.
+      const inside = (p: { x: number; z: number }) => Math.abs(p.x - S.shelter.x) < S.shelter.w / 2 && Math.abs(p.z - S.shelter.z) < S.shelter.d / 2;
+      for (const b of [...S.beds, ...S.hallBeds, S.inside, S.stove]) expect(inside(b), `${kind}: ${b.x},${b.z}`).toBe(true);
+      expect(S.beds.length).toBeGreaterThanOrEqual(S.patch.beds);
+      expect(w.site.kind).toBe(kind);
+    });
+  }
+});
+
