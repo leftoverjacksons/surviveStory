@@ -127,6 +127,8 @@ export interface World {
   site: Site;
   /** The Folk's mound, their paths (see folk.ts). */
   folk: FolkLand;
+  /** Tile → 1 where a district is still haunted: nothing can be zoned there (see haunt.ts). */
+  haunted?: Uint8Array;
 }
 
 export const idx = (w: World, tx: number, tz: number) => tz * w.w + tx;
@@ -223,6 +225,7 @@ export function zoneAllowed(w: World, tx: number, tz: number, kind: ZoneKind): b
   if (!inBounds(w, tx, tz)) return false;
   const i = idx(w, tx, tz);
   if (w.explored[i] <= 128) return false;
+  if (w.haunted?.[i]) return false;
   // Fishing grounds: the shore and the shallows of a pond, anywhere explored.
   if (kind === Zone.Fishing) return w.pondAt[i] >= 0 ? nearLand(w, tx, tz, 3) : w.ground[i] !== Ground.Water && nearWater(w, tx, tz, 3);
   if (w.ground[i] === Ground.Water) return false;

@@ -232,8 +232,8 @@ export const SINGLE_AFTER = 12;
 export function householdsDaily(col: Colony) {
   const c = col.community, v = col.village;
   const living = alive(c);
-  const ids = new Set(living.map((s) => s.id));
-  // The dead and departed leave their households.
+  // The dead and departed leave their households; the taken keep their place in theirs.
+  const ids = new Set([...living.map((s) => s.id), ...c.survivors.filter((s) => s.taken).map((s) => s.id)]);
   for (const h of v.households) h.members = h.members.filter((m) => ids.has(m));
   for (const h of v.households.filter((x) => x.members.length === 0)) {
     const b = v.buildings.find((x) => x.id === h.home);
@@ -408,7 +408,9 @@ export function homeComfort(v: Village, b: Building): number {
   const plot = v.plots.find((p) => p.id === b.plot);
   const done = plot ? plot.yard.filter((y) => y.progress >= 1).length : 0;
   // A patched-up house is warmer and drier; a well-kept one, with its glasshouse, more so.
-  return 2 + Math.min(3, done * 0.5) + b.level * 0.5;
+  // A remnant from the Veil keeping the hearth: the house feels lived-in, in a good way.
+  const hearth = v.hearths?.some((x) => x.building === b.id) ? 0.8 : 0;
+  return 2 + Math.min(3, done * 0.5) + b.level * 0.5 + hearth;
 }
 
 // ---------- finding a plot ----------

@@ -232,10 +232,10 @@ export function createFolk(w: World): FolkSociety {
   return f;
 }
 
-function addFae(f: FolkSociety, w: World, kind: FaeKind, k: number): Fae {
+export function addFae(f: FolkSociety, w: World, kind: FaeKind, k: number, named?: string): Fae {
   const m = w.folk.mound;
   const used = new Set(f.beings.map((b) => b.name));
-  const name = NAMES[kind].find((n) => !used.has(n)) ?? `${NAMES[kind][0]} the ${['Younger', 'Second', 'Third'][k % 3]}`;
+  const name = named ?? NAMES[kind].find((n) => !used.has(n)) ?? `${NAMES[kind][0]} the ${['Younger', 'Second', 'Third'][k % 3]}`;
   const fae: Fae = { id: f.nextId++, name, kind, x: m.x, z: m.z, to: { x: m.x, z: m.z }, act: 'in', t: 0, known: false, lastChore: 0 };
   f.beings.push(fae);
   return fae;

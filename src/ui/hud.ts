@@ -260,9 +260,11 @@ export class Hud {
 
     if (c.log.length !== this.lastLog) {
       this.lastLog = c.log.length;
-      const fallen = c.survivors.filter((s) => !s.alive);
+      const fallen = c.survivors.filter((s) => !s.alive && !s.taken);
+      const missing = c.survivors.filter((s) => s.taken);
       const lines = c.log.slice(-8).map((l) => `<p class="${l.tone}"><span class="d">D${l.day}</span>${esc(l.text)}</p>`);
       if (fallen.length) lines.unshift(`<p><span class="d">MEM</span>Remembered: ${fallen.map((f) => esc(f.name)).join(', ')}</p>`);
+      if (missing.length) lines.unshift(`<p class="strange"><span class="d">VEIL</span>Taken, and waited for: ${missing.map((f) => esc(f.name)).join(', ')}</p>`);
       const log = $('log');
       log.innerHTML = lines.join('');
       log.scrollTop = log.scrollHeight;

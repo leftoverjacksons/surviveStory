@@ -105,6 +105,8 @@ export interface Village {
   noPlotKey?: string;
   /** Set when bed assignments need redoing (e.g. the store became a hall). */
   bedsDirty?: boolean;
+  /** Remnants who came home from the Veil to live at a hearth (building 0: none yet). */
+  hearths: { name: string; building: number }[];
 }
 
 interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]; work: [number, number]; beds?: [number, number] }
@@ -134,7 +136,7 @@ const zero = (): Cost => c(0, 0, 0);
 export function createVillage(w: World): Village {
   const v: Village = {
     buildings: [], projects: [], nextId: 1, craftXp: 0, salvaged: {}, tier: 0, site: w.site,
-    households: [], plots: [], plotAt: new Int32Array(w.w * w.h), homeQueue: [], fisheries: [],
+    households: [], plots: [], plotAt: new Int32Array(w.w * w.h), homeQueue: [], fisheries: [], hearths: [],
   };
   // The found shelter is there from the start: derelict, no beds yet.
   const S = w.site.shelter;

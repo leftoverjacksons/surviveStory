@@ -111,7 +111,7 @@ export class Camp {
         this.group.remove(this.beds.get(s.id)!);
         this.beds.delete(s.id);
       }
-      if (!s.alive && !this.stones.has(s.id)) this.addStone(s.id);
+      if (!s.alive && !s.taken && !s.departed && !this.stones.has(s.id)) this.addStone(s.id);
     }
 
     // Stockpile size follows the stores.

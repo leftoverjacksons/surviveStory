@@ -27,6 +27,7 @@ import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pond
 import { highwayZ } from './worldgen';
 import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence } from './fields';
 import { createFolk, folkDaily, folkTick, leaveOffering, type FolkSociety } from './folk';
+import { createHaunts, hauntDaily, heapHaunted, senseDistrict, type Clearing, type Haunt, type TakenRecord } from './haunt';
 import {
   PSI_SIGHT, createVeil, disturb, growthFactor, healFactor, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil,
 } from './veil';
@@ -138,6 +139,13 @@ export interface Colony {
   council: Council;
   /** The Folk of the hill: their standing with the village, their people and works. */
   folk: FolkSociety;
+  /** Who still lives in each district of the old world (see haunt.ts). */
+  haunts: Haunt[];
+  /** A team in the Veil right now: time at home stands still until it ends. */
+  clearing: Clearing | null;
+  lastClearing?: Clearing;
+  /** Survivors taken into the Veil, and when they will come back. */
+  taken: TakenRecord[];
   /** Food gained and spent this year, by source (for balancing and the HUD). */
   ledger: Record<string, number>;
 }
@@ -162,7 +170,7 @@ export function createColony(world: World, community: Community): Colony {
     village: createVillage(world), beds: new Map(),
     weather: weatherOn(1, world.seed), claims: new Map(), replant: [], tended: new Set(), lowDays: new Map(),
     hints: new Set(), private_fieldCache: { version: -1, tiles: [] },
-    veil: createVeil(world), council: createCouncil(), folk: createFolk(world), ledger: {},
+    veil: createVeil(world), council: createCouncil(), folk: createFolk(world), haunts: createHaunts(world), clearing: null, taken: [], ledger: {},
   };
   // The first line of the story names where it starts.
   const opening = community.log.find((l) => l.day === 1 && l.tone === 'info');
@@ -346,6 +354,7 @@ function checkDiscoveries(col: Colony, s: Survivor) {
     };
     const what = p.kind === 'ruin' ? RUIN_SAYS[d?.kind ?? ''] ?? 'roofless houses swallowed by ivy' : p.kind === 'pond' ? 'a still pond full of sky' : 'something';
     log(col.community, `${first(s)} found ${p.name}: ${what}.`, 'good');
+    if (d) senseDistrict(col, d, s);
     remember(s, col.community.day, `Found ${p.name}.`);
     col.events.push({ type: 'discovered', poi: p.id });
   }
@@ -567,6 +576,7 @@ function pickSalvage(col: Colony, a: Agent): Task | null {
   let best = null, bestD = Infinity;
   for (const h of w.heaps) {
     if (h.scrap <= 0 || h.reserved || !isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`)) continue;
+    if (heapHaunted(col, h.tx, h.tz)) continue; // nobody will go that close to what lives there
     const d = Math.hypot(tileX(w, h.tx) - a.x, tileZ(w, h.tz) - a.z);
     if (d < bestD && d < 95) { best = h; bestD = d; }
   }
@@ -1872,6 +1882,7 @@ function daily(col: Colony) {
   }
   veilDaily(col, { cold, rationing: rationing(col) });
   folkDaily(col);
+  hauntDaily(col);
   fishingDaily(col, (x, z, amt) => disturb(col, x, z, amt, 2));
   councilDaily(col);
   departures(col);
@@ -2000,6 +2011,8 @@ function neededRole(col: Colony): RoleId {
 
 // ---------- main tick ----------
 export function tick(col: Colony, dtMinutes: number) {
+  // While a team is in the Veil, no time passes at home.
+  if (col.clearing) return;
   let remaining = dtMinutes;
   while (remaining > 0) {
     const dt = Math.min(remaining, 0.5);

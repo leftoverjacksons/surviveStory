@@ -31,6 +31,8 @@ export interface Survivor {
   diedOnDay: number | null;
   /** Left the village (alive, elsewhere) rather than died. */
   departed?: boolean;
+  /** Taken into the Veil: gone for now, not dead, and expected back (see haunt.ts). */
+  taken?: boolean;
   causeOfDeath: string | null;
   griefDays: number; // >0 while actively mourning
   memories: Memory[];

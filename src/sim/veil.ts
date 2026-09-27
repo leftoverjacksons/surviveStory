@@ -303,7 +303,7 @@ export function veilDaily(col: Colony, hardship: { cold: boolean; rationing: boo
   if (hardship.cold) disturb(col, h.x, h.z, 0.04, 3);
   if (hardship.rationing) disturb(col, h.x, h.z, 0.03, 3);
   for (const s of c.survivors) {
-    if (s.alive || s.departed || v.mourned.has(s.id)) continue;
+    if (s.alive || s.departed || s.taken || v.mourned.has(s.id)) continue;
     v.mourned.add(s.id);
     disturb(col, h.x, h.z, 0.2, 4);
   }
@@ -428,7 +428,7 @@ function spawnPhenomena(col: Colony, rng: Rng, hour: number, night: boolean) {
   if (v.phenomena.length >= 3) return;
   const hr = homeResonance(col);
   const grieving = alive(col.community).some((s) => s.griefDays > 0);
-  const recentDead = col.community.survivors.filter((s) => !s.alive && !s.departed && (s.diedOnDay ?? -99) >= col.community.day - 6);
+  const recentDead = col.community.survivors.filter((s) => !s.alive && !s.departed && !s.taken && (s.diedOnDay ?? -99) >= col.community.day - 6);
   const kinds = Object.keys(PHENOMENA) as PhenomKind[];
   for (const kind of rng.shuffle(kinds)) {
     const def = PHENOMENA[kind];
