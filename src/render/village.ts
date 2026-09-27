@@ -601,6 +601,14 @@ function hallSeats(site: Site): Slot[] {
 
 /** World position and heading of bed `index` in a building. */
 export function bedSlot(world: World, village: Village, b: Building, index: number): Slot | null {
+  // Beds in a restored ruin: in a row across the middle of the old house.
+  if (b.ruin !== undefined) {
+    const r = world.ruins[b.ruin];
+    if (!r || index >= b.beds) return null;
+    const cs = Math.cos(r.yaw), sn = Math.sin(r.yaw);
+    const along = (index - (b.beds - 1) / 2) * 1.3;
+    return { x: r.x + along * cs, z: r.z - along * sn, yaw: r.yaw };
+  }
   if (b.kind === 'store') {
     const p = (b.level >= 3 ? village.site.hallBeds : village.site.beds)[index];
     return p ? { x: p.x, z: p.z, yaw: 0 } : null;
@@ -876,6 +884,8 @@ export class VillageView {
         });
         continue;
       }
+      // A restored ruin is drawn by the old world's renderer.
+      if (b.ruin !== undefined) continue;
       // An upgrade in progress keeps the old building standing until it's done.
       const id = `b${b.id}`;
       live.add(id);
@@ -896,6 +906,7 @@ export class VillageView {
         const g = new THREE.Group();
         g.userData.projectId = p.id;
         if (p.kind === 'clear_store') { g.add(junkPile(this.village.site, 1 - prog)); return g; }
+        if (p.kind === 'restore') { g.add(materialPile(p, p.foot, this.world)); return g; }
         if (p.kind === 'home') {
           g.add(this.homeOutline(p.plot));
           g.add(materialPile(p, p.foot, this.world));

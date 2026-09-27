@@ -15,7 +15,7 @@ import {
 } from './calendar';
 import {
   assignBeds, bedsTotal, completeProject, heatNeed, storageCapacity, createVillage, footCenter, hasBuilt, materialsReady,
-  outstanding, plan, store, GARDEN_YIELD, MATERIALS, type Building, type Material, type Project, type Village,
+  outstanding, plan, store, MAX_ACTIVE, newProject, GARDEN_YIELD, MATERIALS, type Building, type Material, type Project, type Village,
 } from './buildings';
 import {
   SITE_CREW, YARD, homeComfort, homeOf, householdName, householdOf, householdsDaily, onHomeBuilt, planHome, plotPoint,
@@ -27,6 +27,7 @@ import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pond
 import { highwayZ } from './worldgen';
 import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence } from './fields';
 import { createFolk, folkDaily, folkTick, leaveOffering, type FolkSociety } from './folk';
+import { planRestore } from './restore';
 import { createHaunts, hauntDaily, heapHaunted, senseDistrict, type Clearing, type Haunt, type TakenRecord } from './haunt';
 import {
   PSI_SIGHT, createVeil, disturb, growthFactor, healFactor, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil,
@@ -229,6 +230,8 @@ export function replan(col: Colony) {
     };
     if (store(v).level >= 1) while (planHome(col, rng, leadName(col), urgent())) { /* up to two homes at once */ }
     if (store(v).level >= 1) planFishery(col, rng, leadName(col));
+    // A cleared district of the village's: patch up one of its buildings.
+    if (v.projects.filter((p) => !p.done).length < MAX_ACTIVE) planRestore(col, leadName(col), (p) => newProject(v, p));
     while (plan(col.world, col.village, col.community, rng, leadName(col), seasonIndex(dayOf(col)))) { /* fill up to the active limit */ }
   });
 }

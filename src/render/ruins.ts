@@ -11,7 +11,7 @@ import type { Ruin } from '../sim/oldworld';
 import { heightAt, type World } from '../sim/world';
 import { box, cyl, mat } from './kit';
 import { mergeStatic } from './merge';
-import { enhance, makeRand } from './util';
+import { enhance, glowTexture, makeRand } from './util';
 
 const SIDING = ['#b9c79a', '#c9b98e', '#9ab5bf', '#c7a38f', '#a7c0a4', '#d1c29a', '#8fa7b8', '#c4a4a8'];
 const BRICK = ['#8a4a3a', '#7d4536', '#96583f', '#7a5040'];
@@ -200,7 +200,9 @@ function lettering(g: THREE.Group, len: number, y: number, z: number, rand: () =
 export function buildRuin(r: Ruin): THREE.Group {
   const g = new THREE.Group();
   const rand = makeRand(r.seed);
-  const { w: W, d: D, h, decay } = r;
+  const { w: W, d: D, h } = r;
+  // Restored: walls made good, roof patched, the worst of the growth cut back.
+  const decay = r.restored ? Math.min(0.05, r.decay) : r.decay;
   const roofy = decay < 0.9;
   switch (r.kind) {
     case 'house': {
@@ -329,21 +331,64 @@ export function buildRuin(r: Ruin): THREE.Group {
     }
   }
   if (r.kind !== 'glasshouse' && r.kind !== 'silo') ivy(g, W, D, h, rand, 0.4 + decay * 1.2);
+  if (r.restored) {
+    // Lived in again: a salvaged panel on the roof, and a warm window at night.
+    if (r.kind !== 'glasshouse' && r.kind !== 'silo' && r.kind !== 'chapel') {
+      const panel = box(Math.min(2.2, W * 0.35), 0.06, 1.2, mat('#27364f'), W * 0.18, h + 0.9, D * 0.12);
+      panel.rotation.x = -0.45;
+      g.add(panel);
+    }
+    // Lamplight at the windows, front and back (a soft glow that reads from any side).
+    for (const side of [1, -1]) {
+      const lit = new THREE.Sprite(RESTORED_GLOW);
+      lit.position.set(side * W * 0.22, Math.min(h * 0.5, 1.4), side * (D / 2 + 0.3));
+      lit.scale.setScalar(1.8);
+      lit.userData.keep = true;
+      g.add(lit);
+    }
+  }
   g.rotation.y = r.yaw;
   return g;
+}
+
+/** Windows of restored buildings: lit from dusk (the view sets its opacity by the night). */
+export const RESTORED_GLOW = new THREE.SpriteMaterial({ map: glowTexture(), color: '#ffc978', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+
+function buildDistrict(world: World, id: number): THREE.Group {
+  const d = new THREE.Group();
+  d.userData.district = id;
+  for (const r of world.ruins) {
+    if (r.district !== id) continue;
+    const g = buildRuin(r);
+    g.position.set(r.x, heightAt(world, r.x, r.z), r.z);
+    d.add(g);
+  }
+  mergeStatic(d, new Set(), false, (x, z) => heightAt(world, x, z));
+  return d;
 }
 
 /** All ruins, one merged group per district. */
 export function buildRuins(world: World): THREE.Group {
   const root = new THREE.Group();
-  const byDistrict = new Map<number, THREE.Group>();
-  for (const r of world.ruins) {
-    let d = byDistrict.get(r.district);
-    if (!d) { d = new THREE.Group(); byDistrict.set(r.district, d); root.add(d); }
-    const g = buildRuin(r);
-    g.position.set(r.x, heightAt(world, r.x, r.z), r.z);
-    d.add(g);
-  }
-  for (const d of byDistrict.values()) mergeStatic(d, new Set(), false, (x, z) => heightAt(world, x, z));
+  const ids = [...new Set(world.ruins.map((r) => r.district))];
+  for (const id of ids) root.add(buildDistrict(world, id));
+  root.userData.restoreKey = restoreKey(world);
   return root;
+}
+
+const restoreKey = (world: World) => world.ruins.map((r) => (r.restored ? 1 : 0)).join('');
+
+/** Rebuild the districts whose ruins have been restored since last time. */
+export function syncRuins(world: World, root: THREE.Group) {
+  const key = restoreKey(world);
+  const old: string = root.userData.restoreKey ?? '';
+  if (key === old) return;
+  root.userData.restoreKey = key;
+  const changed = new Set(world.ruins.filter((_r, i) => key[i] !== old[i]).map((r) => r.district));
+  for (const g of [...root.children]) {
+    if (!changed.has(g.userData.district)) continue;
+    root.remove(g);
+    g.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+    root.add(buildDistrict(world, g.userData.district));
+  }
 }

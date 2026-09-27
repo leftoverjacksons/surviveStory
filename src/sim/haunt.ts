@@ -689,7 +689,7 @@ function applyClearing(col: Colony, cl: Clearing) {
     if (s.fate === 'befriended') { addFae(col.folk, w, s.kind === 'lamp' ? 'sprite' : 'hob', col.folk.beings.length, s.name); changeStanding(col, 3); }
     if (s.fate === 'invited') {
       const homes = col.village.buildings.filter((b) => b.kind === 'home' && b.household && !col.village.hearths.some((x) => x.building === b.id));
-      col.village.hearths.push({ name: s.name, building: homes[0]?.id ?? 0 });
+      col.village.hearths.push({ name: s.name, building: homes[0]?.id ?? 0, ruin: s.home });
     }
   }
   // The team.

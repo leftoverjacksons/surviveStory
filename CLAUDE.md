@@ -104,6 +104,8 @@ reference: Tiny Glade.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
   - Entering the Veil costs 10 Influence (free on full moons/festivals: TO DO).
+  - Restoring cleared ruins BUILT (§20.4, `sim/restore.ts`, `restore` projects,
+    `Building.ruin`, `Ruin.restored`, `render/ruins.ts#syncRuins`). NOT published.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

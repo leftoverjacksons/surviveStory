@@ -8,6 +8,7 @@ import type { Site } from './sites';
 import type { Rng } from './rng';
 import { houseFloor, type Household, type Plot } from './homes';
 import type { Fishery } from './fishing';
+import { RESTORE } from './restore';
 import {
   Ground, LANE_WEAR, PATH_WEAR, heightAt, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
   type Point, type World,
@@ -15,7 +16,7 @@ import {
 
 export type FisheryKind = 'jetty' | 'fishhut' | 'netshed' | 'boat';
 export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | FisheryKind;
-export type ProjectKind = 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'upgrade' | FisheryKind;
+export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'upgrade' | FisheryKind;
 export const FISHERY_KINDS: FisheryKind[] = ['jetty', 'fishhut', 'netshed', 'boat'];
 export type Tier = 0 | 1;
 
@@ -47,6 +48,9 @@ export interface Building {
   plot?: number;
   household?: number;
   yaw?: number;
+  /** A restored ruin of the old world (drawn as that ruin), and the food it keeps if it is a store. */
+  ruin?: number;
+  capacity?: number;
 }
 
 export interface Project {
@@ -68,6 +72,8 @@ export interface Project {
   done: boolean;
   /** Fishery projects: which fishery they belong to. */
   fishery?: number;
+  /** Restoration: the ruin being patched up. */
+  ruin?: number;
   /** Homes: plot, household, the tiles the house covers, and its door and heading. */
   plot?: number;
   household?: number;
@@ -106,7 +112,9 @@ export interface Village {
   /** Set when bed assignments need redoing (e.g. the store became a hall). */
   bedsDirty?: boolean;
   /** Remnants who came home from the Veil to live at a hearth (building 0: none yet). */
-  hearths: { name: string; building: number }[];
+  hearths: { name: string; building: number; ruin?: number }[];
+  /** Day the last restoration was planned. */
+  lastRestore?: number;
 }
 
 interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]; work: [number, number]; beds?: [number, number] }
@@ -115,7 +123,7 @@ const c = (wood: number, scrap: number, glimmer = 0): Cost => ({ wood, scrap, gl
 /** Materials to improve a home from `level`. */
 export const HOME_UPGRADE_COST = (level: number): Cost => (level === 0 ? { wood: 16, scrap: 10, glimmer: 0 } : { wood: 12, scrap: 16, glimmer: 0 });
 
-export const DEFS: Record<Exclude<ProjectKind, 'upgrade' | 'clear_store' | 'patch_roof' | 'home' | FisheryKind>, Def> = {
+export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_store' | 'patch_roof' | 'home' | FisheryKind>, Def> = {
   annex:    { name: ['Lean-to', 'Lean-to'], w: 3, d: 5, cost: [c(18, 6), c(18, 6)], work: [600, 600], beds: [2, 2] },
   hut:      { name: ['Bunk shack', 'Bunkhouse'], w: 3, d: 3, cost: [c(14, 8), c(34, 2)], work: [600, 900], beds: [2, 3] },
   garden:   { name: ['Tire garden', 'Fenced garden'], w: 4, d: 3, cost: [c(6, 4), c(18, 0)], work: [300, 420] },
@@ -261,7 +269,7 @@ export function heatNeed(b: Building): number {
 /** Food that keeps; anything above this slowly spoils. */
 export function storageCapacity(v: Village): number {
   // Cellars keep roots and grain; the fishing hut's racks keep smoked fish.
-  return 40 + v.buildings.filter((b) => b.kind === 'cellar').reduce((n, b) => n + (b.tier === 0 ? 100 : 160), 0)
+  return 40 + v.buildings.filter((b) => b.kind === 'cellar').reduce((n, b) => n + (b.capacity ?? (b.tier === 0 ? 100 : 160)), 0)
     + v.buildings.filter((b) => b.kind === 'fishhut').length * 50;
 }
 
@@ -327,7 +335,7 @@ export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot
 
 // ---------- projects ----------
 
-function newProject(v: Village, p: Omit<Project, 'id' | 'delivered' | 'incoming' | 'work' | 'done'>): Project {
+export function newProject(v: Village, p: Omit<Project, 'id' | 'delivered' | 'incoming' | 'work' | 'done'>): Project {
   const proj: Project = { ...p, id: v.nextId++, delivered: zero(), incoming: zero(), work: 0, done: false };
   v.projects.push(proj);
   return proj;
@@ -429,7 +437,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   if (beds < pop + 2) wants.push(shelter); // a little room for newcomers
   if (v.tier === 1 && !has('upgrade')) {
     wants.push(() => {
-      const old = v.buildings.find((b) => b.tier === 0 && (b.kind === 'garden' || b.kind === 'workshop' || b.kind === 'cellar' || b.kind === 'shrine'));
+      const old = v.buildings.find((b) => b.tier === 0 && b.ruin === undefined && (b.kind === 'garden' || b.kind === 'workshop' || b.kind === 'cellar' || b.kind === 'shrine'));
       if (!old) return null;
       const def = DEFS[old.kind as 'hut' | 'garden' | 'workshop' | 'cellar' | 'shrine'];
       log(com, `${lead} wants to rebuild ${old.name.toLowerCase()} properly, in timber.`, 'good');
@@ -556,6 +564,27 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
       const floor = plot ? houseFloor(w, plot) + 0.24 : 0;
       for (const i of p.blockTiles ?? []) { w.blocked[i] = 1; if (plot) { w.deck[i] = 1; w.deckY[i] = floor; } }
       log(com, `${p.name} is finished.`, 'good');
+      break;
+    }
+    case 'restore': {
+      const r = p.ruin !== undefined ? w.ruins[p.ruin] : undefined;
+      const def = r ? RESTORE[r.kind] : undefined;
+      if (!r || !def) break;
+      r.restored = true;
+      const b: Building = {
+        id: v.nextId++, kind: def.as, tier: 0, foot: p.foot, facing: 0, door: { ...p.door! }, inside: { ...p.inside! },
+        beds: def.beds ?? 0, level: 0, tended: 0, growth: 0.6, name: p.name, ruin: r.id, capacity: def.capacity,
+      };
+      v.buildings.push(b);
+      // Someone who came home from the Veil to this very house moves back in.
+      const d = w.districts[r.district];
+      log(com, `${p.name} is done. ${d.name} has lights in its windows again.`, 'good');
+      const ghost = v.hearths.find((x) => x.ruin === r.id);
+      if (ghost) {
+        const was = v.buildings.find((x) => x.id === ghost.building);
+        ghost.building = b.id;
+        log(com, `${ghost.name.charAt(0).toUpperCase() + ghost.name.slice(1)} left ${was ? was.name : 'the hearth they had been keeping'} and went home to ${r.name}. The kettle there is always warm now.`, 'strange');
+      }
       break;
     }
     case 'jetty': case 'fishhut': case 'netshed': case 'boat': {

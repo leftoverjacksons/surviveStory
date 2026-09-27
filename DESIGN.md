@@ -1558,3 +1558,50 @@ process food. We need taverns, and solar panels on houses."
    pixie-led searches, rules that can be broken, emissaries.
 3. Folk-suited districts (churchyard, park, flooded car park, quarry pond).
 4. §20.2 motives, trades and places. This is large; propose a plan first.
+
+### 20.4 Restoring cleared ruins: as built (step 1 of §20.3)
+- **When.** A district that is cleared and given to the village offers its
+  ruins for restoration (`sim/restore.ts`). The planner restores one at a
+  time.
+  - It does so for a need: beds short (+6), stores over 70% full (+5), no
+    workbench (+4), no shrine (+3), fewer than two gardens (+3).
+  - Otherwise it makes one quiet improvement about every eight days.
+  - Each existing restoration of the same kind counts −0.8 (variety), and
+    distance counts against it (−1 per 60 units).
+- **What each ruin becomes.** Restored buildings reuse the home buildings'
+  effects:
+
+  | Ruin | Becomes | Cost (wood, scrap) | Work |
+  |---|---|---|---|
+  | House, terrace | Beds, 3 (a hut) | 8, 3 | 700 |
+  | Farmhouse | Beds, 4 | 10, 3 | 800 |
+  | Garage, shed | Workbench | 4, 2 | 360 |
+  | Shop | Stores for 90 food | 6, 2 | 420 |
+  | Superstore, warehouse | Storehouse, 220–240 | 12, 4 | 900 |
+  | Barn | Store for 140 | 8, 2 | 600 |
+  | Chapel | Shrine | 6, 2, plus 4 glimmer | 500 |
+  | Glasshouse | Garden beds | 6, 4 | 480 |
+
+  These cost roughly a third to a half of building new.
+- **Rules.**
+  - A remnant who was asked home and whose own house is restored moves
+    back in (`hearths[].ruin`).
+  - Restored buildings are never "upgraded" into new ones.
+- **Look.**
+  - The district is rebuilt with that ruin at almost no decay and less
+    ivy.
+  - It gets a salvaged solar panel on the roof (not glasshouses, silos or
+    chapels).
+  - Warm lamplight shows at front and back from dusk.
+- **Measured.**
+  - Seeds 5 and 8 each had a retail park given to the village on day 1.
+    That run predates the variety penalty: it restored 5 stores over the
+    year, paced about every 8–12 days.
+  - Balance probe unchanged: no deaths, morale 66–72.
+  - Restored beds far from home are used only when beds nearer are full.
+- **Gaps.**
+  - Clicking a restored ruin doesn't open an inspector yet.
+  - Households don't move into restored houses as their home; they are
+    shared beds.
+  - The §20.2 trades and taverns should become restoration targets (a
+    shop as a tavern, a garage as a toolmaker's).

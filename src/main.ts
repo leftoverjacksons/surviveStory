@@ -13,7 +13,7 @@ import { buildVines } from './render/station';
 import { buildSite } from './render/sites';
 import { mergeStatic } from './render/merge';
 import { TreeField } from './render/trees';
-import { buildRuins as buildOldWorld } from './render/ruins';
+import { RESTORED_GLOW, buildRuins as buildOldWorld, syncRuins } from './render/ruins';
 import { loadAnimals, loadCharacters } from './render/characters';
 import { obstacleKey, obstaclesFor } from './render/clearance';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
@@ -680,6 +680,7 @@ function frame() {
   const occupied = new Set<number>();
   for (const a of colony.agents) if (a.indoors && a.inside) occupied.add(a.inside);
   plotsView.update(t, sky.night);
+  RESTORED_GLOW.opacity = sky.night > 0.3 ? sky.night * 0.9 : 0;
   grade.uniforms.uNight.value = sky.night;
   villageView.update(sky.night, occupied, t);
   villageView.updateBoats(colony.agents.filter((a) => a.afloat && a.task?.kind === 'fish').map((a) => {
@@ -706,6 +707,7 @@ function frame() {
     heaps.sync();
     fields.sync(t);
     folkView.sync();
+    syncRuins(world, oldWorld);
     syncClearance();
     trees.syncPlanted();
     lightPeopleLayer(scene);

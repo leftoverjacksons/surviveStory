@@ -63,13 +63,14 @@ export function obstaclesFor(w: World, v: Village): Obstacle[] {
     out.push(box(w, c.x, c.z, 0, f.w / 2 + 0.25, f.d / 2 + 0.25, top));
   };
   for (const b of v.buildings) {
-    if (b.kind === 'store') continue;
+    if (b.kind === 'store' || b.ruin !== undefined) continue;
     if (b.kind === 'home') home(b.plot, b.level);
     else if (b.kind === 'kitchen') out.push(box(w, v.site.kitchen.x, v.site.kitchen.z, 0, 1.9, 1.9, TOP.kitchen!));
     else foot(b.kind, b.foot);
   }
   for (const p of v.projects) {
     if (p.done) continue;
+    if (p.kind === 'restore') continue;
     if (p.kind === 'home') home(p.plot);
     else if (p.kind === 'kitchen') out.push(box(w, v.site.kitchen.x, v.site.kitchen.z, 0, 1.9, 1.9, TOP.kitchen!));
     else foot(p.kind, p.foot);

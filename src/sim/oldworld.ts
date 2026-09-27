@@ -38,6 +38,8 @@ export interface Ruin {
   seed: number;
   /** Paint or brick colour index, for the renderer. */
   tone: number;
+  /** Patched up and in use again (see restore.ts). */
+  restored?: boolean;
 }
 
 export interface District {
