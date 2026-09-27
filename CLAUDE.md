@@ -72,5 +72,4 @@ reference: Tiny Glade.
     `render/village.ts`; DESIGN §17 "Fishing grounds").
   - Next: the user's playtest feedback; performance (merge house meshes);
     the C3 art pass.
-  - Published: the artifact has the starting-sites build (commit 8cf1f15).
-    The balance pass and fishing are committed but NOT published (user is testing).
+  - Published: the artifact has the balance-pass and fishing build (commit 4f765d7).
