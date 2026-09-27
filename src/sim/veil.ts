@@ -380,7 +380,8 @@ export function veilHourly(col: Colony, rng: Rng, hour: number, night: boolean) 
     sightSum += s.sight;
   }
   // The more they perceive, the more clearly they sense the player.
-  v.influence = Math.min(100, v.influence + (sightSum / 100) * 0.03);
+  // Diminishing: a village that perceives a lot still only senses you slowly.
+  v.influence = Math.min(100, v.influence + 0.017 * Math.sqrt(sightSum / 100));
 
   spawnPhenomena(col, rng, hour, night);
   encounters(col, rng);
@@ -485,6 +486,7 @@ function experience(col: Colony, rng: Rng, s: Survivor, p: Phenomenon, reading: 
         bump(10); s.griefDays = Math.max(0, s.griefDays - 2); s.hp = s.maxHp;
         // It leads them somewhere green.
         c.resources.food += 8;
+        col.ledger.veil = (col.ledger.veil ?? 0) + 8;
         if (rng.chance(0.5)) log(c, `The White Stag led ${first(s)} to a spring thick with watercress. They came back with armfuls.`, 'good');
         break;
       case 'choir':
@@ -495,7 +497,7 @@ function experience(col: Colony, rng: Rng, s: Survivor, p: Phenomenon, reading: 
         break;
       case 'shade': s.griefDays = 0; bump(8); break;
       case 'orb':
-        s.sight = Math.min(100, s.sight + 10); col.veil.influence = Math.min(100, col.veil.influence + 15);
+        s.sight = Math.min(100, s.sight + 10); col.veil.influence = Math.min(100, col.veil.influence + 8);
         learnLore(col, s, 'came back from the Ring and would only say one thing');
         break;
       case 'hollow': bump(-8); s.sight = Math.min(100, s.sight + 4); break;

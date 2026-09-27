@@ -84,3 +84,16 @@ describe('homes', () => {
     for (const p of v.plots) for (const i of p.tiles) { expect(seen.has(i)).toBe(false); seen.add(i); }
   });
 });
+
+describe('meals', () => {
+  it('nobody goes hungry while the stores hold plenty', () => {
+    const col = createColony(generateWorld(2), createCommunity(2));
+    let starving = 0;
+    for (let m = 0; m < 30 * 1440; m += 10) {
+      tick(col, 10);
+      if (col.community.resources.food < col.agents.length * 3) continue;
+      for (const a of col.agents) if (a.needs.food <= 0) starving++;
+    }
+    expect(starving).toBe(0);
+  });
+});

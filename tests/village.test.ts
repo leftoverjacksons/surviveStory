@@ -46,8 +46,9 @@ describe('village', () => {
     for (const b of v.buildings) {
       if (b.kind === 'store' || b.kind === 'kitchen' || b.kind === 'annex') continue;
       for (const [tx, tz] of footTiles(b.foot)) {
-        expect(inZone(col.world, tx, tz)).toBe(true);
         const i = idx(col.world, tx, tz);
+        // Built on home ground (the council may later declare ground around the Ring sacred).
+        expect(inZone(col.world, tx, tz) || col.world.zone[i] === Zone.Sacred).toBe(true);
         expect(seen.has(i)).toBe(false);
         seen.add(i);
       }

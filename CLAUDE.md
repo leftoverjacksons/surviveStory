@@ -66,7 +66,9 @@ reference: Tiny Glade.
     the site lives on `world.site` and everything reads from it (no
     station constants outside `layout.ts`/`station.ts`). `?site=` and
     `?seed=` URL parameters.
-  - Next: a balance pass once the user reports back (life is now
-    comfortable, and Influence saturates); performance (merge house
-    meshes); the C3 art pass.
+  - Balance pass 1 done (DESIGN §17 "Balance pass 1"); `npm run balance`
+    reports a food ledger, morale by season, Influence and winter hardship.
+  - Next: the user's playtest feedback; performance (merge house meshes);
+    the C3 art pass.
   - Published: the artifact has the starting-sites build (commit 8cf1f15).
+    The balance pass is committed but NOT published (user is testing).

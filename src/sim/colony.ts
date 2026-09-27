@@ -128,6 +128,14 @@ export interface Colony {
   private_fieldCache: { version: number; tiles: number[] };
   veil: Veil;
   council: Council;
+  /** Food gained and spent this year, by source (for balancing and the HUD). */
+  ledger: Record<string, number>;
+}
+
+/** Add (or, if negative, spend) food, noting where it came from. */
+export function gainFood(col: Colony, source: string, amount: number) {
+  col.community.resources.food += amount;
+  col.ledger[source] = (col.ledger[source] ?? 0) + amount;
 }
 
 // ---------- time ----------
@@ -144,7 +152,7 @@ export function createColony(world: World, community: Community): Colony {
     village: createVillage(world), beds: new Map(),
     weather: weatherOn(1, world.seed), claims: new Map(), replant: [], tended: new Set(), lowDays: new Map(),
     hints: new Set(), private_fieldCache: { version: -1, tiles: [] },
-    veil: createVeil(world), council: createCouncil(),
+    veil: createVeil(world), council: createCouncil(), ledger: {},
   };
   // The first line of the story names where it starts.
   const opening = community.log.find((l) => l.day === 1 && l.tone === 'info');
@@ -245,7 +253,15 @@ function setDest(col: Colony, a: Agent, x: number, z: number, stopShort = false)
     if (!near) return false;
     gx = near.tx; gz = near.tz; exact = null;
   }
-  const sx = toTileX(w, a.x), sz = toTileZ(w, a.z);
+  let sx = toTileX(w, a.x), sz = toTileZ(w, a.z);
+  if (!passable(w, sx, sz)) {
+    // Standing somewhere that has since been built over (or a doorstep on a wall
+    // tile): step to the nearest open ground first.
+    const out = findNearest(w, sx, sz, 4, (tx, tz) => passable(w, tx, tz));
+    if (!out) return false;
+    sx = out.tx; sz = out.tz;
+    a.x = tileX(w, sx); a.z = tileZ(w, sz);
+  }
   if (sx === gx && sz === gz) {
     a.path = exact && !stopShort ? [exact] : [];
     a.pathI = 0;
@@ -800,6 +816,11 @@ function seatOf(col: Colony, a: Agent): Point {
 function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
   const h = hourOf(col);
   const res = col.community.resources;
+  // Woken by hunger in the night: eat something before going back to bed.
+  if (a.needs.food < 15 && res.food >= 1) {
+    const m = mealPlace(col, a, s);
+    if (setDest(col, a, m.spot.x, m.spot.z)) return { kind: 'eat', stage: 'go', t: 0, place: m.place, building: m.building };
+  }
   if (a.needs.rest < 12 || isNight(h) || s.hp < s.maxHp * 0.25) {
     const b = col.beds.get(s.id);
     const bed = b !== undefined ? buildingById(col, b)!.door : bedSpot(col.world.campfire, s.id);
@@ -981,20 +1002,20 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         t.t += dt * workRate(s, 'forager');
         if (t.t >= 20) {
           // Spring gives young greens, not a full crop of berries.
-          const seasonYield = seasonNow(col) === 'spring' ? 0.3 : 0.35;
+          const seasonYield = seasonNow(col) === 'spring' ? 0.15 : 0.25;
           const amount = Math.max(1, Math.round(bush.berries * seasonYield * (1 + (workRate(s, 'forager') - 1) * 0.5)));
           bush.berries = 0;
-          bush.regrowAt = col.minute + (5 / landFactor(col, tileX(w, bush.tx), tileZ(w, bush.tz))) * MIN_PER_DAY;
+          bush.regrowAt = col.minute + (7 / landFactor(col, tileX(w, bush.tx), tileZ(w, bush.tz))) * MIN_PER_DAY;
           bush.reserved = 0;
           a.carry = { kind: 'food', amount };
-          if (!deliver(col, a)) { res.food += amount; a.carry = null; return endTask(col, a); }
+          if (!deliver(col, a)) { gainFood(col, 'forage', amount); a.carry = null; return endTask(col, a); }
           t.stage = 'deliver';
         }
         return;
       }
       a.anim = 'carry'; a.activity = 'Bringing berries home';
       if (walk(col, a, dt)) {
-        if (a.carry) res.food += a.carry.amount;
+        if (a.carry) gainFood(col, 'forage', a.carry.amount);
         a.carry = null;
         endTask(col, a);
       }
@@ -1007,7 +1028,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         if (walk(col, a, dt)) {
           const cost = rationing(col) ? 0.5 : 1;
           if (res.food < cost) return endTask(col, a);
-          res.food -= cost;
+          gainFood(col, 'eaten', -cost);
           t.stage = 'eat';
           const b = t.building ? buildingById(col, t.building) : undefined;
           if (b) goInside(a, b);
@@ -1100,7 +1121,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       t.t += dt;
       if (t.what === 'fish') {
         a.anim = 'sit'; a.activity = 'Fishing at the pond';
-        if (t.t >= 90) { if (habit(col, a.id + Math.floor(col.minute)) < 45) res.food += 2; endTask(col, a); }
+        if (t.t >= 90) { if (habit(col, a.id + Math.floor(col.minute)) < 40) gainFood(col, 'fishing', 1); endTask(col, a); }
       } else if (t.what === 'herbs') {
         a.anim = 'forage'; a.activity = 'Picking yarrow and meadowsweet';
         if (t.t >= 60) { if (habit(col, a.id * 3 + Math.floor(col.minute)) < 15) res.medicine += 1; endTask(col, a); }
@@ -1344,7 +1365,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       if (t.stage === 'deliver') {
         a.anim = 'carry'; a.activity = 'Carrying the harvest to the stores';
         if (walk(col, a, dt)) {
-          if (a.carry) res.food += a.carry.amount;
+          if (a.carry) gainFood(col, 'fields', a.carry.amount);
           a.carry = null;
           endTask(col, a);
         }
@@ -1382,7 +1403,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
           if (next && next.kind === 'farm') { a.task = next; return; }
         }
         if (deliver(col, a)) { t.stage = 'deliver'; return; }
-        res.food += a.carry.amount; a.carry = null;
+        gainFood(col, 'fields', a.carry.amount); a.carry = null;
       }
       endTask(col, a);
       return;
@@ -1399,13 +1420,13 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         t.t += dt;
         if (t.t < 100) return;
         a.carry = { kind: 'food', amount: t.fishing ? 3 : 2 };
-        if (!deliver(col, a)) { res.food += a.carry.amount; a.carry = null; return endTask(col, a); }
+        if (!deliver(col, a)) { gainFood(col, 'scrounge', a.carry.amount); a.carry = null; return endTask(col, a); }
         t.stage = 'deliver';
         return;
       }
       a.anim = 'carry'; a.activity = 'Bringing back what little there was';
       if (walk(col, a, dt)) {
-        if (a.carry) res.food += a.carry.amount;
+        if (a.carry) gainFood(col, 'scrounge', a.carry.amount);
         a.carry = null;
         endTask(col, a);
       }
@@ -1457,7 +1478,7 @@ function shouldInterrupt(col: Colony, a: Agent): boolean {
   const t = a.task;
   if (!t || a.carry) return false;
   const h = hourOf(col);
-  if (isNight(h)) return t.kind !== 'sleep';
+  if (isNight(h)) return t.kind !== 'sleep' && t.kind !== 'eat';
   if (isEvening(h)) return !['social', 'eat', 'sleep'].includes(t.kind);
   if (a.needs.food < 15 && col.community.resources.food >= 1) return t.kind !== 'eat' && t.kind !== 'sleep';
   return false;
@@ -1501,7 +1522,7 @@ function hourly(col: Colony) {
       }
       const needs = (a.needs.food + a.needs.rest + a.needs.social) / 3;
       let friends = 0;
-      for (const o of living) if (o !== s && bondValue(c, s.id, o.id) >= 20) friends += 0.6;
+      for (const o of living) if (o !== s && bondValue(c, s.id, o.id) >= 20) friends += 0.5;
       const v = col.village;
       // Home: comfort of their own; crowding in shared sleeping rooms; waiting for a house.
       let home = 0;
@@ -1515,13 +1536,13 @@ function hourly(col: Colony) {
       }
       const hh = householdOf(v, s.id);
       if (hh && !hh.home && c.day - hh.since > 4) home -= 2;
-      if (hallOpen(col)) home += 1.5;
-      const comfort = home + (a.sleptIndoors ? 4 : -2) + (hasBuilt(v, 'kitchen') ? 3 : 0)
-        + Math.min(3, v.buildings.filter((b) => b.kind === 'lantern').length)
-        - (rationing(col) ? 10 : 0) - (seasonNow(col) === 'winter' ? 2 : 0)
+      if (hallOpen(col)) home += 1;
+      const comfort = home + (a.sleptIndoors ? 4 : -2) + (hasBuilt(v, 'kitchen') ? 2 : 0)
+        + Math.min(1.5, v.buildings.filter((b) => b.kind === 'lantern').length * 0.5)
+        - (rationing(col) ? 10 : 0) - (seasonNow(col) === 'winter' ? 5 : 0)
         + (homeRes < 0.3 ? -4 : homeRes > 0.6 ? 2 : 0) + (col.minute < col.council.festivalUntil ? 6 : 0);
       const target = TUNING.moraleBaseline + traitSum(s, (t) => t.moraleBaseline, 0, 'add')
-        + (needs - 55) * 0.3 + Math.min(friends, 6) - (s.griefDays > 0 ? 15 : 0) + comfort;
+        + (needs - 55) * 0.25 + Math.min(friends, 4) - (s.griefDays > 0 ? 15 : 0) + comfort;
       s.morale = Math.max(0, Math.min(100, s.morale + (target - s.morale) * 0.06));
     }
 
@@ -1608,14 +1629,14 @@ function daily(col: Colony) {
   for (const g of col.village.buildings) {
     if (g.kind !== 'garden') continue;
     if (g.tended >= 60 && (lastSeason === 'summer' || lastSeason === 'autumn')) {
-      r.food += GARDEN_YIELD[g.tier];
+      gainFood(col, 'gardens', GARDEN_YIELD[g.tier]);
       g.growth = Math.min(1, g.growth + 0.15);
     } else g.growth = Math.max(0.1, g.growth - 0.1);
     g.tended = 0;
   }
   // Surplus food beyond what the stores can keep slowly spoils (slower in the cold).
   const cap = storageCapacity(col.village);
-  if (r.food > cap) r.food -= (r.food - cap) * (lastSeason === 'winter' ? 0.03 : 0.25);
+  if (r.food > cap) gainFood(col, 'spoiled', -(r.food - cap) * (lastSeason === 'winter' ? 0.03 : 0.25));
   dailyFields(col, lastSeason, season);
   dailyTrees(col, lastSeason);
   dailyWear(col);
@@ -1677,23 +1698,22 @@ function dailyFields(col: Colony, lastSeason: Season, season: Season) {
 
 /** Yards: vegetable beds, fruit trees and hens feed the village a little. */
 function dailyYards(col: Colony, lastSeason: Season) {
-  const r = col.community.resources;
   // The glasshouse's old beds still bear, once it's cleared.
-  if (col.village.site.kind === 'glasshouse' && store(col.village).level >= 1 && lastSeason !== 'winter') r.food += 1.5;
+  if (col.village.site.kind === 'glasshouse' && store(col.village).level >= 1 && lastSeason !== 'winter') gainFood(col, 'site', 1.5);
   for (const plot of col.village.plots) {
     if (!plot.household) continue;
     for (const y of plot.yard) {
       if (y.progress < 1) continue;
       if (y.kind === 'beds') {
         const tended = y.tended >= 45;
-        if (tended && (lastSeason === 'summer' || lastSeason === 'autumn')) r.food += 1.5 * landFactor(col, plot.hc.x, plot.hc.z);
+        if (tended && (lastSeason === 'summer' || lastSeason === 'autumn')) gainFood(col, 'yards', 1.5 * landFactor(col, plot.hc.x, plot.hc.z));
         y.growth = lastSeason === 'winter' ? 0 : Math.max(0.1, Math.min(1, y.growth + (tended ? 0.12 : -0.08)));
         y.tended = 0;
       } else if (y.kind === 'fruit' && lastSeason !== 'winter') {
         y.growth = Math.min(1, y.growth + 1 / 30);
-        if (y.growth >= 1 && lastSeason === 'autumn') r.food += 2;
+        if (y.growth >= 1 && lastSeason === 'autumn') gainFood(col, 'yards', 2);
       } else if (y.kind === 'coop') {
-        r.food += lastSeason === 'winter' ? 0.3 : 0.8;
+        gainFood(col, 'yards', lastSeason === 'winter' ? 0.3 : 0.8);
       }
     }
   }
@@ -1732,11 +1752,11 @@ function arrivals(col: Colony) {
   const pop = alive(c).length;
   if (pop === 0 || pop >= MAX_POP || communityMorale(c) < 50) return;
   // Nobody travels in winter, and nobody stays where there's no food.
-  if (seasonNow(col) === 'winter' || c.resources.food < pop * 4 || col.council.gates === 'closed') return;
+  if (seasonNow(col) === 'winter' || c.resources.food < pop * 6 || col.council.gates === 'closed') return;
   const building = activeProjects(col).some((p) => p.kind === 'hut' || p.kind === 'annex' || p.kind === 'patch_roof');
   if (bedsTotal(col.village) < pop && !building) return;
   withRng(c, (rng) => {
-    if (!rng.chance(col.council.gates === 'open' ? 0.55 : 0.3)) return;
+    if (!rng.chance(col.council.gates === 'open' ? 0.4 : 0.18)) return;
     const s = recruit(c);
     s.role = neededRole(col);
     syncAgents(col);

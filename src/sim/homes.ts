@@ -352,7 +352,7 @@ export function planYard(plot: Plot, traits: Set<string>): YardItem[] {
 export function homeComfort(v: Village, b: Building): number {
   const plot = v.plots.find((p) => p.id === b.plot);
   const done = plot ? plot.yard.filter((y) => y.progress >= 1).length : 0;
-  return 3 + Math.min(4, done * 0.6);
+  return 2 + Math.min(3, done * 0.5);
 }
 
 // ---------- finding a plot ----------

@@ -525,3 +525,31 @@ gas station renders from `render/station.ts`, the rest from
 In a one-year probe (6 colonies each), all five sites finished the year with
 no deaths, hunger or cold nights, and a similar number of homes (5.8–6.5).
 
+### Balance pass 1 (after C2.5)
+
+Measured with `npm run balance -- 8 48 [--prepared]` (a food ledger by
+source, morale by season, Influence, winter hardship).
+
+| | Before | After |
+|---|---|---|
+| Forage, food per colony-year | ~800 (≈ all that was eaten) | ~480 |
+| No fields marked: food at winter | 420–600, never rationed | 75–400; 4–12 ration days in most; 1 hunger death in 8 |
+| Two fields marked: food at winter | 430–680 | 390–590, no rationing |
+| Mean morale, spring → winter | 67 → 79 (rising) | 67 → 67–72 |
+| Influence hits 100 | day 26–43, every run | rarely; ends the year at 45–75 |
+| Population 10 reached | day ~15, cap 14 by year end | day 17–33; ends at 8–14 |
+
+Changes: forage yield ×0.5–0.7 and regrowth 5 → 7 days; fishing 2 → 1 food;
+kitchen +3 → +2, lanterns +3 → +1.5 max, friends cap 6 → 4, needs weight
+0.3 → 0.25, winter −2 → −5, home comfort 3–7 → 2–5, hall +1.5 → +1;
+Influence grows with √(total Sight) instead of linearly, the Orb gives +8
+instead of +15; arrivals 30% → 18% a day (40% with open gates) and need 6
+days of food per person.
+
+Bugs found by the ledger and fixed: (1) someone standing on a tile that
+was later built over (or a doorstep on a wall tile) could find no path
+anywhere and starved beside full stores; (2) people woken by hunger at
+night went straight back to sleep (sleep was checked before food, and the
+night interrupt cancelled meals). Regression test: nobody reaches zero
+food while the stores hold 3+ days for everyone.
+
