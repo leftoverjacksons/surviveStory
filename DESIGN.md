@@ -749,3 +749,29 @@ survivors are now built in Blender from `scripts/blender/survivor.py`
 - **Size**: about 80–90 KB per figure plus 94 KB of clips.
 - **Rebuild**: `python scripts/blender/survivor.py <dir> [--preview]`,
   then `node scripts/characters.mjs --figures <dir>`.
+
+### Pixel-art prototype (`?pixel`, `?pixel=4`)
+Prompted by the Godot 3D pixel-art demo (pixelagegames) and the t3ssel8r
+style, which the user sees as the route to a tactile, cosy but detailed look.
+Off by default.
+- **Resolution**: the scene is drawn at 1/PIXEL of the screen (default 3)
+  and enlarged with `image-rendering: pixelated`. MSAA is off.
+- **Camera snap**: `IsoCamera.snapRows` snaps the camera to whole
+  low-resolution pixels along its right and up axes. The remainder shifts
+  the canvas by a CSS transform, so panning stays smooth and edges don't
+  crawl.
+- **Outlines** (`OutlinePass` in `stage.ts`): from the depth buffer alone,
+  with no extra render. Silhouettes, where a neighbour is much farther,
+  are inked a deep warm violet-brown on the near side, one pixel wide.
+  Convex creases, found from normals rebuilt from depth, are lightened.
+  `?pixeldebug` shows edges in red and creases in blue.
+- **Colour steps**: the grade quantises to 14 levels per channel, giving
+  stepped light on canopies and the ground.
+- **First findings**:
+  - Canopies, roofs and figures read well.
+  - Grass and rain turn into noise at this resolution.
+  - Thin surface detail such as road cracks gets lost.
+  - Flat-coloured surfaces look sparse.
+  - Next if pursued: pixel-scale textures (cobbles, planks, shingles), fewer
+    and chunkier grass tufts, rain drawn as pixel streaks, per-material
+    outline colours, and fixed zoom steps.

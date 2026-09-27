@@ -24,7 +24,7 @@ import { seasonIndex } from './sim/calendar';
 import { RoofControl } from './render/roofs';
 import { PhenomenaView, ResonanceTexture } from './render/veil';
 import { nudgeCalm, nudgeOmen, resolveCouncil } from './sim/council';
-import { worldUniforms } from './render/util';
+import { PIXEL, worldUniforms } from './render/util';
 import { Hud, type ZoneTool } from './ui/hud';
 
 // ---------- simulation ----------
@@ -392,7 +392,9 @@ window.addEventListener('resize', () => {
   composer.setSize(w, h);
   bloom.setSize(w, h);
   iso.resize(w / h);
+  if (PIXEL) iso.snapRows = Math.round(h / PIXEL);
 });
+if (PIXEL) iso.snapRows = Math.round(view.clientHeight / PIXEL);
 
 // ---------- loop ----------
 const vignette = document.getElementById('vignette')!;
@@ -412,6 +414,7 @@ function adaptQuality(dt: number) {
   if (fps >= 38 || perfStep >= 2) return;
   perfStep++;
   if (perfStep === 1) {
+    if (PIXEL) return; // already drawing at a fraction of the screen
     renderer.setPixelRatio(1);
     composer.setPixelRatio(1);
   } else {
@@ -449,6 +452,8 @@ function frame() {
     iso.target.z += (followPos.z - iso.target.z) * Math.min(1, dt * 4);
   }
   iso.update(dt);
+  // Pixel art: shift the enlarged image by what the camera snap took away, so panning stays smooth.
+  if (PIXEL) renderer.domElement.style.transform = `translate(${(iso.residual.x * PIXEL).toFixed(2)}px, ${(-iso.residual.y * PIXEL).toFixed(2)}px)`;
   iso.target.y = heightAt(world, iso.target.x, iso.target.z) * 0.6;
 
   // World.

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { SOFT } from './util';
+import { PIXEL, SOFT } from './util';
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -12,10 +13,10 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
  * Aimed at the warm-village, teal-shadow look of the art reference.
  */
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, uNight: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, uNight: { value: 0 }, uSteps: { value: 0 } },
   vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uNight; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float uNight; uniform float uSteps; varying vec2 vUv;
     void main() {
       vec4 src = texture2D(tDiffuse, vUv);
       vec3 c = src.rgb;
@@ -29,9 +30,81 @@ const GradeShader = {
       // Vignette.
       vec2 d = vUv - 0.5;
       c *= 1.0 - smoothstep(0.35, 0.85, length(d * vec2(1.1, 1.0))) * 0.22;
+      // Pixel art: colour in steps (a limited palette, stepped light).
+      if (uSteps > 0.0) c = floor(clamp(c, 0.0, 1.0) * uSteps + 0.5) / uSteps;
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), src.a);
     }`,
 };
+
+/**
+ * Pixel-art outlines, from the depth buffer alone. A pixel whose neighbour
+ * lies well behind it is on a silhouette: darkened. A pixel on a convex
+ * crease (surface normals, rebuilt from depth, turn sharply) is lightened,
+ * like a highlight catching an edge. Lines land on the nearer surface only,
+ * so they stay one pixel wide.
+ */
+class OutlinePass extends Pass {
+  private quad: FullScreenQuad;
+  private mat: THREE.ShaderMaterial;
+  constructor(private camera: THREE.OrthographicCamera) {
+    super();
+    this.mat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: null }, tDepth: { value: null }, uRes: { value: new THREE.Vector2(1, 1) },
+        uNear: { value: 0.1 }, uFar: { value: 400 }, uView: { value: new THREE.Vector2(1, 1) }, uDebug: { value: typeof location !== 'undefined' && location.search.includes('pixeldebug') ? 1 : 0 },
+      },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform vec2 uView; uniform float uDebug;
+        varying vec2 vUv;
+        float lin(vec2 uv) { return uNear + texture2D(tDepth, uv).x * (uFar - uNear); }
+        vec3 P(vec2 uv) { return vec3((uv - 0.5) * uView, -lin(uv)); }
+        vec3 N(vec2 uv, vec2 px) {
+          vec3 p = P(uv);
+          return normalize(cross(P(uv + vec2(px.x, 0.0)) - p, P(uv + vec2(0.0, px.y)) - p));
+        }
+        void main() {
+          vec2 px = 1.0 / uRes;
+          vec4 src = texture2D(tDiffuse, vUv);
+          float d = lin(vUv);
+          vec2 o[4]; o[0] = vec2(px.x, 0.0); o[1] = vec2(-px.x, 0.0); o[2] = vec2(0.0, px.y); o[3] = vec2(0.0, -px.y);
+          // World size of one pixel: the ground's own slope shouldn't count as an edge.
+          float wpp = uView.y / uRes.y;
+          float thresh = 0.35 + wpp * 3.0;
+          float edge = 0.0, crease = 0.0;
+          vec3 n = N(vUv, px);
+          for (int i = 0; i < 4; i++) {
+            float dn = lin(vUv + o[i]);
+            if (dn - d > thresh) edge = 1.0;
+            else if (abs(dn - d) < thresh) {
+              vec3 nn = N(vUv + o[i], px);
+              // Convex crease on one side only (keeps the line one pixel wide).
+              float turn = 1.0 - dot(n, nn);
+              vec3 dp = P(vUv + o[i]) - P(vUv);
+              if (turn > 0.35 && dot(dp, n) < 0.0 && dot(nn - n, vec3(1.0, 1.0, 0.0)) > 0.0) crease = max(crease, turn);
+            }
+          }
+          vec3 c = src.rgb;
+          if (d > uFar - 1.0) { gl_FragColor = src; return; }   // sky
+          if (uDebug > 0.5) { gl_FragColor = vec4(edge, texture2D(tDepth, vUv).x * 20.0 - floor(texture2D(tDepth, vUv).x * 20.0), crease, 1.0); return; }
+          if (edge > 0.0) c = c * 0.38 + vec3(0.025, 0.012, 0.03);          // ink: a deep warm violet-brown
+          else if (crease > 0.0) c = c * (1.0 + 0.5 * clamp(crease * 2.0, 0.0, 1.0)) + 0.015;
+          gl_FragColor = vec4(c, src.a);
+        }`,
+    });
+    this.quad = new FullScreenQuad(this.mat);
+  }
+  render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
+    const u = this.mat.uniforms, c = this.camera;
+    u.tDiffuse.value = readBuffer.texture;
+    u.tDepth.value = readBuffer.depthTexture;
+    u.uRes.value.set(readBuffer.width, readBuffer.height);
+    u.uNear.value = c.near; u.uFar.value = c.far;
+    u.uView.value.set((c.right - c.left) / c.zoom, (c.top - c.bottom) / c.zoom);
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+    this.quad.render(renderer);
+  }
+}
 
 /** True isometric elevation: atan(1/sqrt(2)) ≈ 35.26°. */
 const ISO_PITCH = Math.atan(1 / Math.SQRT2);
@@ -50,6 +123,15 @@ export class IsoCamera {
   private viewSize = 30; // world units visible vertically at zoom 1
   private distance = 80;
   bounds = 120;
+  /**
+   * Pixel art: rows of the low-resolution image (0 = no snapping). The camera
+   * is snapped to whole pixels so edges don't crawl as it pans; `residual`
+   * is what was snapped away, in pixels, for shifting the canvas to match.
+   */
+  snapRows = 0;
+  residual = new THREE.Vector2();
+  private _r = new THREE.Vector3();
+  private _u = new THREE.Vector3();
 
   constructor(aspect: number) {
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
@@ -97,6 +179,17 @@ export class IsoCamera {
     if (Math.abs(c.zoom - this.zoom) > 1e-4) {
       c.zoom = this.zoom;
       c.updateProjectionMatrix();
+    }
+    if (this.snapRows > 0) {
+      c.updateMatrixWorld();
+      const wpp = this.viewSize / c.zoom / this.snapRows;
+      this._r.setFromMatrixColumn(c.matrixWorld, 0);
+      this._u.setFromMatrixColumn(c.matrixWorld, 1);
+      const px = c.position.dot(this._r) / wpp, py = c.position.dot(this._u) / wpp;
+      const dx = Math.round(px) - px, dy = Math.round(py) - py;
+      c.position.addScaledVector(this._r, dx * wpp).addScaledVector(this._u, dy * wpp);
+      c.updateMatrixWorld();
+      this.residual.set(dx, dy);
     }
   }
 
@@ -219,8 +312,10 @@ export class Sky {
 // ---------------- renderer ----------------
 
 export function createRenderer(container: HTMLElement) {
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: false });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const renderer = new THREE.WebGLRenderer({ antialias: !PIXEL, powerPreference: 'high-performance', preserveDrawingBuffer: false });
+  // Pixel art: draw at a fraction of the screen and let the browser enlarge it with hard edges.
+  renderer.setPixelRatio(PIXEL ? 1 / PIXEL : Math.min(window.devicePixelRatio, 2));
+  if (PIXEL) renderer.domElement.style.imageRendering = 'pixelated';
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.shadowMap.enabled = true;
   renderer.info.autoReset = false; // reset once per frame, so the counts cover every pass
@@ -255,8 +350,11 @@ export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene
   // The composer draws into its own buffers, which get no anti-aliasing
   // unless they are multisampled: the renderer's own `antialias` doesn't reach them.
   const pr = renderer.getPixelRatio();
-  const target = new THREE.WebGLRenderTarget(w * pr, h * pr, { type: THREE.HalfFloatType, samples: SOFT ? 4 : 0 });
+  const target = new THREE.WebGLRenderTarget(w * pr, h * pr, { type: THREE.HalfFloatType, samples: SOFT && !PIXEL ? 4 : 0 });
+  // The outline pass reads depth: give both of the composer's buffers a depth texture.
+  if (PIXEL) target.depthTexture = new THREE.DepthTexture(w * pr, h * pr);
   const composer = new EffectComposer(renderer, target);
+  if (PIXEL && !composer.renderTarget2.depthTexture) composer.renderTarget2.depthTexture = new THREE.DepthTexture(w * pr, h * pr);
   composer.addPass(new RenderPass(scene, camera));
   const xrayCam = (camera as THREE.OrthographicCamera).clone();
   const peopleCam = (camera as THREE.OrthographicCamera).clone();
@@ -269,10 +367,13 @@ export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene
   peoplePass.clearDepth = false;
   composer.addPass(xray);
   composer.addPass(peoplePass);
+  const outline = PIXEL ? new OutlinePass(camera as THREE.OrthographicCamera) : null;
+  if (outline) composer.addPass(outline);
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.7, 0.55, 1.05);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);
+  grade.uniforms.uSteps.value = PIXEL ? 14 : 0;
   grade.enabled = !new URLSearchParams(location.search).has('nograde');
   composer.addPass(grade);
   const syncXray = () => {

@@ -64,6 +64,18 @@ export function glowTexture(size = 128): THREE.Texture {
  * shading on organic shapes. `?hard` brings back the faceted look for
  * comparison.
  */
+/**
+ * Pixel-art rendering (`?pixel` or `?pixel=4`): the scene is drawn at 1/PIXEL
+ * of the screen's resolution and enlarged with hard pixels, outlined from
+ * depth, with colour in steps. 0 = off.
+ */
+export const PIXEL = (() => {
+  if (typeof location === 'undefined') return 0;
+  const v = new URLSearchParams(location.search).get('pixel');
+  if (v === null) return 0;
+  return Math.max(2, Math.min(6, Number(v) || 3));
+})();
+
 export const SOFT = typeof location === 'undefined' || !new URLSearchParams(location.search).has('hard');
 
 /** Weld a (possibly faceted) geometry and give it smooth normals, if the soft look is on. */
