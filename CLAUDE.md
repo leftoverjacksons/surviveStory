@@ -78,9 +78,9 @@ reference: Tiny Glade.
   - Expeditions (milestone D) proposed; user said to hold off for now.
   - Trees v2 done (species silhouettes, limbs, jagged pines; DESIGN §17).
   - CC0 characters and animals done (Quaternius; `src/render/characters.ts`,
-    `scripts/characters.mjs`, `src/assets/CREDITS.md`; DESIGN §17). NOT published.
+    `scripts/characters.mjs`, `src/assets/CREDITS.md`; DESIGN §17).
     The environment now has full network access; Quaternius packs download from
     Google Drive with `pip install gdown` (`gdown --folder <url>`).
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
-  - Published: the artifact has graphics pass 1, slopes and trees v2 (commit 2fa448a, version 11).
+  - Published: the artifact has the CC0 survivors and deer (commit c65e3cb, version 12).
