@@ -709,3 +709,19 @@ the ground instead:
   models are decoded from base64 directly rather than fetched.
 - **Not yet**: hens and farm animals (the Farm Animal pack has no glTF;
   converting it needs Blender), children, and ageing.
+
+### Soft look (after the character models)
+The user found the art too jagged. Causes and fixes (`?hard` restores the old
+look for comparison):
+- **No anti-aliasing.** The post-processing chain drew into buffers without
+  multisampling, so the renderer's `antialias` never applied. The composer
+  now renders into a 4× MSAA half-float target.
+- **Hard shadows.** Three.js removed PCFSoftShadowMap and fell back to hard
+  PCF. The sun's shadow now uses a filter radius of 3.5.
+- **Faceted shading on organic shapes.** Canopies, pine tiers, trunks,
+  bushes (now subdivided), rocks (subdivided), people and deer are smooth
+  shaded, via welded geometry and computed normals. Box-built houses stay
+  flat.
+- **Grass speckle.** Each blade had its own lighting, so neighbouring blades
+  alternated light and dark. Blades are now lit as if facing up (`enhance`
+  `upLit`), with a darker root and lighter tip.

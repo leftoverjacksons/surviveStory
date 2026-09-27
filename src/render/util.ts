@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /** Deterministic render-side random (visual scatter only, not simulation). */
 export function makeRand(seed: number) {
@@ -58,6 +59,24 @@ export function glowTexture(size = 128): THREE.Texture {
   return tex;
 }
 
+/**
+ * The soft look (the default): anti-aliasing, soft shadows and smooth
+ * shading on organic shapes. `?hard` brings back the faceted look for
+ * comparison.
+ */
+export const SOFT = typeof location === 'undefined' || !new URLSearchParams(location.search).has('hard');
+
+/** Weld a (possibly faceted) geometry and give it smooth normals, if the soft look is on. */
+export function soften<T extends THREE.BufferGeometry>(g: T): THREE.BufferGeometry {
+  if (!SOFT) return g;
+  const keep = ['position'];
+  const h = g.index ? g.toNonIndexed() : g.clone();
+  for (const k of Object.keys(h.attributes)) if (!keep.includes(k)) h.deleteAttribute(k);
+  const m = mergeVertices(h, 1e-4);
+  m.computeVertexNormals();
+  return m;
+}
+
 export function lambert(color: THREE.ColorRepresentation, extra: THREE.MeshLambertMaterialParameters = {}) {
   return new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
 }
@@ -110,6 +129,8 @@ export interface EnhanceOptions {
    * crown. The value is 1 / the geometry's half-height (1 for a unit sphere).
    */
   shade?: number;
+  /** Light the surface as if it faced straight up (grass blades lit like the ground they grow from). */
+  upLit?: boolean;
 }
 
 const SEASON_GLSL: Record<SeasonStyle, string> = {
@@ -152,6 +173,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
   const zone = opts.zone ?? false;
   const season = opts.season ?? 'solid';
   const shade = opts.shade ?? 0;
+  const upLit = opts.upLit ?? false;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, worldUniforms);
     let vs = shader.vertexShader.replace(
@@ -219,6 +241,10 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
         }`,
       );
     }
+    if (upLit) {
+      fs = fs.replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+        normal = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);`);
+    }
     if (fog) {
       fs = fs.replace(
         '#include <fog_fragment>',
@@ -263,7 +289,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
     }
     shader.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => `enh-${wind}-${fog}-${zone}-${season}-${shade}`;
+  mat.customProgramCacheKey = () => `enh-${wind}-${fog}-${zone}-${season}-${shade}-${upLit}`;
   return mat;
 }
 

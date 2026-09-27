@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SOFT } from './util';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -143,6 +144,9 @@ export class Sky {
     sc.left = -38; sc.right = 38; sc.top = 38; sc.bottom = -38; sc.near = 1; sc.far = 160;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.04;
+    // Soft-edged shadows (the light filtered through leaves and haze).
+    this.sun.shadow.radius = SOFT ? 3.5 : 1;
+    this.sun.shadow.blurSamples = 12;
     this.hemi = new THREE.HemisphereLight('#ffffff', '#223311', 1);
     scene.add(this.sun, this.sun.target, this.hemi);
     scene.fog = new THREE.Fog('#000000', 115, 230);
@@ -220,7 +224,7 @@ export function createRenderer(container: HTMLElement) {
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.shadowMap.enabled = true;
   renderer.info.autoReset = false; // reset once per frame, so the counts cover every pass
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap; // PCFSoft is gone from three; the sun's radius softens instead
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   container.appendChild(renderer.domElement);
@@ -248,7 +252,11 @@ class OverlayPass extends RenderPass {
  * arm or torso.
  */
 export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, w: number, h: number) {
-  const composer = new EffectComposer(renderer);
+  // The composer draws into its own buffers, which get no anti-aliasing
+  // unless they are multisampled: the renderer's own `antialias` doesn't reach them.
+  const pr = renderer.getPixelRatio();
+  const target = new THREE.WebGLRenderTarget(w * pr, h * pr, { type: THREE.HalfFloatType, samples: SOFT ? 4 : 0 });
+  const composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
   const xrayCam = (camera as THREE.OrthographicCamera).clone();
   const peopleCam = (camera as THREE.OrthographicCamera).clone();

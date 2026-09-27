@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { heightAt, type Tree, type World } from '../sim/world';
-import { enhance, makeRand } from './util';
+import { SOFT, enhance, makeRand, soften } from './util';
 import { clumpOverlaps, fitClump, trunkBlocked, type Obstacle } from './clearance';
 
 interface Slot { mesh: THREE.InstancedMesh; index: number }
@@ -191,9 +191,9 @@ export class TreeField {
   group = new THREE.Group();
   private slots = new Map<number, Slot[]>();
   private geos: Record<Part['geo'], THREE.BufferGeometry>;
-  private trunkMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }));
-  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.04, season: 'broadleaf', shade: 1 });
-  private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.03, season: 'conifer', shade: 2 });
+  private trunkMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }));
+  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { wind: 0.04, season: 'broadleaf', shade: 1 });
+  private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { wind: 0.03, season: 'conifer', shade: 2 });
   private falling: { g: THREE.Group; t: number; axis: THREE.Vector3; pivot: THREE.Vector3 }[] = [];
   private stumps: THREE.InstancedMesh;
   private stumpCount = 0;
@@ -215,7 +215,7 @@ export class TreeField {
       }
       cone.computeVertexNormals();
     }
-    this.geos = { trunk, blob: lumpy(new THREE.IcosahedronGeometry(1, 1)), cone };
+    this.geos = { trunk: soften(trunk), blob: soften(lumpy(new THREE.IcosahedronGeometry(1, 1))), cone: soften(cone) };
 
     // Bucket trees into chunks.
     const buckets = new Map<number, Tree[]>();

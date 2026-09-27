@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { fbm } from '../sim/noise';
 import { Ground, LANE_WEAR, Zone, heightAt, idx, type World } from '../sim/world';
-import { enhance, makeRand } from './util';
+import { SOFT, enhance, makeRand, soften } from './util';
 
 /**
  * Map-sized RGBA texture shared by fog-aware materials:
@@ -233,6 +233,11 @@ function bladeGeometry(): THREE.BufferGeometry {
   ]), 3));
   g.setIndex([0, 1, 2, 1, 3, 2, 2, 3, 4]);
   g.computeVertexNormals();
+  if (SOFT) {
+    // Lit like the ground it grows from (normals up), darker at the root and
+    // lighter at the tip: a meadow reads as soft turf, not a field of spikes.
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array([0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 1.06, 1.06, 1.0]), 3));
+  }
   return g;
 }
 
@@ -241,7 +246,7 @@ function buildGrass(w: World): THREE.Group {
   const group = new THREE.Group();
   const rand = makeRand(21);
   const geo = bladeGeometry();
-  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.35, season: 'grass' });
+  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, vertexColors: SOFT }), { wind: 0.35, season: 'grass', upLit: SOFT });
   const CH = 32;
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
   const e = new THREE.Euler(), col = new THREE.Color();
@@ -271,7 +276,7 @@ function buildGrass(w: World): THREE.Group {
         m.compose(p, q, s);
         mesh.setMatrixAt(n, m);
         const hue = g === Ground.Meadow ? 0.17 + rand() * 0.07 : 0.22 + rand() * 0.07;
-        col.setHSL(hue, 0.45 + rand() * 0.2, 0.22 + rand() * 0.15);
+        col.setHSL(hue, 0.45 + rand() * 0.2, SOFT ? 0.25 + rand() * 0.07 : 0.22 + rand() * 0.15);
         mesh.setColorAt(n, col);
         n++;
       }
@@ -288,8 +293,8 @@ function buildGrass(w: World): THREE.Group {
 function buildRocks(w: World): THREE.InstancedMesh {
   const rand = makeRand(33);
   const mesh = new THREE.InstancedMesh(
-    new THREE.DodecahedronGeometry(1, 0),
-    enhance(new THREE.MeshLambertMaterial({ color: '#7d7b70', flatShading: true })),
+    soften(new THREE.DodecahedronGeometry(1, SOFT ? 1 : 0)),
+    enhance(new THREE.MeshLambertMaterial({ color: '#7d7b70', flatShading: !SOFT })),
     Math.max(1, w.rocks.length),
   );
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();

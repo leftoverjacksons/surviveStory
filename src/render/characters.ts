@@ -75,6 +75,8 @@ function mergeOutfit(scene: THREE.Object3D): THREE.SkinnedMesh | null {
   });
   const merged = mergeGeometries(geos, false);
   if (!merged) return null;
+  // No normals ship (flat shading doesn't need them); the soft look does.
+  merged.computeVertexNormals();
   const mesh = new THREE.SkinnedMesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   mesh.bind(skeleton, parts[0].bindMatrix);
   parts[0].parent!.add(mesh);
@@ -140,7 +142,7 @@ export function makeCharacter(outfit: Outfit, seed: { skin: number; hair: number
   const src = mesh.geometry;
   const geo = new THREE.BufferGeometry();
   geo.setIndex(src.index);
-  for (const k of ['position', 'skinIndex', 'skinWeight']) geo.setAttribute(k, src.attributes[k]);
+  for (const k of ['position', 'normal', 'skinIndex', 'skinWeight']) geo.setAttribute(k, src.attributes[k]);
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, outfit.height / 2, 0), outfit.height);
   const slot = src.attributes.slot, n = slot.count;
   const pal = outfit.slots.map((name, i) => {

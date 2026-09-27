@@ -481,6 +481,7 @@ function frame() {
   orb.update(t, dt, sky.night);
   herds.update(dt, colony.agents);
   trees.update(dt);
+  for (const m of debugMixers) m.update(dt);
   bushes.update(dt);
   people.update(t, dt, colony.agents, bedOf, roofs.mode !== 'shown');
   camp.update(t, community.resources.wood > 0);
@@ -572,4 +573,19 @@ function probeRender(opts: { shadows?: boolean; composer?: boolean } = {}) {
   renderer.shadowMap.enabled = was;
   return out;
 }
-Object.assign(window, { __game: { stats, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });
+/** Debug: drop a .glb into the scene at (x, z), playing its first clip (for comparing models). */
+async function addModel(url: string, x: number, z: number, height = 1.7, clip = 'idle') {
+  const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+  const gltf = await new GLTFLoader().loadAsync(url);
+  const box = new THREE.Box3().setFromObject(gltf.scene);
+  gltf.scene.scale.setScalar(height / (box.max.y - box.min.y || 1));
+  gltf.scene.position.set(x, heightAt(world, x, z), z);
+  gltf.scene.traverse((o) => { o.castShadow = true; o.layers.enable(1); });
+  scene.add(gltf.scene);
+  const a = gltf.animations.find((c) => c.name === clip) ?? gltf.animations[0];
+  if (a) { const m = new THREE.AnimationMixer(gltf.scene); m.clipAction(a).play(); debugMixers.push(m); }
+  return gltf.animations.map((c) => c.name);
+}
+const debugMixers: THREE.AnimationMixer[] = [];
+
+Object.assign(window, { __game: { stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });

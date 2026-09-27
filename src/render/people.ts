@@ -3,7 +3,7 @@ import { mergeDirect } from './merge';
 import type { Agent } from '../sim/colony';
 import type { Survivor } from '../sim/community';
 import { WATER_Y, heightAt, standHeight, type World } from '../sim/world';
-import { enhance, lambert } from './util';
+import { SOFT, enhance, lambert } from './util';
 import { makeCharacter, type Character, type CharacterKit } from './characters';
 
 export const CLOTH = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a', '#6b5a7a', '#8a7a6a'];
@@ -74,7 +74,7 @@ export class People {
 
   private kit: CharacterKit | null = null;
   private survivors = new Map<number, Survivor>();
-  private modelMat = enhance(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { season: 'none' });
+  private modelMat = enhance(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: !SOFT }), { season: 'none' });
 
   constructor(private world: World) {}
 

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeDirect } from './merge';
 import type { Agent } from '../sim/colony';
 import { Ground, heightAt, idx, isExplored, passable, toTileX, toTileZ, type World } from '../sim/world';
-import { enhance, lambert, makeRand, shadowed } from './util';
+import { SOFT, enhance, lambert, makeRand, shadowed, soften } from './util';
 import { makeAnimal, playAnimal, type AnimalBody, type AnimalKind } from './characters';
 
 // ---------------- berry bushes ----------------
@@ -18,8 +18,8 @@ export class Bushes {
     const rand = makeRand(61);
     const n = Math.max(1, world.bushes.length);
     const body = new THREE.InstancedMesh(
-      new THREE.IcosahedronGeometry(0.5, 0),
-      enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.08, season: 'broadleaf', shade: 2 }),
+      soften(new THREE.IcosahedronGeometry(0.5, SOFT ? 1 : 0)),
+      enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { wind: 0.08, season: 'broadleaf', shade: 2 }),
       n,
     );
     this.berries = new THREE.InstancedMesh(
@@ -305,7 +305,7 @@ export class Herds {
   setKinds(kinds: Map<string, AnimalKind>) {
     const deer = kinds.get('deer'), stag = kinds.get('stag');
     if (!deer) return;
-    const mat = enhance(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { season: 'none' });
+    const mat = enhance(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: !SOFT }), { season: 'none' });
     let prevHome: THREE.Vector3 | null = null;
     for (const d of this.deer) {
       const first = d.home !== prevHome;
