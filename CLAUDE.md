@@ -105,12 +105,13 @@ reference: Tiny Glade.
     the C3 art pass.
   - Entering the Veil costs 10 Influence (free on full moons/festivals: TO DO).
   - Restoring cleared ruins BUILT (§20.4, `sim/restore.ts`, `restore` projects,
-    `Building.ruin`, `Ruin.restored`, `render/ruins.ts#syncRuins`). NOT published.
+    `Building.ruin`, `Ruin.restored`, `render/ruins.ts#syncRuins`).
+  - Clearing controls in the world (§20.5): click a spirit for an action menu.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.
-  - Published: version 17 (everything through §19.11: the Folk, haunted districts
-    and clearing, playtest round 3).
+  - Published: version 18 (everything through §20.5: restoration, the Veil's
+    Influence cost, the clearing action menu).
   - NEW PLAN, under discussion: DESIGN §19. Haunted districts are cleared by a small
     turn-based team (Sight = fog of war, Nerve not HP, convert/lay to rest/banish),
     and the Folk are a second society (mounds, Folk paths, the Wild, Standing).
