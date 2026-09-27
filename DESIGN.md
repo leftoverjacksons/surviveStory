@@ -680,3 +680,32 @@ the ground instead:
   on the user's hardware, the next step is distance-based detail.
 - **Clearance**: limbs whose tips would pierce a building are dropped;
   `__game.clearance()` still reports 0 overlapping clumps.
+
+### Character and animal models (CC0)
+- **Source**: Quaternius's CC0 packs, credited in `src/assets/CREDITS.md`.
+  KayKit's CC0 adventurers were also available, but they are chibi fantasy
+  (knights, wizards) and don't fit the tone.
+- **Survivors**: 10 everyday outfits (5 men, 5 women: casual, hoodie,
+  farmer, worker, punk, walker, homespun) sharing one 62-bone skeleton and
+  one set of clips.
+  - `scripts/characters.mjs` strips the per-file animation copies and the
+    normals (the game uses flat shading), drops finger tracks, tags every
+    vertex with its colour slot, and meshopt-compresses the result: about
+    85–110 KB per outfit, plus 151 KB of clips.
+  - At load time each outfit's parts merge into one skinned mesh (one draw
+    per pass).
+  - Each survivor gets their own skin tone, hair colour and muted clothing
+    hues from the slots.
+- **Poses**: Walk, Idle, Sword_Slash (chopping), Punch_Right (hammering) and
+  Interact (foraging) come from the clips. Sitting, eating, fishing, lying
+  asleep, carrying overhead or in front, and shading the eyes are made by
+  aiming bones at world directions after the clip plays. Tools (axe, rod)
+  follow the right forearm.
+  - A hidden capsule makes people easy to click.
+  - The old primitive figures remain the fallback until the models load.
+- **Wild animals**: deer and stags (the first of each herd is a stag) with
+  Idle, Eating (grazing), Walk and Gallop (fleeing). About 185 KB each.
+- **Size**: the single-file build grows from 0.9 MB to 3.0 MB. Inlined
+  models are decoded from base64 directly rather than fetched.
+- **Not yet**: hens and farm animals (the Farm Animal pack has no glTF;
+  converting it needs Blender), children, and ageing.

@@ -3,6 +3,7 @@ import { mergeDirect } from './merge';
 import type { Agent } from '../sim/colony';
 import { Ground, heightAt, idx, isExplored, passable, toTileX, toTileZ, type World } from '../sim/world';
 import { enhance, lambert, makeRand, shadowed } from './util';
+import { makeAnimal, playAnimal, type AnimalBody, type AnimalKind } from './characters';
 
 // ---------------- berry bushes ----------------
 
@@ -144,6 +145,8 @@ export function buildRuins(world: World): THREE.Group {
 
 class Deer {
   root = new THREE.Group();
+  /** A proper animated model, once loaded (the box deer until then). */
+  body: AnimalBody | null = null;
   private legs: THREE.Object3D[] = [];
   private neck = new THREE.Group();
   private target = new THREE.Vector3();
@@ -152,7 +155,7 @@ class Deer {
   private phase = 0;
   private heading = 0;
 
-  constructor(private world: World, private rand: () => number, private home: THREE.Vector3) {
+  constructor(private world: World, private rand: () => number, readonly home: THREE.Vector3) {
     const coat = lambert('#8a5b3c'), belly = lambert('#c9a27d'), dark = lambert('#2b1d14');
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.5, 0.42), coat);
     body.position.y = 0.95;
@@ -254,6 +257,17 @@ class Deer {
     this.root.rotation.y = this.heading;
     pos.y = heightAt(this.world, pos.x, pos.z);
     this.root.visible = isExplored(this.world, toTileX(this.world, pos.x), toTileZ(this.world, pos.z));
+    if (this.body && this.root.visible) {
+      playAnimal(this.body, this.state === 'flee' ? 'Gallop' : this.state === 'walk' ? 'Walk' : this.state === 'graze' ? 'Eating' : 'Idle');
+      this.body.mixer.update(dt);
+    }
+  }
+
+  /** Swap the box deer for an animated model. */
+  wear(body: AnimalBody) {
+    for (const c of this.root.children) c.visible = false;
+    this.body = body;
+    this.root.add(body.root);
   }
 }
 
@@ -285,6 +299,20 @@ export class Herds {
   }
   update(dt: number, agents: Agent[]) {
     for (const d of this.deer) d.update(dt, agents);
+  }
+
+  /** Models arrived: the first of each herd is a stag, the rest does and young. */
+  setKinds(kinds: Map<string, AnimalKind>) {
+    const deer = kinds.get('deer'), stag = kinds.get('stag');
+    if (!deer) return;
+    const mat = enhance(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { season: 'none' });
+    let prevHome: THREE.Vector3 | null = null;
+    for (const d of this.deer) {
+      const first = d.home !== prevHome;
+      prevHome = d.home;
+      const kind = first && stag ? stag : deer;
+      d.wear(makeAnimal(kind, kind === stag ? 1.9 : 1.45, mat)); // the deer's own scale applies on top
+    }
   }
 }
 

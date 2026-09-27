@@ -12,6 +12,7 @@ import { buildVines } from './render/station';
 import { buildSite } from './render/sites';
 import { mergeStatic } from './render/merge';
 import { TreeField } from './render/trees';
+import { loadAnimals, loadCharacters } from './render/characters';
 import { obstacleKey, obstaclesFor } from './render/clearance';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
@@ -94,6 +95,7 @@ scene.add(buildFairyRing(world, mushroomGlow));
 const herds = new Herds(world);
 herds.group.name = 'herds';
 scene.add(herds.group);
+loadAnimals().then((k) => herds.setKinds(k)).catch((e) => console.warn('animals:', e));
 
 const ring = new THREE.Vector3(world.fairyRing.x, 0, world.fairyRing.z);
 const wisps = new Wisps(world, [
@@ -132,6 +134,8 @@ let omenMode = false;
 const people = new People(world);
 people.group.name = 'people';
 scene.add(people.group);
+// Character models load in the background; until then people are simple figures.
+loadCharacters().then((kit) => { people.setKit(kit); lightPeopleLayer(scene); }).catch((e) => console.warn('characters:', e));
 
 /** Trees make room for buildings (finished or planned). */
 let clearanceKey = '';

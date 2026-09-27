@@ -3,7 +3,8 @@ import { mergeDirect } from './merge';
 import type { Agent } from '../sim/colony';
 import type { Survivor } from '../sim/community';
 import { WATER_Y, heightAt, standHeight, type World } from '../sim/world';
-import { lambert } from './util';
+import { enhance, lambert } from './util';
+import { makeCharacter, type Character, type CharacterKit } from './characters';
 
 export const CLOTH = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a', '#6b5a7a', '#8a7a6a'];
 const SKIN = ['#e0b896', '#c99a74', '#a8764f', '#7d5537', '#f0cfb0'];
@@ -24,6 +25,38 @@ interface Rig {
   ring: THREE.Mesh;
   phase: number;
   fade: number;           // >0 while fading out after death
+  /** Set when drawn with a character model instead of the primitive figure. */
+  model?: ModelParts;
+}
+
+interface ModelParts {
+  ch: Character;
+  actions: Map<string, THREE.AnimationAction>;
+  clip: string;
+  /** Hand-held props, placed at the right wrist each frame. */
+  held: THREE.Object3D[];
+}
+
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3();
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
+const Y = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Point `bone` (towards its child `tip`) along a world direction, whatever
+ * the animation had it doing. Used for poses the clips don't have: sitting,
+ * lying down, carrying overhead, holding a rod out.
+ */
+function aim(bone: THREE.Object3D | undefined, tip: THREE.Object3D | undefined, dir: THREE.Vector3) {
+  if (!bone || !tip || !bone.parent) return;
+  bone.updateWorldMatrix(true, true);
+  bone.getWorldPosition(_a);
+  tip.getWorldPosition(_b);
+  _d.subVectors(_b, _a).normalize();
+  _q1.setFromUnitVectors(_d, dir);
+  bone.getWorldQuaternion(_q2);
+  bone.parent.getWorldQuaternion(_q3).invert();
+  bone.quaternion.copy(_q3.multiply(_q1.multiply(_q2)));
+  bone.updateWorldMatrix(false, true);
 }
 
 function limb(len: number, radius: number, mat: THREE.Material): THREE.Group {
@@ -39,9 +72,77 @@ export class People {
   private rigs = new Map<number, Rig>();
   selected = 0;
 
+  private kit: CharacterKit | null = null;
+  private survivors = new Map<number, Survivor>();
+  private modelMat = enhance(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), { season: 'none' });
+
   constructor(private world: World) {}
 
+  /** Character models arrived: redraw everyone with them. */
+  setKit(kit: CharacterKit) {
+    if (!kit.outfits.length) return;
+    this.kit = kit;
+    for (const [id, r] of this.rigs) {
+      if (r.fade > 0) continue;
+      const s = this.survivors.get(id);
+      if (!s) continue;
+      const n = this.build(s);
+      n.root.position.copy(r.root.position);
+      n.root.rotation.copy(r.root.rotation);
+      this.group.remove(r.root);
+      this.group.add(n.root);
+      this.rigs.set(id, n);
+    }
+  }
+
   private build(s: Survivor): Rig {
+    const rig = this.buildFigure(s);
+    if (this.kit) this.fitModel(rig, s, this.kit);
+    return rig;
+  }
+
+  /** Swap the primitive figure's body for a character model (props stay). */
+  private fitModel(r: Rig, s: Survivor, kit: CharacterKit) {
+    // Outfit by the survivor's id; within an outfit, colours by their own seed.
+    const female = s.id % 2 === 1;
+    const pool = kit.outfits.filter((o) => o.female === female);
+    const outfit = (pool.length ? pool : kit.outfits)[Math.floor(s.id / 2) % (pool.length || kit.outfits.length)];
+    const ch = makeCharacter(outfit, { skin: s.id * 7 + 3, hair: s.id * 5 + 1, hue: (s.hue * 0.137) % 1, tall: 0.94 + ((s.id * 37) % 11) / 100 }, this.modelMat);
+    ch.mesh.castShadow = true;
+    ch.mesh.receiveShadow = true;
+    ch.mesh.layers.set(1);
+    ch.root.userData.survivorId = s.id;
+    // Hide the primitive body; keep its props (log, basket, sheet) on the body group.
+    for (const o of [r.hipL, r.hipR, r.torso, r.head, r.armL, r.armR]) o.visible = false;
+    r.body.add(ch.root);
+    // Hand-held tools move from the primitive arm to the root; placed at the wrist each frame.
+    r.armR.remove(r.axe); r.armR.remove(r.rod);
+    r.root.add(r.axe, r.rod);
+    r.axe.traverse((o) => o.layers.set(1));
+    r.rod.traverse((o) => o.layers.set(1));
+    // An invisible capsule for clicking on (skinned meshes are awkward to pick).
+    const pick = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+    pick.position.y = 0.9;
+    pick.userData.survivorId = s.id;
+    r.root.add(pick);
+    const actions = new Map<string, THREE.AnimationAction>();
+    for (const [name, clip] of kit.clips) actions.set(name, ch.mixer.clipAction(clip));
+    r.model = { ch, actions, clip: '', held: [r.axe, r.rod] };
+    this.play(r.model, 'Idle', 0);
+  }
+
+  private play(m: ModelParts, name: string, fade = 0.25) {
+    if (m.clip === name) return;
+    const next = m.actions.get(name) ?? m.actions.get('Idle');
+    if (!next) return;
+    const prev = m.actions.get(m.clip);
+    next.reset().setEffectiveWeight(1).play();
+    if (prev && fade > 0) prev.crossFadeTo(next, fade, false);
+    else if (prev) prev.stop();
+    m.clip = name;
+  }
+
+  private buildFigure(s: Survivor): Rig {
     const cloth = lambert(CLOTH[s.hue % CLOTH.length]);
     const pants = lambert('#3a3a34');
     const skin = lambert(SKIN[s.id % SKIN.length]);
@@ -124,6 +225,7 @@ export class People {
   }
 
   sync(survivors: Survivor[], agents: Agent[]) {
+    for (const s of survivors) this.survivors.set(s.id, s);
     const living = new Set(agents.map((a) => a.id));
     for (const s of survivors) {
       if (living.has(s.id) && !this.rigs.has(s.id)) {
@@ -142,6 +244,8 @@ export class People {
   headPosition(id: number, out: THREE.Vector3): boolean {
     const r = this.rigs.get(id);
     if (!r || r.fade > 0 || !r.root.visible) return false;
+    const head = r.model?.ch.bone('Head');
+    if (head) { head.getWorldPosition(out); out.y += 0.15; return true; }
     r.head.getWorldPosition(out);
     out.y += 0.35;
     return true;
@@ -170,7 +274,7 @@ export class People {
           root.position.set(slot.x, heightAt(this.world, slot.x, slot.z) + (slot.y ?? 0.1), slot.z);
           root.rotation.y = slot.yaw;
           r.ring.visible = a.id === this.selected;
-          this.pose(r, a, t);
+          this.pose(r, a, t, dt);
         } else root.position.set(a.x, heightAt(this.world, a.x, a.z), a.z);
         continue;
       }
@@ -186,7 +290,7 @@ export class People {
       dYaw = Math.atan2(Math.sin(dYaw), Math.cos(dYaw));
       root.rotation.y += dYaw * Math.min(1, dt * 10);
       r.ring.visible = a.id === this.selected;
-      this.pose(r, a, t);
+      this.pose(r, a, t, dt);
     }
     for (const [id, r] of this.rigs) {
       if (r.fade <= 0) continue;
@@ -199,7 +303,8 @@ export class People {
     }
   }
 
-  private pose(r: Rig, a: Agent, t: number) {
+  private pose(r: Rig, a: Agent, t: number, dt: number) {
+    if (r.model) { this.poseModel(r, r.model, a, t, dt); return; }
     const ph = t + r.phase;
     // Reset.
     r.body.position.set(0, 0, 0);
@@ -290,6 +395,100 @@ export class People {
       }
       default:
         r.head.rotation.y = Math.sin(ph * 0.3) * 0.5;
+    }
+  }
+
+  /** Clips for what the clips cover; bones aimed by hand for the rest. */
+  private poseModel(r: Rig, m: ModelParts, a: Agent, t: number, dt: number) {
+    const ph = t + r.phase;
+    const ch = m.ch, B = ch.bone;
+    r.body.position.set(0, 0, 0);
+    r.body.rotation.set(0, 0, 0);
+    r.axe.visible = false;
+    r.rod.visible = a.anim === 'fish';
+    r.log.visible = a.carry?.kind === 'wood';
+    r.basket.visible = a.carry?.kind === 'food' || a.carry?.kind === 'glimmer' || a.anim === 'forage';
+    r.sheet.visible = a.carry?.kind === 'scrap';
+    const moving = a.pathI < a.path.length;
+    const seated = a.anim === 'sit' || a.anim === 'eat' || a.anim === 'fish';
+    let clip = 'Idle';
+    switch (a.anim) {
+      case 'walk': case 'carry': clip = moving ? 'Walk' : 'Idle'; break;
+      case 'chop': clip = 'Sword_Slash'; r.axe.visible = true; break;
+      case 'build': clip = 'Punch_Right'; r.axe.visible = true; break;
+      case 'forage': clip = 'Interact'; break;
+      case 'sleep': case 'sit': case 'eat': case 'fish': clip = 'Idle_Neutral'; break;
+    }
+    this.play(m, clip);
+    ch.mixer.update(dt);
+    r.root.updateMatrixWorld(true);
+
+    // World directions in the survivor's own frame.
+    const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(r.root.quaternion);
+    const right = new THREE.Vector3(-1, 0, 0).applyQuaternion(r.root.quaternion);
+    const down = new THREE.Vector3(0, -1, 0);
+    const dir = (x: number, y: number, z: number) => new THREE.Vector3().addScaledVector(right, x).addScaledVector(Y, y).addScaledVector(fwd, z).normalize();
+
+    if (a.anim === 'sleep') {
+      r.body.rotation.x = -Math.PI / 2;
+      r.body.position.set(0, 0.25, 0.85);
+    } else if (seated) {
+      // Sit: hips down to seat height, thighs forward, shins down.
+      r.body.position.y = -0.42;
+      r.body.updateMatrixWorld(true);
+      for (const side of ['L', 'R']) {
+        aim(B(`UpperLeg.${side}`), B(`LowerLeg.${side}`), dir(side === 'L' ? -0.05 : 0.05, -0.1, 1));
+        aim(B(`LowerLeg.${side}`), B(`Foot.${side}`), down);
+      }
+      if (a.anim === 'fish') {
+        aim(B('UpperArm.R'), B('LowerArm.R'), dir(0.1, -0.2, 1));
+        aim(B('LowerArm.R'), B('Wrist.R'), dir(0, 0.35 + Math.sin(ph * 0.7) * 0.05, 1));
+        aim(B('UpperArm.L'), B('LowerArm.L'), dir(-0.2, -0.5, 1));
+      } else if (a.anim === 'eat') {
+        aim(B('UpperArm.R'), B('LowerArm.R'), dir(0.2, -0.6, 0.6));
+        aim(B('LowerArm.R'), B('Wrist.R'), dir(-0.2, 0.2 + Math.max(0, Math.sin(ph * 2)) * 0.9, 0.5));
+      } else {
+        const h = B('Head');
+        if (h) h.rotateY(Math.sin(ph * 0.35) * 0.5);
+      }
+    } else if (a.carry && (a.carry.kind === 'wood' || a.carry.kind === 'scrap')) {
+      // Load on the shoulders, steadied with both hands.
+      for (const [side, x] of [['L', -1], ['R', 1]] as const) {
+        aim(B(`UpperArm.${side}`), B(`LowerArm.${side}`), dir(x * 0.55, 0.8, -0.1));
+        aim(B(`LowerArm.${side}`), B(`Wrist.${side}`), dir(-x * 0.5, 0.75, -0.2));
+      }
+    } else if (a.carry?.kind === 'food' || a.carry?.kind === 'glimmer') {
+      for (const [side, x] of [['L', -1], ['R', 1]] as const) {
+        aim(B(`UpperArm.${side}`), B(`LowerArm.${side}`), dir(x * 0.15, -0.9, 0.3));
+        aim(B(`LowerArm.${side}`), B(`Wrist.${side}`), dir(-x * 0.3, 0.1, 1));
+      }
+    } else if (a.anim === 'look') {
+      const h = B('Head');
+      if (h) h.rotateY(Math.sin(ph * 0.5) * 0.8);
+      aim(B('UpperArm.R'), B('LowerArm.R'), dir(0.3, 0.3, 0.9));
+      aim(B('LowerArm.R'), B('Wrist.R'), dir(-0.9, 0.4, 0.1));
+    }
+
+    // Tools in the right hand, along the forearm.
+    const wrist = B('Wrist.R'), elbow = B('LowerArm.R');
+    if (wrist && elbow) {
+      wrist.getWorldPosition(_a);
+      elbow.getWorldPosition(_b);
+      _d.subVectors(_a, _b).normalize();
+      r.root.getWorldQuaternion(_q3).invert();
+      for (const p of m.held) {
+        if (!p.visible) continue;
+        p.position.copy(r.root.worldToLocal(_a.clone()));
+        if (p === r.rod) {
+          // The rod's pole runs down its local -y: point that out past the fist.
+          _q1.setFromUnitVectors(Y, _d.clone().negate());
+          p.quaternion.copy(_q3).multiply(_q1);
+        } else {
+          _q1.setFromUnitVectors(Y, _d);
+          p.quaternion.copy(_q3).multiply(_q1);
+          p.rotateX(Math.PI / 2); // the haft across the fist
+        }
+      }
     }
   }
 }
