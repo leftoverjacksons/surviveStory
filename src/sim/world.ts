@@ -1,5 +1,6 @@
 import type { District, Material, Ruin } from './oldworld';
 import type { FieldPlot } from './fields';
+import type { FolkLand } from './folk';
 import type { Site } from './sites';
 
 /**
@@ -21,7 +22,8 @@ export type GroundId = (typeof Ground)[keyof typeof Ground];
 export type TreeKind = 'oak' | 'pine' | 'birch';
 
 /** Zones the player paints. One per tile. */
-export const Zone = { None: 0, Home: 1, Woodlot: 2, Field: 3, Sacred: 4, Fishing: 5 } as const;
+/** Wild is the Folk's land (see folk.ts): no building, no felling. */
+export const Zone = { None: 0, Home: 1, Woodlot: 2, Field: 3, Sacred: 4, Fishing: 5, Wild: 6 } as const;
 export type ZoneKind = (typeof Zone)[keyof typeof Zone];
 
 /** Field crop states. */
@@ -123,6 +125,8 @@ export interface World {
   fairyRing: Point;
   /** The found structure they start in, and how the start is laid out. */
   site: Site;
+  /** The Folk's mound, their paths (see folk.ts). */
+  folk: FolkLand;
 }
 
 export const idx = (w: World, tx: number, tz: number) => tz * w.w + tx;
@@ -222,7 +226,7 @@ export function zoneAllowed(w: World, tx: number, tz: number, kind: ZoneKind): b
   // Fishing grounds: the shore and the shallows of a pond, anywhere explored.
   if (kind === Zone.Fishing) return w.pondAt[i] >= 0 ? nearLand(w, tx, tz, 3) : w.ground[i] !== Ground.Water && nearWater(w, tx, tz, 3);
   if (w.ground[i] === Ground.Water) return false;
-  if (kind === Zone.Field || kind === Zone.Woodlot) {
+  if (kind === Zone.Field || kind === Zone.Woodlot || kind === Zone.Wild) {
     const g = w.ground[i];
     if (g === Ground.Asphalt || g === Ground.Concrete || w.blocked[i]) return false;
   }

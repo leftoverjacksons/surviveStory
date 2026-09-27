@@ -5,7 +5,8 @@ import {
 } from '../sim/calendar';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
-import { exploredFraction } from '../sim/world';
+import { Zone, exploredFraction } from '../sim/world';
+import { landWanted, standingWord, type FolkFocus } from '../sim/folk';
 import { bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project } from '../sim/buildings';
 import { LORE, communitySight, growthFactor, healFactor, homeResonance } from '../sim/veil';
 import { ASPIRATIONS, SKILLED, knowers, skill } from '../sim/purpose';
@@ -31,7 +32,7 @@ const BUILDING_INFO: Record<string, string> = {
   boat: 'A rowing boat. Out in the middle is where the big ones are: a third more catch, except in winter.',
 };
 
-export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'fishing' | 'erase';
+export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'fishing' | 'wild' | 'erase';
 
 export interface HudActions {
   onKill(id: number): void;
@@ -46,6 +47,7 @@ export interface HudActions {
   onVeilView(): void;
   onCalm(): void;
   onOmen(): void;
+  onFolkFocus(focus: FolkFocus): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -67,7 +69,7 @@ export class Hud {
   private councilKey = '';
   private councilOpen = false;
   private loreOpen = false;
-  private inspecting: { building?: number; project?: number } | null = null;
+  private inspecting: { building?: number; project?: number; folk?: boolean } | null = null;
 
   constructor(private col: Colony, act: HudActions) {
     $('rot-l').addEventListener('click', () => act.onRotate(-1));
@@ -109,9 +111,12 @@ export class Hud {
       if (b.dataset.v === 'view') act.onVeilView();
       if (b.dataset.v === 'calm') act.onCalm();
       if (b.dataset.v === 'omen') act.onOmen();
+      if (b.dataset.v === 'folk') this.inspect({ folk: true });
     });
     $('inspect').addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('#inspect-close')) this.inspect(null);
+      const fb = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-focus]');
+      if (fb) act.onFolkFocus(fb.dataset.focus as FolkFocus);
     });
     $('council-open').addEventListener('click', () => { this.councilOpen = true; this.councilKey = ''; this.renderCouncil(); });
     $('council').addEventListener('click', (e) => {
@@ -305,7 +310,7 @@ export class Hud {
 
   setVeilView(on: boolean) { this.veilView = on; }
 
-  inspect(target: { building?: number; project?: number } | null) {
+  inspect(target: { building?: number; project?: number; folk?: boolean } | null) {
     this.inspecting = target;
     this.renderInspect();
   }
@@ -375,6 +380,8 @@ export class Hud {
       html = `<h3>${esc(cap(b.name))}<button type="button" id="inspect-close">Close</button></h3>
         <div class="what">${esc(BUILDING_INFO[b.kind] ?? '')}</div>
         <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>`;
+    } else if (t.folk) {
+      html = this.folkCard();
     } else if (t.project !== undefined) {
       const p = col.village.projects.find((x) => x.id === t.project);
       if (!p || p.done) { this.inspecting = null; el.hidden = true; return; }
@@ -385,6 +392,35 @@ export class Hud {
     if (el.innerHTML !== html) el.innerHTML = html;
     el.hidden = false;
   }
+  private folkCard(): string {
+    const col = this.col, f = col.folk, m = col.world.folk.mound;
+    const word = standingWord(f.standing);
+    let land = 0;
+    for (const z of col.world.zone) if (z === Zone.Wild) land++;
+    const want = landWanted(f);
+    const known = f.beings.filter((b) => b.known);
+    const facts: [string, string][] = [
+      ['Standing', `${cap(word)} (${Math.round(f.standing)})`],
+      ['Their people', f.met ? `${f.beings.length}${known.length ? `: ${known.map((b) => b.name).join(', ')}${known.length < f.beings.length ? ', and others' : ''}` : ''}` : 'Nobody has met them yet. Lights at dusk.'],
+      ['Their land', `${land} tiles of Wild${land >= want ? ' (room to grow)' : land < want * 0.8 ? ` (crowded; they want about ${want})` : ` (enough; they would grow with ${want})`}`],
+      ['The hill', f.level ? `Grown ${f.level} time${f.level > 1 ? 's' : ''} · next ${Math.round(f.growth * 100)}%` : `Next growth ${Math.round(f.growth * 100)}%`],
+    ];
+    if (f.rules.length) facts.push(['Their rules', f.rules.join(' ')]);
+    const FOCUS: [FolkFocus, string, string][] = [
+      ['woods', 'The woods', 'They plant and knit the Wild: saplings, and the Veil runs thick around the hill.'],
+      ['village', 'The village', 'Once friendly, they come down at night: hauling, weeding, an hour on a building.'],
+      ['home', 'Their hill', 'They build: toadstool rings, lanterns, bowers. The hill grows faster, if it has room.'],
+    ];
+    const focus = FOCUS.map(([k, label, tip]) => `<button type="button" data-focus="${k}" aria-pressed="${f.focus === k}" title="${esc(tip)}">${label}</button>`).join('');
+    const news = f.news.slice(-3).reverse().map((n) => `<p><span class="d">D${n.day}</span>${esc(n.text)}</p>`).join('');
+    return `<h3>${esc(cap(m.name))}<button type="button" id="inspect-close">Close</button></h3>
+      <div class="what">A green hill with a door in it, and the Folk who live inside. They were here before the roads. They share the land if the village keeps its distance and their ways. Paint the Wild to give them room.</div>
+      <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
+      <div class="h" style="margin-top:8px">What they give their nights to</div>
+      <div class="row">${focus}</div>
+      ${news ? `<div class="folk-news">${news}</div>` : ''}`;
+  }
+
   setOmenMode(on: boolean) { this.omenMode = on; document.body.classList.toggle('omen', on); }
 
   private renderVeil() {
@@ -405,6 +441,7 @@ export class Hud {
         <button type="button" data-v="view" aria-pressed="${this.veilView}" title="Show Resonance on the land (V)">Veil view</button>
         <button type="button" data-v="calm" ${sel && inf >= CALM_COST ? '' : 'disabled'} title="${sel ? 'Quiet the selected survivor\'s troubles' : 'Select a survivor first'}">Calm · ${CALM_COST}</button>
         <button type="button" data-v="omen" aria-pressed="${this.omenMode}" ${inf >= OMEN_COST ? '' : 'disabled'} title="Click the map: light a way through the mist for the scouts">Omen · ${OMEN_COST}</button>
+        <button type="button" data-v="folk" title="${esc(cap(col.world.folk.mound.name))}: the Folk of the hill. Their standing, their land, what they do at night.">Folk · ${standingWord(col.folk.standing)}</button>
       </div>
       ${lore ? `<details class="lore" ${this.loreOpen ? 'open' : ''}><summary>What they've learned · ${col.veil.lore.length} of ${LORE.length}</summary><ol>${lore}</ol></details>` : ''}`;
     if ($('veil').innerHTML !== html) $('veil').innerHTML = html;

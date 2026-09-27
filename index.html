@@ -121,7 +121,7 @@
   .zone button { display: inline-flex; align-items: center; gap: 5px; }
   .zone button[aria-pressed="true"] { background: var(--ink); color: #0b1210; border-color: var(--ink); font-weight: 700; }
   .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-  .sw.home { background: #ffe88c; } .sw.field { background: #f09632; } .sw.woodlot { background: #6ed75a; } .sw.sacred { background: #c382ff; } .sw.fishing { background: #5abee6; }
+  .sw.home { background: #ffe88c; } .sw.field { background: #f09632; } .sw.woodlot { background: #6ed75a; } .sw.sacred { background: #c382ff; } .sw.fishing { background: #5abee6; } .sw.wild { background: #50c8aa; }
   /* winter readiness */
   #winter { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
   #winter .h { font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: 0.09em; color: var(--ink-dim); }
@@ -159,6 +159,11 @@
   #inspect .what { font-size: 13px; }
   #inspect .facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; color: var(--ink-dim); }
   #inspect .facts b { font-weight: 500; color: var(--ink); }
+  #inspect .h { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+  #inspect .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  #inspect .row button[aria-pressed="true"] { background: #50c8aa; color: #0b1210; border-color: #50c8aa; font-weight: 700; }
+  #inspect .folk-news p { margin: 2px 0; font-size: 11.5px; color: var(--ink-dim); }
+  #inspect .folk-news .d { opacity: 0.6; margin-right: 6px; }
 
   /* the council */
   #council-bar { top: calc(env(safe-area-inset-top, 0px) + 84px); left: 50%; transform: translateX(-50%); z-index: 4; }
@@ -256,6 +261,7 @@
     <button data-zone="woodlot" type="button" title="Woodlot: cut here and replant" aria-pressed="false"><i class="sw woodlot"></i>Woodlot</button>
     <button data-zone="sacred" type="button" title="Sacred ground: never cut, never built on" aria-pressed="false"><i class="sw sacred"></i>Sacred</button>
     <button data-zone="fishing" type="button" title="Fishing grounds: mark a pond's shore for a jetty, hut and fishers" aria-pressed="false"><i class="sw fishing"></i>Fishing</button>
+    <button data-zone="wild" type="button" title="The Wild: land given to the Folk. Nobody cuts or builds there. Their hill grows only while they have room; taking land back sours them." aria-pressed="false"><i class="sw wild"></i>Wild</button>
     <button data-zone="erase" type="button" title="Erase any zone" aria-pressed="false">Erase</button>
   </div>
   <div class="grp">

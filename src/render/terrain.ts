@@ -44,6 +44,7 @@ export const ZONE_COLORS: Record<number, [number, number, number]> = {
   [Zone.Woodlot]: [110, 215, 90],
   [Zone.Sacred]: [195, 130, 255],
   [Zone.Fishing]: [90, 190, 230],
+  [Zone.Wild]: [80, 200, 170],
 };
 
 export class ZoneTexture {

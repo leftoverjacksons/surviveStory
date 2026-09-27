@@ -18,6 +18,7 @@ import { loadAnimals, loadCharacters } from './render/characters';
 import { obstacleKey, obstaclesFor } from './render/clearance';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
+import { FolkView } from './render/folk';
 import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
@@ -134,6 +135,8 @@ const precip = new Precipitation();
 scene.add(precip.group);
 const phenomena = new PhenomenaView(colony, document.getElementById('labels')!);
 scene.add(phenomena.group);
+const folkView = new FolkView(colony, document.getElementById('labels')!);
+scene.add(folkView.group);
 let veilView = false;
 let omenMode = false;
 const people = new People(world);
@@ -160,6 +163,7 @@ function syncScene() {
   plotsView.sync(seasonIndex(colony.community.day));
   heaps.sync();
   fields.sync();
+  folkView.sync();
   syncClearance();
   trees.syncPlanted();
   lightPeopleLayer(scene);
@@ -209,6 +213,7 @@ const hud = new Hud(colony, {
     hud.render();
   },
   onOmen() { setZoneTool(null); setOmen(!omenMode); },
+  onFolkFocus(focus) { colony.folk.focus = focus; colony.folk.version++; hud.render(); },
 });
 
 const roofBtn = document.getElementById('roof-btn')!;
@@ -244,7 +249,7 @@ function setOmen(on: boolean) {
 }
 
 let zoneTool: ZoneTool | null = null;
-const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, fishing: Zone.Fishing, erase: Zone.None };
+const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, fishing: Zone.Fishing, wild: Zone.Wild, erase: Zone.None };
 function setZoneTool(mode: ZoneTool | null) {
   zoneTool = mode;
   if (mode !== 'field') clearDraft();
@@ -399,6 +404,11 @@ canvas.addEventListener('pointerup', (e) => {
   while (o && o.userData.survivorId === undefined) o = o.parent;
   if (o) { select(o.userData.survivorId as number); return; }
   select(0);
+  // The Folk's hill?
+  if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
+    const m = world.folk.mound;
+    if (Math.hypot(hitPoint.x - m.x, hitPoint.z - m.z) < m.r + 1) { hud.inspect({ folk: true }); return; }
+  }
   // Not a person: a building?
   const bh = raycaster.intersectObjects([villageView.group, plotsView.group, station.group], true)[0];
   let q: THREE.Object3D | null = bh?.object ?? null;
@@ -540,6 +550,7 @@ function frame() {
   vignette.style.opacity = viewer ? (0.1 + sightK * 0.75).toFixed(2) : '0';
   resonance.sync(t);
   phenomena.update(t, people.selected, iso.camera, view.clientWidth, view.clientHeight);
+  folkView.update(t, sky.night, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   wear.sync(t);
   fog.sync();
   zoneTex.sync();
@@ -582,6 +593,7 @@ function frame() {
     plotsView.sync(seasonIndex(colony.community.day));
     heaps.sync();
     fields.sync(t);
+    folkView.sync();
     syncClearance();
     trees.syncPlanted();
     lightPeopleLayer(scene);
@@ -657,4 +669,4 @@ async function addModel(url: string, x: number, z: number, height = 1.7, clip = 
 }
 const debugMixers: THREE.AnimationMixer[] = [];
 
-Object.assign(window, { __game: { stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });
+Object.assign(window, { __game: { stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });

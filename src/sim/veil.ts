@@ -266,14 +266,17 @@ function targetResonance(col: Colony): Float32Array {
   const v = col.veil, w = col.world;
   const t = v.base.slice();
   for (let cz = 0; cz < v.ch; cz++) for (let cx = 0; cx < v.cw; cx++) {
-    let sacred = 0, n = 0;
+    let sacred = 0, wild = 0, n = 0;
     for (let dz = 0; dz < CELL; dz += 2) for (let dx = 0; dx < CELL; dx += 2) {
       const tx = cx * CELL + dx, tz = cz * CELL + dz;
       if (tx >= w.w || tz >= w.h) continue;
-      if (w.zone[idx(w, tx, tz)] === Zone.Sacred) sacred++;
+      const z = w.zone[idx(w, tx, tz)];
+      if (z === Zone.Sacred) sacred++;
+      else if (z === Zone.Wild) wild++;
       n++;
     }
-    t[cz * v.cw + cx] += (sacred / Math.max(n, 1)) * 0.3;
+    // Sacred ground, and the Folk's own land.
+    t[cz * v.cw + cx] += (sacred / Math.max(n, 1)) * 0.3 + (wild / Math.max(n, 1)) * 0.2;
   }
   for (const b of col.village.buildings) {
     if (b.kind !== 'shrine' && b.kind !== 'lantern') continue;

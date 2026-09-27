@@ -204,7 +204,7 @@ function footprintFree(w: World, v: Village, f: Footprint, margin: number): { ok
       if (!inZone(w, tx, tz) || !isExplored(w, tx, tz)) return { ok: false, trees };
       const g = w.ground[i];
       if (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete) return { ok: false, trees };
-      if (w.blocked[i] || w.bushAt[i] >= 0 || v.plotAt[i]) return { ok: false, trees };
+      if (w.blocked[i] || w.bushAt[i] >= 0 || v.plotAt[i] || w.folk?.path[i]) return { ok: false, trees };
       if (w.treeAt[i] >= 0) {
         if (w.trees[w.treeAt[i]].protected) return { ok: false, trees };
         trees.push(w.treeAt[i]);

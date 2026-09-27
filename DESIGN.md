@@ -1260,7 +1260,12 @@ the Folk before the conflict.
   - What you know depends on the team's Sight.
   - The resource at risk is Nerve.
 
-### 19.8 Control in clearings (proposal, awaiting the user)
+### 19.8 Control in clearings (decided: direct, turn-based)
+The user chose direct control in the manner of Baldur's Gate or XCOM:
+turn-based, on a zoomed-in view of the district, with the team able to
+walk through its buildings. The Folk's first mound is built before any
+clearing mechanics.
+
 In XCOM the player picks each soldier's action every turn. Everywhere else
 in this game the player never commands: survivors act on their own, and
 the player only nudges. The recommendation is XCOM-style control inside
@@ -1272,3 +1277,89 @@ and is strongest there. Character is kept through Nerve:
 - Low-Nerve turns show that loss of control, much like panic in XCOM.
 - Folk team members may follow their own rules. For example, they will
   not touch iron.
+
+### 19.9 The Folk's first mound: as built
+Built before any clearing mechanics, at the user's request.
+- **The hill** (`sim/folk.ts#layFolkLand`, placed by worldgen with its own
+  random stream).
+  - Placement: 31–40 units from the camp, at least 14 from the Ring and 34
+    from any district. Not on water or paving; forested ground is
+    preferred.
+  - Shape: a barrow of radius 3.6 and height about 2.5. Its core is
+    blocked, so no one walks over it.
+  - Dressing: a kerb of low stones, foxgloves on the crown, and a stone
+    doorway facing the village with a threshold stone for offerings.
+  - A protected thorn tree stands beside it, and it is explored from the
+    start.
+- **The Wild** (`Zone.Wild`, a new zone and paint tool).
+  - Their land: about 220 tiles within 8.5 of the hill at the start.
+  - Nobody cuts there (like Sacred ground), and it lies outside Home, so
+    nothing is built there.
+  - It raises Resonance: +0.2 to the target on full cover.
+- **Folk paths.** Two gently curved paths: one from the door to the Ring,
+  one from the back of the hill 24 units into the woods.
+  - Buildings and house plots never cross them; people may walk them.
+  - Drawn with pale stepping stones and white flowers, and motes at night
+    (stronger in the Veil view).
+- **The society** (`FolkSociety` on the colony).
+  - It starts with three of the Folk: an elder, a hob and a sprite.
+  - The mound's first works are already there: a toadstool ring and a
+    cairn.
+  - **Standing** runs 0–100 in bands: soured <20, wary <45, friendly <70,
+    kin. It starts at 40.
+    - Each day it drifts 5% toward 40.
+    - Resonance at the hill: +0.2 above 0.6, −0.3 below 0.4.
+    - Land at or above what they want: +0.2 a day. Below 80% of it:
+      −0.4 a day.
+    - Taking their land: −0.15 per tile lost (up to −12). Giving land:
+      +0.05 per tile (up to +6).
+    - Each building within 14.5 of the hill: −0.6 a day.
+    - Offerings: +1.2, or +0.6 once standing is 60 or more.
+  - **Offerings.** Bread is left at the door (1 food) after supper, by
+    whoever is most drawn to it (Sight, a hope for the Veil, attuners).
+    - Every day while standing is below 50, then every third day.
+    - About 20 food a colony-year.
+  - **Meeting.** An offering-bearer who reads the Folk as coherent meets
+    them. The first meeting brings a speech from the elder and the first
+    rule; later meetings bring names and rules. Readings follow §4 with
+    depth 30.
+  - **Growth.** While standing is 50 or more *and* they have the land they
+    want (180 + 70 per level), growth accrues at 0.025 × (0.5 + Resonance)
+    a day, doubled under the "their hill" focus.
+    - Each level brings one more of the Folk and a new work.
+    - Without more land the hill stops growing. That is the player's
+      lever.
+- **The player's controls.**
+  - Paint the Wild (give or take land).
+  - Choose what the Folk give their nights to (on the Folk card, opened by
+    clicking the hill or the Folk button in the Veil panel):
+    - **The woods:** saplings in the Wild, Resonance around the hill.
+    - **The village:** once standing is 45 or more, hobs and sprites come
+      down between midnight and 04:00. One chore a night (more as the
+      hill grows): haul loose goods to the stores, an hour's work on a
+      building, or weeding twelve rows.
+    - **Their hill:** works appear (toadstool rings, lanterns, bowers,
+      cairns, flowers) and growth is faster.
+- **Gifts and mischief.**
+  - Kin sometimes leave glimmer (12% a day, +2).
+  - When soured (30% a day), they sour 3–7 food or hide a building's
+    tools (−25 work).
+- **Seen as Sight allows** (`render/folk.ts`).
+  - Out between 19:30 and 05:00, walking their paths, dancing in rings,
+    tending works.
+  - Readings: a chill is a small light; luminous is a small glowing
+    figure (wings on sprites, a hood on the elder); coherent adds their
+    name, if known.
+  - The door glows warm at night, dark when soured.
+- **Measured** (5 sites, one year each).
+  - The hill reached level 1 at every site. Standing settles at 52–54
+    (friendly) with no player action.
+  - About 20 offerings a year. They were met at every site. No deaths.
+  - Morale unchanged within noise.
+  - Offerings were first placed at dusk. That delayed the first yard
+    improvement from day 18 to day 25 in the homes test, because the
+    bearer lost their yard hours. After supper it costs evening company
+    instead.
+- **Next** (§19.6 steps 5 and 1–2): pixie-led searches and rules that can
+  be broken, emissaries at council, then occupied districts and the
+  clearing slice.

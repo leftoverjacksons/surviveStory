@@ -26,6 +26,7 @@ import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill, type Craf
 import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pondOf } from './fishing';
 import { highwayZ } from './worldgen';
 import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence } from './fields';
+import { createFolk, folkDaily, folkTick, leaveOffering, type FolkSociety } from './folk';
 import {
   PSI_SIGHT, createVeil, disturb, growthFactor, healFactor, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil,
 } from './veil';
@@ -62,6 +63,7 @@ export type Task =
   | { kind: 'leisure'; what: 'fish' | 'cards' | 'herbs'; stage: 'go' | 'do'; t: number }
   | { kind: 'scout'; stage: 'go' | 'look'; t: number }
   | { kind: 'attune'; stage: 'go' | 'sit'; t: number }
+  | { kind: 'offer'; stage: 'go' | 'leave'; t: number }
   | { kind: 'tend'; stage: 'go' | 'sit'; t: number }
   | { kind: 'wander'; stage: 'go' | 'pause'; t: number }
   | { kind: 'build'; project: number; stage: 'go' | 'work' }
@@ -134,6 +136,8 @@ export interface Colony {
   private_fieldCache: { version: number; tiles: number[] };
   veil: Veil;
   council: Council;
+  /** The Folk of the hill: their standing with the village, their people and works. */
+  folk: FolkSociety;
   /** Food gained and spent this year, by source (for balancing and the HUD). */
   ledger: Record<string, number>;
 }
@@ -158,7 +162,7 @@ export function createColony(world: World, community: Community): Colony {
     village: createVillage(world), beds: new Map(),
     weather: weatherOn(1, world.seed), claims: new Map(), replant: [], tended: new Set(), lowDays: new Map(),
     hints: new Set(), private_fieldCache: { version: -1, tiles: [] },
-    veil: createVeil(world), council: createCouncil(), ledger: {},
+    veil: createVeil(world), council: createCouncil(), folk: createFolk(world), ledger: {},
   };
   // The first line of the story names where it starts.
   const opening = community.log.find((l) => l.day === 1 && l.tone === 'info');
@@ -388,7 +392,7 @@ function pickTree(col: Colony, a: Agent): Task | null {
     const i = idx(w, tx, tz);
     const id = w.treeAt[i];
     if (id < 0) return false;
-    if (inLot !== (w.zone[i] === Zone.Woodlot) || w.zone[i] === Zone.Sacred) return false;
+    if (inLot !== (w.zone[i] === Zone.Woodlot) || w.zone[i] === Zone.Sacred || w.zone[i] === Zone.Wild) return false;
     const t = w.trees[id];
     return !t.felled && !t.protected && t.growth >= 1 && t.reserved === 0 && isExplored(w, tx, tz) && !col.unreachable.has(`t${id}`);
   };
@@ -881,6 +885,25 @@ function pursue(col: Colony, a: Agent, s: Survivor): Task | null {
   }
 }
 
+/**
+ * An offering for the Folk: bread left at the door in the hill. One a day,
+ * by whoever is most drawn to it (Sight, a hope for the Veil, the Ring's
+ * attuners), and only while there is food to spare.
+ */
+function pickOffering(col: Colony, a: Agent, s: Survivor): Task | null {
+  const f = col.folk, c = col.community;
+  if (f.offeredDay === c.day || f.standing >= 85 || c.resources.food < col.agents.length * 3) return null;
+  // Every day while they are wary; once friendly, every third day keeps the peace.
+  if (f.standing >= 50 && c.day - f.offeredDay < 3) return null;
+  if (col.agents.some((o) => o.task?.kind === 'offer')) return null;
+  const pull = s.sight + (s.aspiration?.kind === 'veil' ? 25 : 0) + (s.role === 'attune' ? 20 : 0) + (f.standing < 30 ? 15 : 0);
+  if (pull < 35 || habit(col, s.id * 7 + c.day) > pull) return null;
+  const m = col.world.folk.mound;
+  const d = m.r + 1.3;
+  if (!setDest(col, a, m.x + Math.cos(m.door) * d, m.z + Math.sin(m.door) * d)) return null;
+  return { kind: 'offer', stage: 'go', t: 0 };
+}
+
 function seatOf(col: Colony, a: Agent): Point {
   const living = col.agents;
   return seatSpot(col.world.campfire, living.indexOf(a), living.length);
@@ -904,6 +927,9 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     if (setDest(col, a, m.spot.x, m.spot.z)) return { kind: 'eat', stage: 'go', t: 0, place: m.place, building: m.building };
   }
   if (isEvening(h)) {
+    // After supper, someone takes bread to the hill.
+    const o = h < 20.5 ? pickOffering(col, a, s) : null;
+    if (o) return o;
     const e = eveningPlace(col, a, s);
     if (setDest(col, a, e.spot.x, e.spot.z)) return { kind: 'social', stage: 'go', place: e.place, building: e.building };
   }
@@ -1389,6 +1415,20 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       if (t.t >= 60) endTask(col, a);
       return;
     }
+    case 'offer': {
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = `Taking bread to ${w.folk.mound.name}`;
+        if (walk(col, a, dt)) t.stage = 'leave';
+        return;
+      }
+      a.anim = 'idle'; a.activity = 'Leaving an offering at the door in the hill';
+      t.t += dt;
+      if (t.t >= 10) {
+        if (res.food >= 1 && leaveOffering(col, s)) gainFood(col, 'offerings', -1);
+        endTask(col, a);
+      }
+      return;
+    }
     case 'attune': {
       if (t.stage === 'go') {
         a.anim = 'walk'; a.activity = 'Walking to the Ring';
@@ -1654,7 +1694,7 @@ function shouldInterrupt(col: Colony, a: Agent): boolean {
   if (!t || a.carry) return false;
   const h = hourOf(col);
   if (isNight(h)) return t.kind !== 'sleep' && t.kind !== 'eat';
-  if (isEvening(h)) return !['social', 'eat', 'sleep'].includes(t.kind);
+  if (isEvening(h)) return !['social', 'eat', 'sleep', 'offer'].includes(t.kind);
   if (a.needs.food < 15 && col.community.resources.food >= 1) return t.kind !== 'eat' && t.kind !== 'sleep';
   return false;
 }
@@ -1831,6 +1871,7 @@ function daily(col: Colony) {
     log(c, 'The cellar is running low. Meals are cut to half rations until spring.', 'bad');
   }
   veilDaily(col, { cold, rationing: rationing(col) });
+  folkDaily(col);
   fishingDaily(col, (x, z, amt) => disturb(col, x, z, amt, 2));
   councilDaily(col);
   departures(col);
@@ -1980,6 +2021,7 @@ export function tick(col: Colony, dtMinutes: number) {
       else { a.anim = 'idle'; a.activity = 'Thinking'; }
     }
 
+    folkTick(col, dt);
     if (Math.floor(col.minute / 60) !== Math.floor(before / 60)) hourly(col);
     if (Math.floor(col.minute / MIN_PER_DAY) !== Math.floor(before / MIN_PER_DAY)) daily(col);
   }

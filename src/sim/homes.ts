@@ -519,7 +519,7 @@ function tryPlot(w: World, v: Village, cand: Candidate, beds: number, rng: Rng, 
     const i = idx(w, tx, tz);
     const g = w.ground[i];
     if (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete) return null;
-    if (w.blocked[i] || v.plotAt[i]) return null;
+    if (w.blocked[i] || v.plotAt[i] || w.folk?.path[i]) return null; // never across a Folk path
     if (Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 5.5) return null;
     if (p.x > sp.x0 - 1.5 && p.x < sp.x1 + 1.5 && p.z > sp.z0 - 1.5 && p.z < sp.z1 + 1.5) return null;
     for (const f of others) if (tx >= f.tx - 1 && tx < f.tx + f.w + 1 && tz >= f.tz - 1 && tz < f.tz + f.d + 1) return null;

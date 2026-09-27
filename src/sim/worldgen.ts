@@ -1,6 +1,7 @@
 import { Rng } from './rng';
 import { layOldWorld, type Material } from './oldworld';
 import { createField } from './fields';
+import { layFolkLand } from './folk';
 import { fbm, smoothstep } from './noise';
 import { HIGHWAY_Z } from './layout';
 import { SITE_KINDS, siteOf, type SiteKind } from './sites';
@@ -46,6 +47,7 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     stockpile: { ...site.stockpile },
     fairyRing: { x: 0, z: 0 },
     site,
+    folk: null as never, // laid out once the heights exist
   };
 
   const inRect = (x: number, z: number, r: Rect, pad = 0) =>
@@ -173,6 +175,10 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     w.heights[vz * S + vx] = hgt;
   }
 
+  // --- the Folk's hill, their land and paths (its own random stream) ---
+  w.folk = layFolkLand(w, flatDist, seed, new Rng(seed ^ 0xf01c));
+  const mound = w.folk.mound;
+
   // --- trees ---
   const kindAt = (x: number, z: number): TreeKind => {
     const k = fbm(x * 0.06, z * 0.06, seed + 71);
@@ -188,6 +194,7 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     const x = tileX(w, tx), z = tileZ(w, tz);
     if (w.blocked[i] || Math.hypot(x, z) < HOME_CLEAR) continue;
     if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 4.5) continue;
+    if (Math.hypot(x - mound.x, z - mound.z) < mound.r + 1.4 || w.folk.path[i]) continue;
     const g = w.ground[i];
     const edge = smoothstep(HOME_CLEAR, HOME_CLEAR + 12, Math.hypot(x, z)); // thin near home
     // Old streets are overgrown but still open: fewer trees among the ruins.
@@ -200,6 +207,14 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     const ot = w.treeAt[idx(w, toTileX(w, site.oldTree.x), toTileZ(w, site.oldTree.z))];
     if (ot >= 0) { w.trees[ot].felled = true; w.treeAt[idx(w, toTileX(w, site.oldTree.x), toTileZ(w, site.oldTree.z))] = -1; }
     addTree(toTileX(w, site.oldTree.x), toTileZ(w, site.oldTree.z), site.kind === 'chapel' ? 'pine' : 'oak', 1.35, true);
+  }
+
+  // The thorn that stands over the hill. Nobody will cut it.
+  {
+    const a = mound.door + Math.PI * 0.8;
+    const tx = toTileX(w, mound.x + Math.cos(a) * (mound.r + 1.6)), tz = toTileZ(w, mound.z + Math.sin(a) * (mound.r + 1.6));
+    const i = idx(w, tx, tz);
+    if (inBounds(w, tx, tz) && w.treeAt[i] < 0 && !w.blocked[i]) addTree(tx, tz, 'oak', 0.85, true);
   }
 
   // Trees growing up through the most ruined shells (left standing: nobody fells them).
@@ -233,7 +248,7 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     const g = w.ground[i];
     if (g === Ground.Asphalt || g === Ground.Concrete || g === Ground.Water) continue;
     if (Math.hypot(tileX(w, tx), tileZ(w, tz)) < 14) continue;
-    if (rng.chance(0.004)) {
+    if (rng.chance(0.004) && !w.folk.path[i] && w.zone[i] !== Zone.Wild) {
       w.rocks.push({ tx, tz, size: rng.range(0.4, 1.2) });
       w.blocked[i] = 1;
     }
@@ -321,7 +336,7 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
   // The starting home zone: the clearing they can already see, minus roads and water.
   for (let tz = 0; tz < size; tz++) for (let tx = 0; tx < size; tx++) {
     const i = idx(w, tx, tz);
-    if (Math.hypot(tileX(w, tx), tileZ(w, tz)) <= 26 && w.ground[i] !== Ground.Water) w.zone[i] = Zone.Home;
+    if (Math.hypot(tileX(w, tx), tileZ(w, tz)) <= 26 && w.ground[i] !== Ground.Water && w.zone[i] !== Zone.Wild) w.zone[i] = Zone.Home;
   }
   // Site advantages written into the land.
   if (site.kind === 'chapel') {
