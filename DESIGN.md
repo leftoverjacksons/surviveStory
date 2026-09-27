@@ -607,3 +607,36 @@ with and without `?nomerge`:
 - **Largest remaining cost.** People, at about 310–360 calls across the
   x-ray, figure and shadow passes; instancing them is the next step if
   needed. Simulation takes about 0.3–0.6 ms per frame.
+
+### Graphics pass 1 (after performance pass 1)
+- **Trees no longer grow through buildings** (`render/clearance.ts`).
+  - Every building, finished or planned, is an oriented box up to its
+    ridge, with eaves. The boxes come from the simulation's plans, so
+    canopies make room before the walls go up.
+  - A leaf clump that reaches into a box is shrunk (down to 55%), slid
+    outward, or dropped.
+  - Builders also fell unprotected trees whose trunks stand within about
+    1 tile of a planned wall.
+  - Measured with `__game.clearance()` over days 10–40:
+
+    | Map | Clumps inside buildings, before | After |
+    |---|---|---|
+    | seed 8 | 5–25 | 0 |
+    | chapel, seed 3 | 7–45 | 0 |
+    | farm, seed 5 | 13–38 | 0 |
+
+  - `?noclear` turns clearance off for comparison.
+- **Canopies**: leaf clumps are lumpy rather than spherical, flatter
+  underneath, and self-shaded (darker under, lighter crown, via `enhance`'s
+  `shade` option). The shading applies after the season colour, so it holds
+  in autumn and snow. Bushes are shaded the same way.
+- **Contact shade**: merged building, yard and site surfaces darken towards
+  the ground they stand on. This is baked into vertex colours, so it costs
+  nothing at runtime.
+- **House skirts**: moss, long grass and seasonal flowers along the foot of
+  every finished house, clear of the door and porch.
+- **Colour grade**: a final display-space pass with teal shadows and warm
+  highlights (less warmth at night), saturation ×1.08, a slight S-curve and
+  a soft vignette. `?nograde` turns it off.
+- **Cost**: draw calls are unchanged (about 520 on seed 8), because the new
+  meshes merge.

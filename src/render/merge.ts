@@ -38,7 +38,9 @@ function keep(o: THREE.Object3D, root: THREE.Object3D): boolean {
  * Positions, normals, uvs and (optionally) a flat vertex colour, non-indexed,
  * so any mix of primitives can merge.
  */
-function normalise(g: THREE.BufferGeometry, m: THREE.Matrix4, color?: THREE.Color): THREE.BufferGeometry {
+type Ground = (x: number, z: number) => number;
+
+function normalise(g: THREE.BufferGeometry, m: THREE.Matrix4, color?: THREE.Color, ground?: Ground): THREE.BufferGeometry {
   let out = g.index ? g.toNonIndexed() : g.clone();
   for (const name of Object.keys(out.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') out.deleteAttribute(name);
   if (!out.attributes.normal) out.computeVertexNormals();
@@ -51,6 +53,15 @@ function normalise(g: THREE.BufferGeometry, m: THREE.Matrix4, color?: THREE.Colo
   }
   out.clearGroups();
   out = out.applyMatrix4(m);
+  if (color && ground) {
+    // Baked contact shadow: surfaces darken towards the ground they stand on.
+    const p = out.attributes.position, c = out.attributes.color;
+    for (let i = 0; i < n; i++) {
+      const t = Math.min(1, Math.max(0, (p.getY(i) - ground(p.getX(i), p.getZ(i))) / 0.9));
+      const k = 0.7 + 0.3 * t * t * (3 - 2 * t);
+      c.setXYZ(i, c.getX(i) * k, c.getY(i) * k, c.getZ(i) * k);
+    }
+  }
   return out;
 }
 
@@ -107,7 +118,11 @@ export function mergeDirect(group: THREE.Object3D): void {
  * Merge the static meshes under `root` (in place). Returns how many meshes
  * were replaced. Glow meshes listed in `live` are kept separate.
  */
-export function mergeStatic(root: THREE.Object3D, live: Set<THREE.Object3D> = new Set(), cut = false): number {
+/**
+ * `ground` gives the ground height under a root-local point, for the baked
+ * contact shadow (default: the root stands on flat ground at y = 0).
+ */
+export function mergeStatic(root: THREE.Object3D, live: Set<THREE.Object3D> = new Set(), cut = false, ground: Ground = () => 0): number {
   if (disabled) return 0;
   root.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
@@ -124,7 +139,7 @@ export function mergeStatic(root: THREE.Object3D, live: Set<THREE.Object3D> = ne
     const key = `${mat.uuid}|${roof ? 'r' : 'w'}|${m.castShadow ? 1 : 0}`;
     let b = buckets.get(key);
     if (!b) { b = { mat, roof, geos: [], cast: m.castShadow }; buckets.set(key, b); }
-    b.geos.push(normalise(m.geometry, new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld), flat ? (own as THREE.MeshLambertMaterial).color : undefined));
+    b.geos.push(normalise(m.geometry, new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld), flat ? (own as THREE.MeshLambertMaterial).color : undefined, roof ? undefined : ground));
     victims.push(m);
   });
   if (victims.length < 4) return 0;

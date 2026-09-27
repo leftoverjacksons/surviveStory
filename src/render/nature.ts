@@ -18,7 +18,7 @@ export class Bushes {
     const n = Math.max(1, world.bushes.length);
     const body = new THREE.InstancedMesh(
       new THREE.IcosahedronGeometry(0.5, 0),
-      enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.08, season: 'broadleaf' }),
+      enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.08, season: 'broadleaf', shade: 2 }),
       n,
     );
     this.berries = new THREE.InstancedMesh(

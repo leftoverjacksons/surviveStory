@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { heightAt, type Tree, type World } from '../sim/world';
 import { enhance, makeRand } from './util';
+import { clumpOverlaps, fitClump, trunkBlocked, type Obstacle } from './clearance';
 
 interface Slot { mesh: THREE.InstancedMesh; index: number }
 
@@ -68,13 +69,49 @@ function grown(parts: Part[], g: number): Part[] {
   }));
 }
 
+/**
+ * A leaf clump: a sphere with its vertices pushed in and out a little, so
+ * canopies read as foliage rather than balls. Shared corners move together
+ * (the offset is a function of position), so the surface stays closed.
+ */
+function lumpy(g: THREE.BufferGeometry): THREE.BufferGeometry {
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    const n = Math.sin(v.x * 5.1 + v.y * 1.7) * 0.5 + Math.sin(v.z * 4.3 - v.x * 2.9) * 0.35 + Math.sin(v.y * 6.7 + v.z * 1.3) * 0.25;
+    // Flatter underneath, as real crowns are.
+    const k = (1 + n * 0.11) * (v.y < 0 ? 1 - 0.18 * -v.y : 1);
+    pos.setXYZ(i, v.x * k, v.y * k, v.z * k);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Shape a tree's canopy around nearby buildings (see clearance.ts). */
+function fitted(parts: Part[], obs: Obstacle[]): Part[] {
+  if (!obs.length) return parts;
+  const base = parts[0].pos;
+  if (trunkBlocked(obs, base.x, base.z)) return parts.map((p) => ({ ...p, scale: new THREE.Vector3(0, 0, 0) }));
+  return parts.map((p, i) => {
+    if (i === 0 || p.geo === 'trunk') return p;
+    const pos = p.pos.clone();
+    const k = fitClump(obs, pos, Math.max(p.scale.x, p.scale.z), base);
+    if (k === 1 && pos.equals(p.pos)) return p;
+    return { ...p, pos, scale: p.scale.clone().multiplyScalar(k) };
+  });
+}
+
 export class TreeField {
+  private obs: Obstacle[] = [];
+  /** Trees whose canopy was reshaped last time, so they can be restored. */
+  private shaped = new Set<number>();
   group = new THREE.Group();
   private slots = new Map<number, Slot[]>();
   private geos: Record<Part['geo'], THREE.BufferGeometry>;
   private trunkMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }));
-  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.04, season: 'broadleaf' });
-  private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.03, season: 'conifer' });
+  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.04, season: 'broadleaf', shade: 1 });
+  private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.03, season: 'conifer', shade: 2 });
   private falling: { g: THREE.Group; t: number; axis: THREE.Vector3; pivot: THREE.Vector3 }[] = [];
   private stumps: THREE.InstancedMesh;
   private stumpCount = 0;
@@ -83,7 +120,7 @@ export class TreeField {
     const trunk = new THREE.CylinderGeometry(0.16, 0.28, 1, 6);
     trunk.translate(0, 0.5, 0);
     const cone = new THREE.ConeGeometry(1, 1, 7);
-    this.geos = { trunk, blob: new THREE.IcosahedronGeometry(1, 1), cone };
+    this.geos = { trunk, blob: lumpy(new THREE.IcosahedronGeometry(1, 1)), cone };
 
     // Bucket trees into chunks.
     const buckets = new Map<number, Tree[]>();
@@ -144,15 +181,15 @@ export class TreeField {
     if (!slots.length && !t.planted) return;
     // Too many falling at once (fast-forward, or a clearing gang): skip the animation.
     const animate = this.falling.length < 6;
-    const parts = animate ? grown(recipe(t, this.world), t.growth) : [];
+    const parts = animate ? fitted(grown(recipe(t, this.world), t.growth), this.obs) : [];
     const g = new THREE.Group();
     const base = animate ? parts[0].pos.clone() : grown(recipe(t, this.world), 1)[0].pos.clone();
     for (const p of parts) {
       const col = p.color.clone();
       // Clones lose the shader patch, so re-apply it with the same seasonal style.
       const mat = p.geo === 'trunk' ? enhance(this.trunkMat.clone())
-        : p.geo === 'cone' ? enhance(this.pineMat.clone(), { season: 'conifer' })
-        : enhance(this.leafMat.clone(), { season: 'broadleaf' });
+        : p.geo === 'cone' ? enhance(this.pineMat.clone(), { season: 'conifer', shade: 2 })
+        : enhance(this.leafMat.clone(), { season: 'broadleaf', shade: 1 });
       (mat as THREE.MeshLambertMaterial).color = col;
       mat.transparent = true;
       const mesh = new THREE.Mesh(this.geos[p.geo], mat);
@@ -193,7 +230,7 @@ export class TreeField {
     for (const m of this.young) this.group.remove(m);
     this.young = [];
     if (!planted.length) return;
-    const all = planted.map((t) => grown(recipe(t, this.world), t.growth));
+    const all = planted.map((t) => fitted(grown(recipe(t, this.world), t.growth), this.obs));
     const m = new THREE.Matrix4(), q = new THREE.Quaternion();
     for (const [geo, mat] of [['trunk', this.trunkMat], ['blob', this.leafMat], ['cone', this.pineMat]] as const) {
       const parts = all.flat().filter((p) => p.geo === geo);
@@ -210,6 +247,66 @@ export class TreeField {
       this.group.add(mesh);
       this.young.push(mesh);
     }
+  }
+
+  /**
+   * Buildings changed: reshape the canopies of standing wild trees near any
+   * of them (and restore trees that no longer need it).
+   */
+  setObstacles(obs: Obstacle[]) {
+    this.obs = obs;
+    this.youngKey = '';
+    const w = this.world;
+    const near = new Set<number>();
+    for (const o of obs) {
+      const R = Math.ceil(o.hw + o.hd + 4);
+      const cx = Math.floor(o.cx + w.w / 2), cz = Math.floor(o.cz + w.h / 2);
+      for (let tz = cz - R; tz <= cz + R; tz++) for (let tx = cx - R; tx <= cx + R; tx++) {
+        if (tx < 0 || tz < 0 || tx >= w.w || tz >= w.h) continue;
+        const id = w.treeAt[tz * w.w + tx];
+        if (id >= 0) near.add(id);
+      }
+    }
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+    const touched = new Set<THREE.InstancedMesh>();
+    const next = new Set<number>();
+    for (const id of new Set([...near, ...this.shaped])) {
+      const slots = this.slots.get(id);
+      const t = w.trees[id];
+      if (!slots || !t || t.felled || t.planted) continue;
+      const raw = recipe(t, w);
+      const parts = near.has(id) ? fitted(raw, obs) : raw;
+      if (parts !== raw && parts.some((p, i) => p !== raw[i])) next.add(id);
+      parts.forEach((p, i) => {
+        const s = slots[i];
+        if (!s) return;
+        q.setFromEuler(p.rot);
+        m.compose(p.pos, q, p.scale);
+        s.mesh.setMatrixAt(s.index, m);
+        touched.add(s.mesh);
+      });
+    }
+    this.shaped = next;
+    for (const mesh of touched) { mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); }
+  }
+
+  /** Debug: leaf clumps (before, after fitting) that still reach into a building. */
+  overlaps(obs: Obstacle[] = this.obs): { before: number; after: number; trees: number } {
+    let before = 0, after = 0, trees = 0;
+    for (const t of this.world.trees) {
+      if (t.felled) continue;
+      const raw = grown(recipe(t, this.world), t.growth);
+      const fit = fitted(raw, obs);
+      let hit = false;
+      raw.forEach((p, i) => {
+        if (p.geo === 'trunk') return;
+        if (clumpOverlaps(obs, p.pos, Math.max(p.scale.x, p.scale.z) * 0.9)) { before++; hit = true; }
+        const f = fit[i];
+        if (f.scale.x > 0 && clumpOverlaps(obs, f.pos, Math.max(f.scale.x, f.scale.z) * 0.9)) after++;
+      });
+      if (hit) trees++;
+    }
+    return { before, after, trees };
   }
 
   update(dt: number) {

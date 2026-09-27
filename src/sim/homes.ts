@@ -494,7 +494,12 @@ function tryPlot(w: World, v: Village, cand: Candidate, beds: number, rng: Rng, 
   const trees: number[] = [];
   for (const i of tiles) {
     const p = { x: tileX(w, i % w.w), z: tileZ(w, (i / w.w) | 0) };
-    if (!houseContains(spec, hc, yaw, p, 0.2)) continue;
+    if (!houseContains(spec, hc, yaw, p, 0.2)) {
+      // Trees hard against the walls come down too (their trunks would stand in the eaves).
+      const tr = w.treeAt[i];
+      if (tr >= 0 && !w.trees[tr].protected && houseContains(spec, hc, yaw, p, 1.0)) trees.push(tr);
+      continue;
+    }
     if (w.bushAt[i] >= 0) return null;
     const tr = w.treeAt[i];
     if (tr >= 0) { if (w.trees[tr].protected) return null; trees.push(tr); }

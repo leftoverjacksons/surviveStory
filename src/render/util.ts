@@ -105,6 +105,11 @@ export interface EnhanceOptions {
   zone?: boolean;
   /** How the material responds to the seasons. Default 'solid' (snow settles on top). */
   season?: SeasonStyle;
+  /**
+   * Foliage self-shading: darken the underside of each clump, brighten its
+   * crown. The value is 1 / the geometry's half-height (1 for a unit sphere).
+   */
+  shade?: number;
 }
 
 const SEASON_GLSL: Record<SeasonStyle, string> = {
@@ -146,6 +151,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
   const fog = opts.fog ?? true;
   const zone = opts.zone ?? false;
   const season = opts.season ?? 'solid';
+  const shade = opts.shade ?? 0;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, worldUniforms);
     let vs = shader.vertexShader.replace(
@@ -153,7 +159,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       `#include <common>
       uniform float uTime; uniform float uWind; uniform float uBare; uniform float uFogSize;
       uniform sampler2D uWearTex;
-      varying vec2 vFowXZ; varying float vUp; varying float vHash;`,
+      varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade;`,
     );
     vs = vs.replace(
       '#include <begin_vertex>',
@@ -164,6 +170,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
         vec3 ip = vec3(modelMatrix[3][0], modelMatrix[3][1], modelMatrix[3][2]);
       #endif
       vHash = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))) * 43758.5453);
+      vShade = clamp(position.y * ${shade.toFixed(3)} * 0.5 + 0.5, 0.0, 1.0);
       ${season === 'broadleaf' ? 'transformed *= mix(1.0, 0.42, uBare);' : ''}
       ${season === 'grass' ? `{
         float wr = texture2D(uWearTex, (ip.xz + uFogSize * 0.5) / uFogSize).r;
@@ -198,7 +205,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform sampler2D uZoneTex; uniform float uVeil;
       uniform float uFogSize; uniform float uTime; uniform float uZone;
       uniform float uSnow; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
-      varying vec2 vFowXZ; varying float vUp; varying float vHash;`,
+      varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade;`,
     );
     if (season !== 'none') {
       fs = fs.replace(
@@ -208,6 +215,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
           float snowK = uSnow * smoothstep(0.35, 0.8, vUp) * (0.85 + 0.15 * vHash);
           ${SEASON_GLSL[season]}
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.94, 0.98), snowK);
+          ${shade > 0 ? 'diffuseColor.rgb *= mix(0.7, 1.1, vShade * vShade * (3.0 - 2.0 * vShade));' : ''}
         }`,
       );
     }
@@ -255,7 +263,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
     }
     shader.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => `enh-${wind}-${fog}-${zone}-${season}`;
+  mat.customProgramCacheKey = () => `enh-${wind}-${fog}-${zone}-${season}-${shade}`;
   return mat;
 }
 

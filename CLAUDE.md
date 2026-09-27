@@ -71,6 +71,9 @@ reference: Tiny Glade.
   - Fishing grounds done (`src/sim/fishing.ts`, meshes in
     `render/village.ts`; DESIGN §17 "Fishing grounds").
   - Performance pass 1 done (`src/render/merge.ts`; draw calls −73%, DESIGN §17).
+  - Graphics pass 1 done: trees clear buildings (`render/clearance.ts`), canopy
+    shading, contact shade, house skirts, colour grade (DESIGN §17). NOT published.
+  - Expeditions (milestone D) proposed; user said to hold off for now.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
   - Published: the artifact has the performance-pass build (commit 998993c, version 10).

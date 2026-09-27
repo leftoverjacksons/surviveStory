@@ -12,6 +12,7 @@ import { buildVines } from './render/station';
 import { buildSite } from './render/sites';
 import { mergeStatic } from './render/merge';
 import { TreeField } from './render/trees';
+import { obstacleKey, obstaclesFor } from './render/clearance';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
 import { People } from './render/people';
@@ -47,7 +48,7 @@ const scene = new THREE.Scene();
 const iso = new IsoCamera(view.clientWidth / view.clientHeight);
 iso.bounds = world.w / 2 - 8;
 const sky = new Sky(scene);
-const { composer, bloom, syncXray } = createComposer(renderer, scene, iso.camera, view.clientWidth, view.clientHeight);
+const { composer, bloom, grade, syncXray } = createComposer(renderer, scene, iso.camera, view.clientWidth, view.clientHeight);
 renderer.localClippingEnabled = true;
 const roofs = new RoofControl();
 
@@ -132,6 +133,16 @@ const people = new People(world);
 people.group.name = 'people';
 scene.add(people.group);
 
+/** Trees make room for buildings (finished or planned). */
+let clearanceKey = '';
+const noClear = new URLSearchParams(location.search).has('noclear'); // for before/after comparisons
+function syncClearance() {
+  const k = obstacleKey(colony.village);
+  if (k === clearanceKey || noClear) return;
+  clearanceKey = k;
+  trees.setObstacles(obstaclesFor(world, colony.village));
+}
+
 function syncScene() {
   syncAgents(colony);
   people.sync(community.survivors, colony.agents);
@@ -140,6 +151,7 @@ function syncScene() {
   plotsView.sync(seasonIndex(colony.community.day));
   heaps.sync();
   fields.sync();
+  syncClearance();
   trees.syncPlanted();
   lightPeopleLayer(scene);
 }
@@ -471,6 +483,7 @@ function frame() {
   const occupied = new Set<number>();
   for (const a of colony.agents) if (a.indoors && a.inside) occupied.add(a.inside);
   plotsView.update(t);
+  grade.uniforms.uNight.value = sky.night;
   villageView.update(sky.night, occupied, t);
   villageView.updateBoats(colony.agents.filter((a) => a.afloat && a.task?.kind === 'fish').map((a) => {
     const f = colony.village.fisheries.find((x) => a.task?.kind === 'fish' && x.id === a.task.fishery);
@@ -495,6 +508,7 @@ function frame() {
     plotsView.sync(seasonIndex(colony.community.day));
     heaps.sync();
     fields.sync(t);
+    syncClearance();
     trees.syncPlanted();
     lightPeopleLayer(scene);
     hud.render();
@@ -554,4 +568,4 @@ function probeRender(opts: { shadows?: boolean; composer?: boolean } = {}) {
   renderer.shadowMap.enabled = was;
   return out;
 }
-Object.assign(window, { __game: { stats, scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });
+Object.assign(window, { __game: { stats, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });

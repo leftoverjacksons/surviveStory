@@ -190,6 +190,8 @@ function footprintFree(w: World, v: Village, f: Footprint, margin: number): { ok
       }
     } else if (w.blocked[i]) {
       return { ok: false, trees }; // keep a walkway around buildings
+    } else if (w.treeAt[i] >= 0 && !w.trees[w.treeAt[i]].protected && Math.max(-dx - 1, dx - f.w, -dz - 1, dz - f.d) < 1) {
+      trees.push(w.treeAt[i]); // clear a tree standing right against the walls
     }
   }
   const x0 = tileX(w, f.tx) - 0.5, z0 = tileZ(w, f.tz) - 0.5;

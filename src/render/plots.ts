@@ -54,6 +54,75 @@ function fence(world: World, plot: Plot, progress: number, seed: number): THREE.
   return g;
 }
 
+/**
+ * Planting along the foot of a finished house: moss, tufts of long grass and
+ * flowers (by season), so walls grow out of the ground instead of standing
+ * on it. Kept clear of the front door and porch. House-local frame.
+ */
+function skirt(world: World, plot: Plot, season: number, seed: number): THREE.Group {
+  const g = new THREE.Group();
+  const rand = makeRand(seed);
+  const { W, D, chimney, wing, porch } = plot.house;
+  const doorX = -chimney * Math.min(W * 0.2, W / 2 - 1.1);
+  const winter = season === 3, autumn = season === 2;
+  const moss = mat(winter ? '#6f7560' : '#4f6b34'), moss2 = mat(winter ? '#7d8270' : '#5f7a3a');
+  const grass = [mat(autumn ? '#9a8a48' : winter ? '#8a8468' : '#5d8a3a'), mat(autumn ? '#b0923e' : winter ? '#9a9278' : '#6f9a44')];
+  const blade = new THREE.ConeGeometry(0.05, 1, 4);
+  const lump = new THREE.IcosahedronGeometry(1, 0);
+  // Walls: [x0, z0, x1, z1] along the outside of each face, 0.25 out.
+  const o = 0.28;
+  const sides: [number, number, number, number, boolean][] = [
+    [-W / 2 - o, -D / 2, -W / 2 - o, D / 2, false],
+    [W / 2 + o, -D / 2, W / 2 + o, D / 2, false],
+    [-W / 2, -D / 2 - o, W / 2, -D / 2 - o, false],
+    [-W / 2, D / 2 + o, W / 2, D / 2 + o, true],
+  ];
+  for (const [x0, z0, x1, z1, front] of sides) {
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const n = Math.floor(len / 0.45);
+    for (let i = 0; i <= n; i++) {
+      const t = (i + (rand() - 0.5) * 0.6) / n;
+      const x = x0 + (x1 - x0) * t + (rand() - 0.5) * 0.12, z = z0 + (z1 - z0) * t + (rand() - 0.5) * 0.12;
+      // Keep the doorway (and porch steps) clear, and the back where a wing joins.
+      if (front && Math.abs(x - doorX) < (porch ? 1.4 : 0.9)) continue;
+      if (!front && z < -D / 2 && wing && Math.abs(x - wing.side * (W / 2 - wing.w / 2)) < wing.w / 2 + 0.3) continue;
+      const r = rand();
+      if (r < 0.4) {
+        const m = new THREE.Mesh(lump, rand() < 0.5 ? moss : moss2);
+        const s = 0.14 + rand() * 0.14;
+        m.scale.set(s * 1.4, s * 0.55, s * 1.2);
+        m.position.set(x, s * 0.2, z);
+        m.rotation.y = rand() * 3;
+        m.receiveShadow = true;
+        g.add(m);
+      } else {
+        const k = 3 + Math.floor(rand() * 3);
+        for (let b = 0; b < k; b++) {
+          const h = (0.22 + rand() * 0.3) * (winter ? 0.6 : 1);
+          const m = new THREE.Mesh(blade, grass[b % 2]);
+          m.scale.set(1, h, 1);
+          m.position.set(x + (rand() - 0.5) * 0.18, h / 2, z + (rand() - 0.5) * 0.18);
+          m.rotation.set((rand() - 0.5) * 0.5, rand() * 3, (rand() - 0.5) * 0.5);
+          g.add(m);
+        }
+        if (!winter && rand() < (season === 0 ? 0.6 : season === 1 ? 0.45 : 0.15)) {
+          const fm = mat(FLOWERS[Math.floor(rand() * FLOWERS.length)]);
+          for (let f = 0; f < 2; f++) {
+            const h = 0.3 + rand() * 0.2;
+            const head = new THREE.Mesh(lump, fm);
+            head.scale.setScalar(0.045);
+            head.position.set(x + (rand() - 0.5) * 0.2, h, z + (rand() - 0.5) * 0.2);
+            g.add(head);
+          }
+        }
+      }
+    }
+  }
+  g.position.set(plot.hc.x, heightAt(world, plot.hc.x, plot.hc.z), plot.hc.z);
+  g.rotation.y = plot.yaw;
+  return g;
+}
+
 function stakes(world: World, plot: Plot): THREE.Group {
   const g = new THREE.Group();
   for (const c of plot.corners) g.add(box(0.07, 0.55, 0.07, mat('#c8b890'), c.x, heightAt(world, c.x, c.z) + 0.27, c.z));
@@ -202,12 +271,13 @@ export class PlotsView {
 
   constructor(private world: World, private village: Village) {}
 
-  private upsert(id: string, key: string, build: () => THREE.Group) {
+  private upsert(id: string, key: string, build: () => THREE.Group, worldFrame = true) {
     const e = this.entries.get(id);
     if (e && e.key === key) return;
     if (e) this.drop(e);
     const group = build();
-    mergeStatic(group);
+    // Contact shade measured from the ground (yards are built in world coordinates).
+    mergeStatic(group, undefined, false, worldFrame ? (x, z) => heightAt(this.world, x, z) : () => 0);
     this.group.add(group);
     this.entries.set(id, { key, group });
   }
@@ -232,6 +302,16 @@ export class PlotsView {
         if (fp > 0) g.add(fence(this.world, plot, fp, plot.id * 7));
         return g;
       });
+      const home = this.village.buildings.find((b) => b.kind === 'home' && b.plot === plot.id);
+      if (home) {
+        const sid = `s${plot.id}`;
+        live.add(sid);
+        this.upsert(sid, `${season}`, () => {
+          const g = skirt(this.world, plot, season, plot.id * 13 + 5);
+          g.userData.plotId = plot.id;
+          return g;
+        }, false);
+      }
       plot.yard.forEach((y, i) => {
         if (y.kind === 'fence' || y.progress <= 0) return;
         const id = `y${plot.id}:${i}`;
@@ -244,7 +324,7 @@ export class PlotsView {
           g.add(m);
           place(this.world, plot, g, y.u, y.v);
           return g;
-        });
+        }, false);
       });
     }
     for (const [id, e] of this.entries) if (!live.has(id)) { this.drop(e); this.entries.delete(id); }

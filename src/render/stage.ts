@@ -3,6 +3,34 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+/**
+ * Final colour grade, in display space: cool shadows and warm highlights
+ * (split toning), a touch of saturation and contrast, and a soft vignette.
+ * Aimed at the warm-village, teal-shadow look of the art reference.
+ */
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, uNight: { value: 0 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uNight; varying vec2 vUv;
+    void main() {
+      vec4 src = texture2D(tDiffuse, vUv);
+      vec3 c = src.rgb;
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      // Split toning: teal in the shadows, warm in the highlights (less at night).
+      float sh = 1.0 - smoothstep(0.0, 0.45, l), hi = smoothstep(0.55, 1.0, l);
+      c += sh * vec3(-0.012, 0.006, 0.018) + hi * vec3(0.02, 0.008, -0.018) * (1.0 - uNight);
+      // Saturation and a gentle S-curve.
+      c = mix(vec3(l), c, 1.08);
+      c = mix(c, c * c * (3.0 - 2.0 * c), 0.18);
+      // Vignette.
+      vec2 d = vUv - 0.5;
+      c *= 1.0 - smoothstep(0.35, 0.85, length(d * vec2(1.1, 1.0))) * 0.22;
+      gl_FragColor = vec4(clamp(c, 0.0, 1.0), src.a);
+    }`,
+};
 
 /** True isometric elevation: atan(1/sqrt(2)) ≈ 35.26°. */
 const ISO_PITCH = Math.atan(1 / Math.SQRT2);
@@ -236,13 +264,16 @@ export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.7, 0.55, 1.05);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  const grade = new ShaderPass(GradeShader);
+  grade.enabled = !new URLSearchParams(location.search).has('nograde');
+  composer.addPass(grade);
   const syncXray = () => {
     for (const c of [xrayCam, peopleCam]) {
       c.copy(camera as THREE.OrthographicCamera);
       c.layers.set(1);
     }
   };
-  return { composer, bloom, syncXray };
+  return { composer, bloom, grade, syncXray };
 }
 
 /** Lights must also shine (and cast shadows) on layer 1, where people are. */
