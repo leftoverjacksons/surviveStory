@@ -18,6 +18,7 @@ export function mat(color: string, fog = true, tag = ''): THREE.MeshLambertMater
 export const GLOW = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffc27a').multiplyScalar(1.6), toneMapped: false });
 export const GHOST = new THREE.MeshBasicMaterial({ color: '#9ff2e0', transparent: true, opacity: 0.55, depthWrite: false });
 export const WISP = new THREE.MeshBasicMaterial({ color: new THREE.Color('#bff7ea').multiplyScalar(3), toneMapped: false });
+export const BULB = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd98a').multiplyScalar(2.5), toneMapped: false });
 
 
 export function box(w: number, h: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh {

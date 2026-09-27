@@ -188,6 +188,27 @@ function bunting(pairs: [THREE.Vector3, THREE.Vector3][]): THREE.Group {
   const lg = new THREE.BufferGeometry();
   lg.setAttribute('position', new THREE.Float32BufferAttribute(line, 3));
   g.add(flags, new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: '#3a3028' })));
+  // String lights along the same line, run off a little salvaged solar panel at one end.
+  const bulbs: number[] = [];
+  for (let i = 0; i < line.length; i += 6) bulbs.push(line[i], line[i + 1] - 0.04, line[i + 2]);
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position', new THREE.Float32BufferAttribute(bulbs, 3));
+  const lights = new THREE.Points(bg, new THREE.PointsMaterial({ color: '#ffd98a', size: 3.5, sizeAttenuation: false, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  lights.userData.bulbs = true;
+  lights.frustumCulled = false;
+  g.add(lights);
+  if (pairs.length) {
+    const p = pairs[0][0];
+    const panel = new THREE.Group();
+    const cell = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.04, 0.42), enhance(new THREE.MeshLambertMaterial({ color: '#27364f' }), { surface: 'none', season: 'none' }));
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.03, 0.48), enhance(new THREE.MeshLambertMaterial({ color: '#b8bcc0' }), { surface: 'none', season: 'none' }));
+    frame.position.y = -0.02;
+    panel.add(frame, cell);
+    panel.position.set(p.x, p.y + 0.28, p.z);
+    panel.rotation.x = -0.55;
+    panel.userData.keep = true;
+    g.add(panel);
+  }
   return g;
 }
 
@@ -435,9 +456,10 @@ export class PlotsView {
   }
 
   /** Washing stirs in the wind; hens peck about. */
-  update(t: number) {
+  update(t: number, night = 0) {
     for (const e of this.entries.values()) {
       e.group.traverse((o) => {
+        if (o.userData.bulbs) { ((o as THREE.Points).material as THREE.PointsMaterial).opacity = night > 0.3 ? night * (0.9 + Math.sin(t * 1.7) * 0.05) : 0; return; }
         if (o.userData.cloth) o.rotation.x = Math.sin(t * 2.2 + o.position.x * 3) * 0.18;
         else if (o.userData.hen) o.rotation.x = Math.max(0, Math.sin(t * 3 + o.position.x * 5)) * 0.5;
       });

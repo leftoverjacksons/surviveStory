@@ -13,7 +13,7 @@ import { mergeStatic } from './merge';
 import type { RoofControl } from './roofs';
 import { glowTexture, makeRand } from './util';
 
-import { GHOST, GLOW, WISP, box, cyl, mat, smooth } from './kit';
+import { BULB, GHOST, GLOW, box, cyl, mat, smooth } from './kit';
 let glowTex: THREE.Texture | null = null;
 
 const PANELS = ['#8a5a3a', '#6d7b80', '#5f7f78', '#8e6a4f', '#7b4a3c', '#9a9486'];
@@ -270,12 +270,19 @@ function lantern(p: number): THREE.Group {
   if (h > 0.05) g.add(box(0.12, h, 0.12, wood, 0, h / 2, 0));
   if (p > 0.6) g.add(box(0.7, 0.08, 0.08, wood, 0.28, 2.4, 0));
   if (p >= 1) {
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), WISP);
-    orb.position.set(0.55, 2.05, 0);
-    g.add(orb);
-    g.add(box(0.02, 0.28, 0.02, mat('#3a3a38', true, 'lantern'), 0.55, 2.28, 0));
+    // A salvaged lamp on a hook, wired to a small solar panel on top of the post.
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.16, 8, 1, true), mat('#3a3a38', true, 'lantern'));
+    shade.position.set(0.55, 2.2, 0);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), BULB);
+    bulb.position.set(0.55, 2.1, 0);
+    const orb = bulb;
+    g.add(shade, bulb);
+    g.add(box(0.02, 0.2, 0.02, mat('#3a3a38', true, 'lantern'), 0.55, 2.34, 0));
+    const panel = box(0.55, 0.04, 0.4, mat('#27364f', true, 'lantern'), 0, 2.62, 0);
+    panel.rotation.x = -0.5;
+    g.add(panel);
     glowTex ??= glowTexture();
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#9ff2e0', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 }));
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: '#ffd9a0', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.8 }));
     halo.position.copy(orb.position);
     halo.scale.setScalar(1.8);
     halo.userData.lanternHalo = true;
@@ -947,7 +954,7 @@ export class VillageView {
   }
 
   /** Warm windows at night for buildings with someone asleep inside. */
-  update(night: number, occupied: Set<number>, t: number) {
+  update(night: number, occupied: Set<number>, _t: number) {
     const lit = night > 0.35;
     const st = this.village.buildings.find((b) => b.kind === 'store')!;
     for (const m of this.store.glow) m.visible = lit && occupied.has(st.id);
@@ -957,7 +964,7 @@ export class VillageView {
       for (const m of e.glow) m.visible = lit && occupied.has(b.id);
       if (b.kind === 'lantern') {
         e.group.traverse((o) => {
-          if (o.userData.lanternHalo) (o as THREE.Sprite).scale.setScalar((1.4 + night * 1.2) * (1 + Math.sin(t * 2 + b.id) * 0.06));
+          if (o.userData.lanternHalo) { const sp = o as THREE.Sprite; sp.scale.setScalar(0.6 + night * 1.4); sp.material.opacity = 0.15 + night * 0.7; }
         });
       }
     }

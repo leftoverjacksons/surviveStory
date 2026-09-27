@@ -124,7 +124,7 @@ export class Wisps {
       p.y = heightAt(this.world, p.x, p.z) + 1.3 + Math.sin(ph * w.freq.y) * 0.6 + base.y;
       const flicker = 0.85 + Math.sin(ph * 9.1) * 0.08 + Math.sin(ph * 23.7) * 0.07;
       w.halo.position.copy(p);
-      w.halo.scale.setScalar((0.9 + night * 0.9) * flicker);
+      w.halo.scale.setScalar((0.55 + night * 0.5) * flicker);
       (w.halo.material as THREE.SpriteMaterial).opacity = glow * 0.9;
       if (w.light) {
         w.light.position.copy(p);
@@ -203,22 +203,21 @@ export class Orb {
   group = new THREE.Group();
   private core: THREE.Mesh;
   private halo: THREE.Sprite;
-  private spots = [
-    new THREE.Vector3(-30, 20, -34), new THREE.Vector3(34, 24, -26),
-    new THREE.Vector3(-36, 18, 22), new THREE.Vector3(10, 26, -40),
-  ];
+  /** Where it shows itself: over the Ring and the Folk's hill, never at random over the village. */
+  private spots: THREE.Vector3[];
   private idx = 0;
   private clock = 0;
   private presence = 1;
-  constructor() {
+  constructor(spots: THREE.Vector3[]) {
+    this.spots = spots;
     this.core = new THREE.Mesh(
-      new THREE.SphereGeometry(0.7, 16, 12),
+      new THREE.SphereGeometry(0.45, 16, 12),
       new THREE.MeshBasicMaterial({ color: new THREE.Color('#fff4e0').multiplyScalar(3), toneMapped: false, transparent: true }),
     );
     this.halo = new THREE.Sprite(new THREE.SpriteMaterial({
       map: GLOW(), color: '#ffe9c9', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
     }));
-    this.halo.scale.setScalar(7);
+    this.halo.scale.setScalar(4.5);
     this.group.add(this.core, this.halo);
     this.group.position.copy(this.spots[0]);
   }
@@ -231,6 +230,8 @@ export class Orb {
       this.idx = (this.idx + 1) % this.spots.length;
     }
     this.presence = local < 1.2 ? local / 1.2 : local > cycle - 1.2 ? (cycle - local) / 1.2 : 1;
+    // It only comes one visit in three, and only after dark.
+    if (Math.floor(this.clock / cycle) % 3 !== 0 || night < 0.4) this.presence = 0;
     const target = this.spots[this.idx];
     this.group.position.set(target.x + Math.sin(t * 0.2) * 1.5, target.y + Math.sin(t * 0.7) * 0.5, target.z);
     const vis = this.presence * (0.25 + night * 0.75);

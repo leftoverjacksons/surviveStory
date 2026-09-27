@@ -9,7 +9,7 @@
  */
 import * as THREE from 'three';
 import type { Site } from '../sim/sites';
-import { boxSurface, buildStation, type StationBuild, type VineEdge, type VineSurface } from './station';
+import { boxSurface, buildStation, slabSurface, type StationBuild, type VineEdge, type VineSurface } from './station';
 import { enhance, enhanced, lambert, makeRand, shadowed } from './util';
 
 interface Kit {
@@ -99,7 +99,7 @@ function gableRoof(k: Kit, site: Site, roofM: THREE.Material, gableM: THREE.Mate
       else { slab.rotation.order = 'YXZ'; slab.rotation.y = Math.PI / 2; slab.rotation.x = s * pitch; }
       k.g.add(slab);
       k.roofs.push(slab);
-      k.surfaces.push({ ...boxSurface(slab.position.clone(), alongX ? new THREE.Vector3(s1 - s0, 0.2, slopeLen * 0.8) : new THREE.Vector3(slopeLen * 0.8, 0.2, s1 - s0), ['py'], 0.9), roof: true });
+      k.surfaces.push(slabSurface(slab, (s1 - s0) * 0.95, thick, slopeLen * 0.8, 0.9));
     }
     const ridge = new THREE.Mesh(new THREE.BoxGeometry(s1 - s0, 0.16, 0.3), lambert('#3f3a36'));
     place(ridge, (s0 + s1) / 2, 0, eaves + rise + 0.08);

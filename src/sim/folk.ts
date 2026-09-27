@@ -44,13 +44,18 @@ export const WILD_RADIUS = 8.5;
  */
 export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng: Rng): FolkLand {
   let best: { x: number; z: number; score: number } | null = null;
-  for (let k = 0; k < 160; k++) {
-    const a = rng.range(0, Math.PI * 2), d = rng.range(31, 40);
+  // Out beyond the Ring, on its side of the village, so the path between them runs outside the village.
+  const ringA = Math.atan2(w.fairyRing.z, w.fairyRing.x), ringD = Math.hypot(w.fairyRing.x, w.fairyRing.z);
+  // If nothing fits every wish, the good ground farthest from the old districts.
+  let fallback: { x: number; z: number; far: number } | null = null;
+  for (let k = 0; k < 400; k++) {
+    const a = ringA + rng.range(-0.6, 0.6) * (k < 120 ? 1 : k < 260 ? 2 : 3), d = ringD + rng.range(12, 19);
     const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    if (segmentDist(x, z, w.fairyRing.x, w.fairyRing.z) < 17) continue;
     const tx = toTileX(w, x), tz = toTileZ(w, z);
     if (!inBounds(w, tx, tz)) continue;
     if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 14) continue;
-    if (w.districts.some((q) => Math.hypot(x - q.x, z - q.z) < 34)) continue;
+    const far = Math.min(99, ...w.districts.map((q) => Math.hypot(x - q.x, z - q.z)));
     let ok = true, forest = 0;
     for (let dz = -5; dz <= 5 && ok; dz++) for (let dx = -5; dx <= 5; dx++) {
       if (!inBounds(w, tx + dx, tz + dz)) { ok = false; break; }
@@ -60,15 +65,15 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
       if (g === Ground.Forest) forest++;
     }
     if (!ok) continue;
+    if (far < 34) { if (!fallback || far > fallback.far) fallback = { x, z, far }; continue; }
     const score = forest + rng.range(0, 12);
     if (!best || score > best.score) best = { x, z, score };
   }
-  // A fallback that always exists: due north of the Ring, pulled in.
-  const at = best ?? { x: w.fairyRing.x * 1.7, z: w.fairyRing.z * 1.7 };
+  const at = best ?? fallback ?? { x: w.fairyRing.x * 1.7, z: w.fairyRing.z * 1.7 };
   const mound: Mound = {
     x: at.x, z: at.z, r: 3.6, name: MOUND_NAMES[Math.abs(seed) % MOUND_NAMES.length],
-    // The door looks toward the village.
-    door: Math.atan2(-at.z, -at.x),
+    // The door looks toward the Ring.
+    door: Math.atan2(w.fairyRing.z - at.z, w.fairyRing.x - at.x),
   };
 
   // The hill itself: a smooth swell in the ground.
@@ -138,6 +143,13 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
   // The village has always known the hill is there.
   reveal(w, mound.x, mound.z, WILD_RADIUS + 3);
   return { mound, path, paths };
+}
+
+/** Distance from home (the origin) to the segment a→b. */
+function segmentDist(ax: number, az: number, bx: number, bz: number): number {
+  const dx = bx - ax, dz = bz - az;
+  const t = Math.max(0, Math.min(1, -(ax * dx + az * dz) / (dx * dx + dz * dz || 1)));
+  return Math.hypot(ax + dx * t, az + dz * t);
 }
 
 /** Can a tile be built on as far as the Folk are concerned? */

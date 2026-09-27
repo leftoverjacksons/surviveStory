@@ -108,18 +108,19 @@ scene.add(herds.group);
 loadAnimals().then((k) => herds.setKinds(k)).catch((e) => console.warn('animals:', e));
 
 const ring = new THREE.Vector3(world.fairyRing.x, 0, world.fairyRing.z);
-const wisps = new Wisps(world, [
-  ring, ring.clone().add(new THREE.Vector3(3, 0, 2)),
-  new THREE.Vector3(-4, 0.8, 2),
-  new THREE.Vector3(world.campfire.x - 2, 0.6, world.campfire.z - 3),
-  new THREE.Vector3(18, 0, -14),
-  new THREE.Vector3(-20, 0, 8),
-  new THREE.Vector3(8, 0, 22),
-]);
+// Wisps belong to the Veil's places: the Ring, the Folk's hill and the paths between.
+const mound = new THREE.Vector3(world.folk.mound.x, 0.4, world.folk.mound.z);
+const wispAnchors = [
+  ring, ring.clone().add(new THREE.Vector3(3, 0, 2)), ring.clone().add(new THREE.Vector3(-2, 0.5, -3)),
+  mound, mound.clone().add(new THREE.Vector3(5, 0, -3)), mound.clone().add(new THREE.Vector3(-4, 0, 4)),
+  ...world.folk.paths.flatMap((p) => [p[Math.floor(p.length / 3)], p[Math.floor((p.length * 2) / 3)]]).map((q) => new THREE.Vector3(q.x, 0, q.z)),
+];
+const wisps = new Wisps(world, wispAnchors, 7);
+const orbSpots = [new THREE.Vector3(ring.x, 16, ring.z), new THREE.Vector3(mound.x, 14, mound.z)];
 scene.add(wisps.group);
 const fireflies = new Fireflies(world);
 scene.add(fireflies.points);
-const orb = new Orb();
+const orb = new Orb(orbSpots);
 scene.add(orb.group);
 
 const camp = new Camp(world);
@@ -678,7 +679,7 @@ function frame() {
   camp.update(t, community.resources.wood > 0);
   const occupied = new Set<number>();
   for (const a of colony.agents) if (a.indoors && a.inside) occupied.add(a.inside);
-  plotsView.update(t);
+  plotsView.update(t, sky.night);
   grade.uniforms.uNight.value = sky.night;
   villageView.update(sky.night, occupied, t);
   villageView.updateBoats(colony.agents.filter((a) => a.afloat && a.task?.kind === 'fish').map((a) => {

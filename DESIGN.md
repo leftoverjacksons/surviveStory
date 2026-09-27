@@ -1478,3 +1478,29 @@ Built before any clearing mechanics, at the user's request.
   - A full team of four costs nothing but risk, since no time passes;
     the design may want a cost (Influence, or the Veil only opening on
     some nights).
+
+### 19.11 Playtest round 3 (version 16)
+- **Lights with a source.** The user found orbs drifting around the village
+  confusing. Every Veil light now belongs to a Veil place:
+  - Wisps (7, smaller) drift only between the Ring, the Folk's hill and
+    points on the Folk paths.
+  - The great Orb shows only above the Ring or the hill, one visit in
+    three, and only after dark.
+  - The village's own lights are electric instead:
+    - Built lanterns are a salvaged lamp on a hook, with a small solar
+      panel on the post.
+    - The bunting between houses carries warm string lights at night,
+      run off a little solar panel at one end.
+- **The Ring and the hill.**
+  - The Ring is placed on any bearing, 20–23 units out (the edge of the
+    starting ground), on clear ground away from roads, water, the site and
+    ruins.
+  - The Folk's hill is out beyond it, within ±0.6 radians of its bearing
+    (wider if needed), 12–19 units further. Their path must stay at least
+    17 from the camp; across 40 worlds it never came closer than 20.8.
+  - The door faces the Ring. If nothing fits every wish, the hill takes
+    the good ground farthest from any district.
+- **Roof ivy.** Ivy on pitched site roofs was sampled on a level plane at
+  the slab's centre height, so it cut through both slopes. It is now
+  sampled in the slab's own frame (`station.ts#slabSurface`) and lies on
+  the pitch.

@@ -132,9 +132,26 @@ export function generateWorld(seed: number, size = MAP_SIZE, siteKind: SiteKind 
     w.pois.push({ id: poiId++, kind: 'ruin', tx: toTileX(w, d.x), tz: toTileZ(w, d.z), name: d.name, discovered: false });
   }
 
-  // --- fairy ring: a clearing within sight of home ---
-  const ringA = rng.range(3.4, 4.2); // roughly north-west
-  w.fairyRing = { x: Math.round(Math.cos(ringA) * 19), z: Math.round(Math.sin(ringA) * 19) };
+  // --- fairy ring: a clearing at the edge of the starting ground, any side of it ---
+  {
+    const rr = new Rng(seed ^ 0x219);
+    const clearAround = (x: number, z: number) => {
+      for (let dz = -5; dz <= 5; dz++) for (let dx = -5; dx <= 5; dx++) {
+        const tx = toTileX(w, x) + dx, tz = toTileZ(w, z) + dz;
+        if (!inBounds(w, tx, tz)) return false;
+        const i = idx(w, tx, tz), g = w.ground[i];
+        if (g === Ground.Asphalt || g === Ground.Concrete || g === Ground.Water || w.blocked[i]) return false;
+      }
+      return !siteRect(x, z) && !w.ruins.some((r) => Math.hypot(r.x - x, r.z - z) < 12);
+    };
+    let at = { x: -15, z: -13 };
+    for (let k = 0; k < 80; k++) {
+      const a = rr.range(0, Math.PI * 2), d = rr.range(20, 23);
+      const x = Math.round(Math.cos(a) * d), z = Math.round(Math.sin(a) * d);
+      if (clearAround(x, z)) { at = { x, z }; break; }
+    }
+    w.fairyRing = at;
+  }
   w.pois.push({ id: poiId++, kind: 'ring', tx: toTileX(w, w.fairyRing.x), tz: toTileZ(w, w.fairyRing.z), name: 'the Ring', discovered: true });
 
   // --- heights (at tile corners) ---

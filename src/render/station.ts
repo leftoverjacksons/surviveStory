@@ -36,6 +36,26 @@ export function boxSurface(center: THREE.Vector3, size: THREE.Vector3, faces: ('
   };
 }
 
+/**
+ * The top face of a (possibly tilted) slab: points are sampled in the slab's
+ * own frame and carried by its rotation, so ivy lies on a pitched roof
+ * instead of cutting through it on a level plane.
+ */
+export function slabSurface(slab: THREE.Mesh, sx: number, thick: number, sz: number, weight: number): VineSurface {
+  slab.updateMatrix();
+  const m = slab.matrix.clone();
+  const rot = new THREE.Matrix3().setFromMatrix4(m);
+  const n = new THREE.Vector3(0, 1, 0).applyMatrix3(rot).normalize();
+  return {
+    weight,
+    roof: true,
+    sample(rand) {
+      const p = new THREE.Vector3((rand() - 0.5) * sx, thick / 2 + 0.02, (rand() - 0.5) * sz).applyMatrix4(m);
+      return { p, n: n.clone() };
+    },
+  };
+}
+
 export interface StoreParts { fallen: THREE.Mesh; door: THREE.Mesh; glow: THREE.Mesh[] }
 
 export interface StationBuild {
