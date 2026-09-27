@@ -7,7 +7,7 @@ import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../s
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
 import { landWanted, standingWord, type FolkFocus } from '../sim/folk';
-import { FOLK_SUITED, VEIL_COST, canClear } from '../sim/haunt';
+import { FAE_UNIT, FOLK_SUITED, VEIL_COST, canAskFolk, canClear } from '../sim/haunt';
 import type { DistrictKind } from '../sim/oldworld';
 
 const DISTRICT_BLURB: Record<DistrictKind, string> = {
@@ -59,7 +59,7 @@ export interface HudActions {
   onCalm(): void;
   onOmen(): void;
   onFolkFocus(focus: FolkFocus): void;
-  onClear(haunt: number, team: number[]): void;
+  onClear(haunt: number, team: number[], fae?: number): void;
   onGive(district: number, to: 'village' | 'folk'): void;
 }
 
@@ -86,6 +86,8 @@ export class Hud {
   /** The team being chosen for a clearing. */
   private team = new Set<number>();
   private teamFor = -1;
+  /** One of the Folk asked along, if any. */
+  private fae: number | null = null;
 
   constructor(private col: Colony, act: HudActions) {
     $('rot-l').addEventListener('click', () => act.onRotate(-1));
@@ -139,8 +141,10 @@ export class Hud {
         if (this.team.has(id)) this.team.delete(id); else if (this.team.size < 4) this.team.add(id);
         this.renderInspect();
       }
+      const fp = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-fae]');
+      if (fp) { const id = Number(fp.dataset.fae); this.fae = this.fae === id ? null : id; this.renderInspect(); }
       const go = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-clear]');
-      if (go && !go.disabled) act.onClear(Number(go.dataset.clear), [...this.team]);
+      if (go && !go.disabled) act.onClear(Number(go.dataset.clear), [...this.team], this.fae ?? undefined);
       const give = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-give]');
       if (give) act.onGive(Number(give.dataset.district), give.dataset.give as 'village' | 'folk');
     });
@@ -458,11 +462,23 @@ export class Hud {
       body = `<div class="h" style="margin-top:8px">Send a team into the Veil (up to four)</div>
         <div class="what" style="font-size:12px">Seers (high Sight) can see and speak with what lives here, but it frightens them. Anchors (low Sight) barely feel it, and steady the others. No time passes at home while they are gone. Nobody dies in the Veil, but people can be rattled, or taken.</div>
         <div class="row">${people}</div>
+        ${this.folkPicker()}
         <div class="row"><button type="button" class="primary" data-clear="${hi}" ${why || !this.team.size ? 'disabled' : ''} title="${esc(why ?? '')}">Into the Veil${this.team.size ? ` · ${this.team.size}` : ''} · ${VEIL_COST} Influence</button>${why ? `<span class="st">${esc(why)}</span>` : ''}</div>`;
     }
     return `<h3>${esc(d.name)}<button type="button" id="inspect-close">Close</button></h3>
       <div class="what">${esc(DISTRICT_BLURB[d.kind])}</div>
       <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>${body}`;
+  }
+
+  /** Ask one of the Folk along into the Veil, if they are friendly enough. */
+  private folkPicker(): string {
+    const f = this.col.folk;
+    if (!canAskFolk(this.col)) {
+      return f.met ? '<div class="what" style="font-size:12px">The Folk might walk into the Veil with you once they are friendly with the village.</div>' : '';
+    }
+    if (this.fae !== null && !f.beings.some((b) => b.id === this.fae)) this.fae = null;
+    const btns = f.beings.map((b) => `<button type="button" data-fae="${b.id}" aria-pressed="${this.fae === b.id}" title="${esc(FAE_UNIT[b.kind].gift)}">${esc(b.known ? b.name : `a ${b.kind} of the hill`)}</button>`).join('');
+    return `<div class="h" style="margin-top:6px">Ask one of the Folk to come (optional)</div><div class="row">${btns}</div>`;
   }
 
   private folkCard(): string {

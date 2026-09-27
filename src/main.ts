@@ -221,8 +221,8 @@ const hud = new Hud(colony, {
   },
   onOmen() { setZoneTool(null); setOmen(!omenMode); },
   onFolkFocus(focus) { colony.folk.focus = focus; colony.folk.version++; hud.render(); },
-  onClear(haunt, team) {
-    const r = startClearing(colony, haunt, team);
+  onClear(haunt, team, fae) {
+    const r = startClearing(colony, haunt, team, fae);
     if (typeof r === 'string') { community.log.push({ day: community.day, text: r, tone: 'info' }); hud.render(); return; }
     enterVeil(r);
   },
@@ -872,12 +872,13 @@ const debugMixers: THREE.AnimationMixer[] = [];
 
 const veilDebug = {
   /** Start a clearing on the first district of a kind, with the suggested team. */
-  veilStart(kind = 'suburb') {
+  veilStart(kind = 'suburb', withFolk = false) {
     for (const p of world.pois) p.discovered = true;
     const hi = colony.haunts.findIndex((h) => world.districts[h.district].kind === kind);
     const by = [...colony.community.survivors.filter((x) => x.alive)].sort((a, b) => b.sight - a.sight);
     const team = [...new Set([by[0], by[1], by[by.length - 1], by[by.length - 2]].filter(Boolean).map((x) => x.id))];
-    const r = startClearing(colony, hi, team);
+    if (withFolk) { colony.folk.met = true; colony.folk.standing = Math.max(colony.folk.standing, 60); }
+    const r = startClearing(colony, hi, team.slice(0, withFolk ? 3 : 4), withFolk ? colony.folk.beings.find((b) => b.kind === 'elder')?.id : undefined);
     if (typeof r !== 'string') enterVeil(r);
     return r;
   },

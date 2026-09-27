@@ -14,9 +14,11 @@ import { householdName, householdOf, waitingHouseholds } from './homes';
 import type { Rng } from './rng';
 import { communitySight, homeResonance, lanternGift, nurture, type EntityRequest } from './veil';
 import { Zone, idx, paintZone, reveal, toTileX, toTileZ, type Point } from './world';
+import { WILD_RADIUS, changeStanding, landWanted } from './folk';
 
 export type ProposalKind =
-  | 'build' | 'festival' | 'wild_ring' | 'rest_day' | 'open_gates' | 'close_gates' | 'offering' | 'grove' | 'home' | 'commons';
+  | 'build' | 'festival' | 'wild_ring' | 'rest_day' | 'open_gates' | 'close_gates' | 'offering' | 'grove' | 'home' | 'commons'
+  | 'folk_festival' | 'folk_land' | 'folk_amends';
 
 export interface Proposal {
   id: number;
@@ -161,6 +163,39 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
       }),
     });
   }
+  // The Folk send word: through whoever sees them best.
+  const f = col.folk, hill = col.world.folk.mound.name;
+  const folkVoice = () => voice(living, (s) => s.sight / 20 + (s.role === 'attune' ? 1 : 0), rng, taken).id;
+  if (f.met && f.standing >= 35 && r.food >= 20 && r.wood >= 8 && col.minute > col.council.festivalUntil + 1440 * 8) {
+    out.push({
+      score: 1.1,
+      make: () => ({
+        kind: 'folk_festival', title: `Hold a festival with the Folk of ${hill}`, cost: { food: 12, wood: 6 },
+        pitch: 'They dance at the Ring when the moon\'s up. Let\'s bring the food and the fiddle and dance with them, for once.',
+        proposer: folkVoice(),
+      }),
+    });
+  }
+  if (f.met && f.standing >= 40 && f.land < landWanted(f)) {
+    out.push({
+      score: 1.0,
+      make: () => ({
+        kind: 'folk_land', title: 'Give the Folk more of the woods by their hill', cost: {},
+        pitch: `${f.beings.find((b) => b.known)?.name ?? 'One of them'} asked me for room. Their hill wants to grow, and it can't without the land.`,
+        proposer: folkVoice(),
+      }),
+    });
+  }
+  if (f.met && f.standing < 25) {
+    out.push({
+      score: 1.6,
+      make: () => ({
+        kind: 'folk_amends', title: `Make amends with ${hill}`, cost: { food: 8, glimmer: 3 },
+        pitch: 'We\'ve wronged them, and they\'re letting us know it. Bread and glimmer at the door, and say sorry properly.',
+        proposer: folkVoice(),
+      }),
+    });
+  }
   const ringTile = idx(col.world, toTileX(col.world, col.world.fairyRing.x), toTileZ(col.world, col.world.fairyRing.z));
   if (col.world.zone[ringTile] !== Zone.Sacred) {
     out.push({
@@ -243,6 +278,9 @@ function affinity(col: Colony, s: Survivor, p: Omit<Proposal, 'id' | 'support'>)
     case 'wild_ring': case 'grove': case 'offering': return s.sight / 80 - (has(s, 'stoic') ? 0.2 : 0);
     case 'open_gates': return s.stats.empathy / 20 - (has(s, 'hoarder') ? 0.3 : 0);
     case 'close_gates': return (has(s, 'hoarder') ? 0.4 : 0) - s.stats.empathy / 25;
+    case 'folk_festival': return s.sight / 90 + (has(s, 'storyteller') ? 0.2 : 0) - (has(s, 'skittish') ? 0.2 : 0);
+    case 'folk_land': return s.sight / 100 - (s.role === 'builder' ? 0.15 : 0);
+    case 'folk_amends': return s.sight / 100 + (has(s, 'tender') ? 0.2 : 0) - (has(s, 'hoarder') ? 0.2 : 0);
   }
 }
 
@@ -336,6 +374,29 @@ function applyProposal(col: Colony, p: Proposal) {
     case 'wild_ring':
       paintZone(w, w.fairyRing.x, w.fairyRing.z, 5, Zone.Sacred);
       break;
+    case 'folk_festival': {
+      col.council.festivalUntil = col.minute + 1440;
+      for (const s of living) s.morale = Math.min(100, s.morale + 6);
+      for (let i = 0; i < living.length; i++) for (let j = i + 1; j < living.length; j++) adjustBond(c, living[i].id, living[j].id, 1);
+      changeStanding(col, 8);
+      nurture(col, w.folk.mound.x, w.folk.mound.z, 0.1, 3);
+      const stranger = col.folk.beings.find((b) => !b.known);
+      if (stranger) stranger.known = true;
+      log(c, `The village danced at the Ring with the Folk of ${w.folk.mound.name} until the stars went pale.${stranger ? ` ${stranger.name} danced with everyone, and told them their name.` : ''}`, 'strange');
+      break;
+    }
+    case 'folk_land': {
+      const m = w.folk.mound;
+      paintZone(w, m.x, m.z, WILD_RADIUS + 2 + col.folk.level * 1.2, Zone.Wild);
+      changeStanding(col, 4);
+      log(c, `The village walked the bounds around ${m.name} and left more of the woods to the Folk. That night the hill hummed.`, 'good');
+      break;
+    }
+    case 'folk_amends':
+      changeStanding(col, 12);
+      col.folk.offendedUntil = 0;
+      log(c, `Bread, glimmer and an apology were left at the door in ${w.folk.mound.name}. In the morning the bowl had been washed and left on the step.`, 'good');
+      break;
     case 'rest_day':
       col.council.restUntil = col.minute + 1440;
       for (const s of living) { s.morale = Math.min(100, s.morale + 6); s.griefDays = Math.max(0, s.griefDays - 1); }
@@ -417,6 +478,13 @@ export function nudgeOmen(col: Colony, x: number, z: number): boolean {
   col.veil.influence -= OMEN_COST;
   reveal(col.world, x, z, 6);
   col.council.omen = { x, z };
+  // Someone lost to the Folk: the light shows the searchers exactly where.
+  const led = col.folk.led;
+  if (led && Math.hypot(led.x - x, led.z - z) < 16) {
+    led.hint = { x: led.x, z: led.z, r: 1.5 };
+    log(col.community, 'A light hung over the trees all morning, just where the searchers had not yet looked.', 'strange');
+    return true;
+  }
   const scout = alive(col.community).find((s) => s.role === 'scout') ?? alive(col.community)[0];
   if (scout) log(col.community, `${first(scout)} dreamt of a light out in the mist, and means to go and find it.`, 'strange');
   return true;

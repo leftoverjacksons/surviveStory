@@ -15,6 +15,7 @@ import { resonanceAt } from '../sim/veil';
 import { heightAt, tileX, tileZ } from '../sim/world';
 import { glowTexture, makeRand } from './util';
 
+const FAE_COLOR: Record<string, string> = { hob: '#ffd9a0', sprite: '#bff7ea', elder: '#e8e2ff', piper: '#d8ffb8' };
 const COLOR: Record<Spirit['kind'], string> = { remnant: '#c9d4ff', hedge: '#b8ffb0', lamp: '#ffd89a', hollow: '#8a5ad0' };
 
 let glow: THREE.Texture | null = null;
@@ -242,9 +243,43 @@ export class ClearingView {
         this.place(f, s, t, this.arena);
         this.label(f, camera, width, height);
       }
+      // The Folk who came along: small bright figures, gliding to where they stand.
+      for (const u of cl.units) {
+        if (!u.fae || u.state !== 'in') continue;
+        const key = `f${u.id}`;
+        live.add(key);
+        let f = this.forms.get(key);
+        if (!f) {
+          const g = new THREE.Group();
+          const color = FAE_COLOR[u.fae];
+          const hgt = u.fae === 'elder' ? 1.25 : u.fae === 'sprite' ? 0.55 : u.fae === 'hob' ? 0.8 : 1.0;
+          const m = additive(new THREE.Color(color).multiplyScalar(0.8), 0.7);
+          const body = new THREE.Mesh(new THREE.CapsuleGeometry(hgt * 0.16, hgt * 0.4, 3, 8), m);
+          body.position.y = hgt * 0.42 + (u.fae === 'sprite' ? 0.35 : 0);
+          const head = new THREE.Mesh(new THREE.SphereGeometry(hgt * 0.15, 10, 8), m);
+          head.position.y = hgt * 0.86 + (u.fae === 'sprite' ? 0.35 : 0);
+          const glowS = halo(color, 1.8, 0.35);
+          glowS.position.y = hgt * 0.6;
+          g.add(body, head, glowS);
+          g.position.set(tileX(w, u.tx), this.y(u.tx, u.tz), tileZ(w, u.tz));
+          f = { group: g, key, phase: this.rand() * 10 };
+          const el = document.createElement('div');
+          el.className = 'label spirit';
+          el.textContent = u.name;
+          this.labels.appendChild(el);
+          f.label = el;
+          this.forms.set(key, f);
+          this.arena.add(g);
+        }
+        const tx = tileX(w, u.tx), tz = tileZ(w, u.tz);
+        const p = f.group.position;
+        p.x += (tx - p.x) * 0.12; p.z += (tz - p.z) * 0.12;
+        p.y = heightAt(w, p.x, p.z) + Math.abs(Math.sin(t * 3 + f.phase)) * 0.06;
+        this.label(f, camera, width, height);
+      }
       void cheb;
     }
-    for (const k of [...this.forms.keys()]) if (k.startsWith('c') && !live.has(k)) this.drop(k);
+    for (const k of [...this.forms.keys()]) if ((k.startsWith('c') || k.startsWith('f')) && !live.has(k)) this.drop(k);
   }
 }
 

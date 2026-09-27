@@ -107,6 +107,9 @@ reference: Tiny Glade.
   - Restoring cleared ruins BUILT (§20.4, `sim/restore.ts`, `restore` projects,
     `Building.ruin`, `Ruin.restored`, `render/ruins.ts#syncRuins`).
   - Clearing controls in the world (§20.5): click a spirit for an action menu.
+  - The Folk together BUILT (§20.6): Folk companions in clearings (FAE_UNIT, name/play
+    verbs), council emissaries (folk_festival/land/amends), rules broken in the Wild,
+    led astray + searches (folk.led; Omen shows the place), borrowed for a dance. NOT published.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

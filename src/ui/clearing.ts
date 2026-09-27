@@ -24,6 +24,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const VERB_LABEL: Record<Verb, string> = {
   listen: 'Listen', offer_food: 'Offer food', offer_glimmer: 'Offer glimmer', offer_object: 'Give back their things',
   rest: 'Lay to rest', invite: 'Ask them home', befriend: 'Befriend', unravel: 'Unravel', banish: 'Banish', steady: 'Steady', ward: 'Ward',
+  name: 'Speak its true name', play: 'Play for it',
 };
 const VERB_TIP: Record<Verb, string> = {
   listen: 'Learn what it is, what it wants, and how it could find peace. Needs Sight to perceive it.',
@@ -37,6 +38,8 @@ const VERB_TIP: Record<Verb, string> = {
   banish: 'Always works. But the place goes colder, and the Folk won\'t like it.',
   steady: 'Give back some Nerve. Anchors are best at it.',
   ward: 'A lantern and a ring of salt: inside it, lures fail and dread is halved.',
+  name: 'Once a clearing: the spirit is known at once and half at peace. A Hollow loses two of its hold.',
+  play: 'Every spirit within three paces grows calmer; the team near the piper steadier.',
 };
 
 export function spiritLabel(s: Spirit, r: Reading): string {
@@ -76,7 +79,7 @@ export class ClearingPanel {
     const u = cl.units.find((x) => x.id === sel && x.state === 'in');
     const team = cl.units.map((x) => {
       const frac = Math.max(0, x.nerve) / x.maxNerve;
-      const tag = x.sight >= 40 ? 'Seer' : x.anchor ? 'Anchor' : '';
+      const tag = x.fae ? `Folk · ${x.fae}` : x.sight >= 40 ? 'Seer' : x.anchor ? 'Anchor' : '';
       const state = x.state === 'fled' ? 'fled home' : x.state === 'taken' ? 'taken' : `${'●'.repeat(x.ap)}${'○'.repeat(Math.max(0, 2 - x.ap))}`;
       return `<button type="button" class="unit ${x.id === sel ? 'sel' : ''} ${x.state}" data-unit="${x.id}" ${x.state !== 'in' ? 'disabled' : ''}>
         <span class="n">${esc(x.name)}${tag ? ` <i>${tag}</i>` : ''}</span>

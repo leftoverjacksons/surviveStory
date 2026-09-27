@@ -1630,3 +1630,55 @@ process food. We need taverns, and solar panels on houses."
 - **The side panel** keeps a short "How it works" (five steps), the team
   with Nerve and actions, what lives here, the log, and the turn buttons.
   The per-spirit action lists moved into the menu.
+
+### 20.6 The Folk together (step 2 of §20.3): as built
+- **Folk companions in clearings.** When the Folk are met and at least
+  friendly (standing 45 or more), the district card offers "Ask one of the
+  Folk to come". One of their people joins the team (`FAE_UNIT` in
+  `haunt.ts`):
+
+  | Kind | Sight | Nerve | Steps per action | Gift |
+  |---|---|---|---|---|
+  | Elder | 90 | 10 | 3 | *Speak its true name*, once a clearing: the spirit is known at once and calm +1; a Hollow loses 2 of its hold |
+  | Hob | 55 | 12 | 4 | Steadies like an Anchor (+3) |
+  | Sprite | 75 | 7 | 6 | Quick, sees well |
+  | Piper | 65 | 8 | 4 | *Play for it* (2 actions): every spirit within 3 paces calm +1, and the team near the piper +1 Nerve |
+
+  - The Folk won't touch iron or salt, so they cannot ward.
+  - Dread only half reaches them, and lamps can't lure them.
+  - If their Nerve breaks they fade home. They are never taken.
+  - Afterwards: standing +5 if the district was cleared, +2 otherwise,
+    −2 if they fled.
+- **Emissaries at the council.** Through whoever sees them best:
+
+  | Proposal | When | Cost | Effect |
+  |---|---|---|---|
+  | A festival with the Folk | Met, standing 35+, 8 days since a festival | 12 food, 6 wood | Morale +6, bonds, standing +8, a name learned |
+  | More of the woods for their hill | Met, standing 40+, land short of what they want | none | Wild widened to radius 10.5 + 1.2 per level; standing +4 |
+  | Make amends | Met, standing below 25 | 8 food, 3 glimmer | Standing +12; ends the offence |
+
+- **Rules that can be broken.**
+  - Woodcutters cut in the Wild only when the woodpile is below 4 in
+    autumn or winter: standing −5, the Folk offended for 5 days, and the
+    first rule learned.
+  - Hungry foragers (rationing, or food below 2 per person) take the
+    Wild's berries: standing −1.5, offended for 2 days.
+- **Led astray.**
+  - At 01:00, if the Folk are offended or below 25 standing: a 18% chance
+    a night (30% when soured) that someone walks out of bed into the woods
+    near the hill.
+  - By day, up to two searchers (those close to them, or a scout) go
+    looking. The search area narrows each time.
+  - An Omen cast within 16 of them shows the exact place.
+  - Found: they come home with morale −4, the finder +4. Unfound after two
+    days, they come home alone at dusk: morale −12, Sight +5.
+  - Friends of the hill (standing 45+, met) are occasionally *borrowed for
+    a dance* instead: 2% a night, about once a year. They come back
+    laughing, with 3 glimmer.
+- **Measured.**
+  - Held soured (standing ≤18) for 20 days on 8 seeds: 46 led away, 38
+    found by searchers, 5 came home alone.
+  - In ordinary play (6 seeds, one year): standing stayed 40–54. No rules
+    were broken and nobody was led away before the borrowing was added.
+    Folk proposals reached the council 9 times.
+  - Balance probe unchanged: no deaths, morale 64–72.

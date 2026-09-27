@@ -61,6 +61,7 @@ describe('the Folk', () => {
     const col = createColony(generateWorld(9), createCommunity(9));
     col.folk.focus = 'village';
     col.folk.standing = 65;
+    col.council.nextDay = 9999; // no council: nobody grants them land here
     const work0 = col.village.projects.reduce((s, p) => s + p.work, 0);
     days(col, 12);
     expect(col.folk.news.some((n) => /In the night|In the morning/.test(n.text))).toBe(true);

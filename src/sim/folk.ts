@@ -12,7 +12,7 @@
  *   village (night chores), or their own home (the mound grows).
  */
 import type { Colony } from './colony';
-import { alive, log, withRng, type Survivor } from './community';
+import { alive, log, remember, withRng, type Survivor } from './community';
 import type { Rng } from './rng';
 import { nurture, resonanceAt } from './veil';
 import {
@@ -176,6 +176,19 @@ export interface Fae {
   lastChore: number;
 }
 
+export interface LedAway {
+  id: number;
+  x: number; z: number;
+  /** Day it happened, and the day they will find their own way back if nobody finds them. */
+  day: number;
+  until: number;
+  /** Where the searchers think they are; it narrows with each search. */
+  hint: { x: number; z: number; r: number };
+  searchers: number[];
+  /** Friends of the hill are borrowed for a dance, not punished. */
+  borrowed?: boolean;
+}
+
 export type FolkWorkKind = 'ring' | 'lantern' | 'bower' | 'cairn' | 'flowers';
 export interface FolkWork { kind: FolkWorkKind; x: number; z: number; /** 0..1, grows in over a few days. */ grown: number }
 
@@ -198,6 +211,10 @@ export interface FolkSociety {
   offeredDay: number;
   /** Night chores done tonight (day, count): one a night, more as the hill grows. */
   chores: { day: number; n: number };
+  /** Until this day the Folk are offended (a rule was broken): someone may be led astray. */
+  offendedUntil: number;
+  /** Someone led off into the woods at night, where they are, and who is out looking. */
+  led: LedAway | null;
   /** Wild tiles yesterday, to notice when their land is taken. */
   land: number;
   nextId: number;
@@ -233,7 +250,7 @@ export function createFolk(w: World): FolkSociety {
   const m = w.folk.mound;
   const f: FolkSociety = {
     standing: 40, growth: 0, level: 0, beings: [], works: [], focus: 'woods', met: false, rules: [],
-    news: [], offeredDay: 0, chores: { day: 0, n: 0 }, land: wildTiles(w), nextId: 1, version: 0,
+    news: [], offeredDay: 0, offendedUntil: 0, led: null, chores: { day: 0, n: 0 }, land: wildTiles(w), nextId: 1, version: 0,
   };
   for (const kind of ['elder', 'hob', 'sprite'] as FaeKind[]) addFae(f, w, kind, 0);
   // What was already there: a ring of toadstools and a cairn by the door.
@@ -526,4 +543,80 @@ function arrive(col: Colony, fae: Fae, rng: Rng): Fae['act'] {
   }
   fae.t = rng.range(20, 70);
   return near?.kind === 'ring' ? 'dance' : near ? 'tend' : 'watch';
+}
+
+// ---------- rules broken, and being led astray ----------
+
+/** Someone broke one of the Folk's rules (cut or foraged in the Wild). */
+export function breakRule(col: Colony, s: Survivor, what: 'cut' | 'forage') {
+  const f = col.folk;
+  const n = s.name.split(' ')[0];
+  changeStanding(col, what === 'cut' ? -5 : -1.5);
+  f.offendedUntil = Math.max(f.offendedUntil, col.community.day + (what === 'cut' ? 5 : 2));
+  if (what === 'cut') {
+    news(col, f.met
+      ? `${n} cut a tree in the Wild. The Folk of ${col.world.folk.mound.name} will not forget it soon.`
+      : `${n} cut a tree near ${col.world.folk.mound.name}, and the woods went very quiet.`, 'bad');
+    if (!f.rules.includes(RULES[0])) learnRule(col, 0, s);
+  } else if (!f.news.slice(-2).some((x) => x.text.includes('berries'))) {
+    news(col, `${n} took berries from the Wild in the hungry days. Someone noticed.`, 'bad', true);
+  }
+}
+
+/** At night, when the Folk are offended or soured: someone walks out of bed into the woods. */
+export function maybeLeadAway(col: Colony, rng: Rng) {
+  const f = col.folk, c = col.community, w = col.world, m = w.folk.mound;
+  if (f.led) return;
+  const cross = f.standing < 25 || c.day < f.offendedUntil;
+  // Offended, they lead people astray; friends of the hill are sometimes borrowed for a dance.
+  const borrowed = !cross && f.standing >= 45 && f.met;
+  if (cross ? !rng.chance(f.standing < 20 ? 0.3 : 0.18) : !borrowed || !rng.chance(0.02)) return;
+  const pool = alive(c).filter((s) => !col.taken.some((t) => t.id === s.id));
+  if (pool.length < 3) return;
+  // The Folk take the careless and the sweet alike.
+  const s = rng.pick(pool);
+  const a = rng.range(0, Math.PI * 2), d = rng.range(WILD_RADIUS + 4, WILD_RADIUS + 14);
+  let x = m.x + Math.cos(a) * d, z = m.z + Math.sin(a) * d;
+  const tx = toTileX(w, x), tz = toTileZ(w, z);
+  if (!inBounds(w, tx, tz) || w.ground[idx(w, tx, tz)] === Ground.Water || w.blocked[idx(w, tx, tz)]) { x = m.x + Math.cos(a) * (m.r + 3); z = m.z + Math.sin(a) * (m.r + 3); }
+  f.led = {
+    id: s.id, x, z, day: c.day, until: c.day + 2, borrowed,
+    hint: { x: x + rng.range(-10, 10), z: z + rng.range(-10, 10), r: 12 }, searchers: [],
+  };
+  reveal(w, x, z, 5);
+  const ag = col.agents.find((q) => q.id === s.id);
+  if (ag) { ag.x = x; ag.z = z; ag.path = []; ag.pathI = 0; ag.indoors = false; ag.inside = 0; ag.afloat = false; ag.task = null; }
+  log(c, borrowed
+    ? `In the night ${s.name.split(' ')[0]} got up without waking and walked out toward ${m.name}, following music only they could hear.`
+    : `In the night ${s.name.split(' ')[0]} got up without waking, and walked out toward ${m.name} after a light only they could see.`, borrowed ? 'strange' : 'bad');
+}
+
+/** Found by a searcher (or come home alone). */
+export function endLed(col: Colony, found: Survivor | null) {
+  const f = col.folk, c = col.community;
+  const led = f.led;
+  if (!led) return;
+  f.led = null;
+  const s = c.survivors.find((x) => x.id === led.id);
+  if (!s) return;
+  const n = s.name.split(' ')[0];
+  if (led.borrowed) {
+    c.resources.glimmer += 3;
+    s.morale = Math.min(100, s.morale + 6);
+    s.sight = Math.min(100, s.sight + 4);
+    log(c, `${found ? `${found.name.split(' ')[0]} found ${n}` : `${n} came home`} barefoot and laughing, pockets full of glimmer. They danced all night under the hill, they say, and it was the best night of their life.`, 'strange');
+    remember(s, c.day, 'Danced a night under the hill with the Folk.');
+    return;
+  }
+  if (found) {
+    s.morale = Math.max(0, s.morale - 4);
+    found.morale = Math.min(100, found.morale + 4);
+    log(c, `${found.name.split(' ')[0]} found ${n} sitting in a ring of toadstools in the woods, humming a tune nobody knew, and walked them home.`, 'good');
+    remember(s, c.day, 'Was led into the woods by the Folk, and found.');
+  } else {
+    s.morale = Math.max(0, s.morale - 12);
+    s.sight = Math.min(100, s.sight + 5);
+    log(c, `${n} walked back into the village at dusk, two days gone, thin and quiet. They say they were only away an hour.`, 'strange');
+    remember(s, c.day, 'Was led into the woods by the Folk for two days.');
+  }
 }

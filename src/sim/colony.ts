@@ -26,7 +26,7 @@ import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill, type Craf
 import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pondOf } from './fishing';
 import { highwayZ } from './worldgen';
 import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence } from './fields';
-import { createFolk, folkDaily, folkTick, leaveOffering, type FolkSociety } from './folk';
+import { breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, maybeLeadAway, type FolkSociety } from './folk';
 import { planRestore } from './restore';
 import { createHaunts, hauntDaily, heapHaunted, senseDistrict, type Clearing, type Haunt, type TakenRecord } from './haunt';
 import {
@@ -66,6 +66,8 @@ export type Task =
   | { kind: 'scout'; stage: 'go' | 'look'; t: number }
   | { kind: 'attune'; stage: 'go' | 'sit'; t: number }
   | { kind: 'offer'; stage: 'go' | 'leave'; t: number }
+  | { kind: 'lost'; stage: 'wait' }
+  | { kind: 'search'; stage: 'go' | 'look'; t: number }
   | { kind: 'tend'; stage: 'go' | 'sit'; t: number }
   | { kind: 'wander'; stage: 'go' | 'pause'; t: number }
   | { kind: 'build'; project: number; stage: 'go' | 'work' }
@@ -400,11 +402,15 @@ function pickTree(col: Colony, a: Agent): Task | null {
   const home = { tx: toTileX(w, w.home.x), tz: toTileZ(w, w.home.z) };
   // With a woodlot marked, cut there; otherwise nearest home. Never on sacred ground.
   const woodlot = hasWoodlot(col);
+  const season = seasonNow(col);
+  const desperate = c.wood < 4 && (season === 'winter' || season === 'autumn');
   const ok = (tx: number, tz: number, inLot: boolean) => {
     const i = idx(w, tx, tz);
     const id = w.treeAt[i];
     if (id < 0) return false;
-    if (inLot !== (w.zone[i] === Zone.Woodlot) || w.zone[i] === Zone.Sacred || w.zone[i] === Zone.Wild) return false;
+    if (inLot !== (w.zone[i] === Zone.Woodlot) || w.zone[i] === Zone.Sacred) return false;
+    // The Wild is the Folk's: only cut there when the woodpile is nearly gone in the cold.
+    if (w.zone[i] === Zone.Wild && !desperate) return false;
     const t = w.trees[id];
     return !t.felled && !t.protected && t.growth >= 1 && t.reserved === 0 && isExplored(w, tx, tz) && !col.unreachable.has(`t${id}`);
   };
@@ -440,12 +446,14 @@ function pickHaul(col: Colony, a: Agent): Task | null {
 
 function pickForage(col: Colony, a: Agent): Task | null {
   const w = col.world;
+  // The Wild's berries are the Folk's; only the hungry take them.
+  const hungry = rationing(col) || col.community.resources.food < col.agents.length * 2;
   const found = findNearest(w, toTileX(w, a.x), toTileZ(w, a.z), 40, (tx, tz) => {
     const id = w.bushAt[idx(w, tx, tz)];
     if (id < 0) return false;
     const b = w.bushes[id];
     return b.berries > 0 && b.reserved === 0 && isExplored(w, tx, tz) && !col.unreachable.has(`b${id}`)
-      && w.zone[idx(w, tx, tz)] !== Zone.Field;
+      && w.zone[idx(w, tx, tz)] !== Zone.Field && (hungry || w.zone[idx(w, tx, tz)] !== Zone.Wild);
   });
   if (!found) return null;
   const bush = w.bushes[w.bushAt[idx(w, found.tx, found.tz)]];
@@ -925,6 +933,18 @@ function seatOf(col: Colony, a: Agent): Point {
 function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
   const h = hourOf(col);
   const res = col.community.resources;
+  // Led off by the Folk: they sit where the light left them until someone comes.
+  const led = col.folk.led;
+  if (led?.id === s.id) return { kind: 'lost', stage: 'wait' };
+  // By day, the ones who love them (or the scouts) go looking.
+  if (led && h >= 6 && h < 19 && s.role !== 'rest') {
+    if (!led.searchers.includes(s.id) && led.searchers.length < 2
+      && (bondValue(col.community, s.id, led.id) >= 20 || s.role === 'scout' || led.searchers.length === 0)) led.searchers.push(s.id);
+    if (led.searchers.includes(s.id)) {
+      const p = { x: led.hint.x + (habit(col, s.id) / 100 - 0.5) * led.hint.r, z: led.hint.z + (habit(col, s.id + 3) / 100 - 0.5) * led.hint.r };
+      if (setDest(col, a, p.x, p.z)) return { kind: 'search', stage: 'go', t: 0 };
+    }
+  }
   // Woken by hunger in the night: eat something before going back to bed.
   if (a.needs.food < 15 && res.food >= 1) {
     const m = mealPlace(col, a, s);
@@ -1076,6 +1096,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         const ti = idx(w, tree.tx, tree.tz);
         w.treeAt[ti] = -1;
         if (w.zone[ti] === Zone.Woodlot) col.replant.push(ti);
+        if (w.zone[ti] === Zone.Wild) breakRule(col, s, 'cut');
         // Cutting thins the Veil: gently in a woodlot, sharply near the Ring.
         const nearRing = Math.hypot(tp.x - w.fairyRing.x, tp.z - w.fairyRing.z) < 14;
         disturb(col, tp.x, tp.z, (w.zone[ti] === Zone.Woodlot ? 0.012 : 0.03) * (nearRing ? 2 : 1));
@@ -1126,6 +1147,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
           // Spring gives young greens, not a full crop of berries.
           const seasonYield = seasonNow(col) === 'spring' ? 0.15 : 0.25;
           const amount = Math.max(1, Math.round(bush.berries * seasonYield * (1 + (workRate(s, 'forager') - 1) * 0.5)));
+          if (w.zone[idx(w, bush.tx, bush.tz)] === Zone.Wild) breakRule(col, s, 'forage');
           bush.berries = 0;
           bush.regrowAt = col.minute + (7 / landFactor(col, tileX(w, bush.tx), tileZ(w, bush.tz))) * MIN_PER_DAY;
           bush.reserved = 0;
@@ -1428,6 +1450,29 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       if (t.t >= 60) endTask(col, a);
       return;
     }
+    case 'lost': {
+      if (col.folk.led?.id !== s.id) return endTask(col, a);
+      a.anim = 'idle'; a.activity = `Lost in the woods near ${w.folk.mound.name}`;
+      return;
+    }
+    case 'search': {
+      const led = col.folk.led;
+      if (!led) return endTask(col, a);
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = `Searching the woods for ${first(survivorOf(col, led.id))}`;
+        if (walk(col, a, dt)) t.stage = 'look';
+        return;
+      }
+      a.anim = 'idle'; a.activity = `Calling for ${first(survivorOf(col, led.id))} among the trees`;
+      if (Math.hypot(a.x - led.x, a.z - led.z) < 5) { endLed(col, s); return endTask(col, a); }
+      t.t += dt;
+      if (t.t >= 30) {
+        // Closer each time: they follow broken twigs, a dropped glove, the humming.
+        led.hint = { x: led.hint.x + (led.x - led.hint.x) * 0.45, z: led.hint.z + (led.z - led.hint.z) * 0.45, r: Math.max(2, led.hint.r * 0.6) };
+        endTask(col, a);
+      }
+      return;
+    }
     case 'offer': {
       if (t.stage === 'go') {
         a.anim = 'walk'; a.activity = `Taking bread to ${w.folk.mound.name}`;
@@ -1706,6 +1751,7 @@ function shouldInterrupt(col: Colony, a: Agent): boolean {
   const t = a.task;
   if (!t || a.carry) return false;
   const h = hourOf(col);
+  if (t.kind === 'lost') return false;
   if (isNight(h)) return t.kind !== 'sleep' && t.kind !== 'eat';
   if (isEvening(h)) return !['social', 'eat', 'sleep', 'offer'].includes(t.kind);
   if (a.needs.food < 15 && col.community.resources.food >= 1) return t.kind !== 'eat' && t.kind !== 'sleep';
@@ -1817,6 +1863,7 @@ function hourly(col: Colony) {
     const hour = Math.floor(hourOf(col));
     veilHourly(col, rng, hour, hour >= 18 || hour < 6);
     if (hour === 8) maybeConvene(col, rng);
+    if (hour === 1) maybeLeadAway(col, rng);
   });
 
   const season = seasonNow(col);
@@ -1885,6 +1932,7 @@ function daily(col: Colony) {
   }
   veilDaily(col, { cold, rationing: rationing(col) });
   folkDaily(col);
+  if (col.folk.led && c.day >= col.folk.led.until) endLed(col, null);
   hauntDaily(col);
   fishingDaily(col, (x, z, amt) => disturb(col, x, z, amt, 2));
   councilDaily(col);

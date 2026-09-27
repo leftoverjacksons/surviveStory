@@ -18,7 +18,7 @@
  */
 import type { Colony } from './colony';
 import { adjustBond, alive, bondValue, log, remember, withRng, type Survivor } from './community';
-import { addFae, changeStanding } from './folk';
+import { addFae, changeStanding, type FaeKind } from './folk';
 import type { District, DistrictKind, Ruin } from './oldworld';
 import { Rng } from './rng';
 import { disturb, nurture, resonanceAt } from './veil';
@@ -295,7 +295,25 @@ export interface Unit {
   state: 'in' | 'fled' | 'taken';
   /** Pulled by a spirit this turn (breaking now means being taken). */
   lured: boolean;
+  /** One of the Folk come along to help (not a survivor; id is -1000 - their id). */
+  fae?: FaeKind;
+  faeId?: number;
+  /** Steps per action (the Folk are quick). */
+  stride?: number;
+  /** Once-a-clearing gifts already used (the elder's naming). */
+  used?: boolean;
 }
+
+/** What each kind of the Folk brings into the Veil. */
+export const FAE_UNIT: Record<FaeKind, { sight: number; nerve: number; stride: number; gift: string }> = {
+  elder: { sight: 90, nerve: 10, stride: 3, gift: 'Sees everything. Once, can speak a spirit\'s true name: it is known at once and half at peace (a Hollow loses two of its hold).' },
+  hob: { sight: 55, nerve: 12, stride: 4, gift: 'Sturdy and kind: steadies others as well as an Anchor. Dread only half reaches the Folk.' },
+  sprite: { sight: 75, nerve: 7, stride: 6, gift: 'Quick as a wren (six steps an action), and sees well. Easily frightened.' },
+  piper: { sight: 65, nerve: 8, stride: 4, gift: 'Plays: every spirit within three paces grows calmer, and the team near them steadier.' },
+};
+export const faeUnitId = (faeId: number) => -1000 - faeId;
+/** The Folk will walk into the Veil with the village once they are friendly and have been met. */
+export const canAskFolk = (col: Colony) => col.folk.met && col.folk.standing >= 45;
 
 export interface Ward { tx: number; tz: number; r: number }
 
@@ -359,7 +377,7 @@ export function teamReading(col: Colony, cl: Clearing, s: Spirit): Reading {
   return best;
 }
 
-export function startClearing(col: Colony, hauntIdx: number, team: number[]): Clearing | string {
+export function startClearing(col: Colony, hauntIdx: number, team: number[], faeId?: number): Clearing | string {
   const h = col.haunts[hauntIdx];
   const why = canClear(col, h);
   if (why) return why;
@@ -375,6 +393,15 @@ export function startClearing(col: Colony, hauntIdx: number, team: number[]): Cl
     const at = nearestFree(w, toTileX(w, ex), toTileZ(w, ez), (tx, tz) => !occupied.has(`${tx},${tz}`) && !units.some((u) => u.tx === tx && u.tz === tz));
     const maxNerve = 8 + (s.traits.includes('brave') ? 3 : 0) + (s.traits.includes('stoic') ? 2 : 0) - (s.traits.includes('skittish') ? 3 : 0) + Math.round((s.morale - 50) / 20);
     units.push({ id: s.id, name: first(s), tx: at.tx, tz: at.tz, nerve: maxNerve, maxNerve, ap: AP_PER_TURN, sight: s.sight, anchor: s.sight < 30, state: 'in', lured: false });
+  }
+  // One of the Folk may come too, if they are friendly enough to be asked.
+  const fae = faeId !== undefined ? col.folk.beings.find((b) => b.id === faeId) : undefined;
+  if (faeId !== undefined && (!fae || !canAskFolk(col))) return 'The Folk won\'t come: they need to be friendly with the village first.';
+  if (fae) {
+    const at = nearestFree(w, toTileX(w, ex), toTileZ(w, ez), (tx, tz) => !occupied.has(`${tx},${tz}`) && !units.some((u) => u.tx === tx && u.tz === tz));
+    const k = FAE_UNIT[fae.kind];
+    units.push({ id: faeUnitId(fae.id), name: fae.name, tx: at.tx, tz: at.tz, nerve: k.nerve, maxNerve: k.nerve, ap: AP_PER_TURN, sight: k.sight, anchor: false, state: 'in', lured: false, fae: fae.kind, faeId: fae.id, stride: k.stride });
+    fae.known = true;
   }
   h.attempts++;
   col.veil.influence -= VEIL_COST;
@@ -410,7 +437,7 @@ function blockedFor(col: Colony, cl: Clearing, self?: Unit) {
 export function reachable(col: Colony, cl: Clearing, u: Unit): Map<string, number> {
   const out = new Map<string, number>();
   if (u.state !== 'in' || u.ap <= 0) return out;
-  const max = u.ap * STEPS_PER_AP;
+  const max = u.ap * (u.stride ?? STEPS_PER_AP);
   const occ = blockedFor(col, cl, u);
   const w = col.world;
   const q: [number, number, number][] = [[u.tx, u.tz, 0]];
@@ -451,8 +478,8 @@ export function moveUnit(col: Colony, cl: Clearing, unitId: number, tx: number, 
 }
 
 /** What can be done to a spirit (or an ally) from where a unit stands. */
-export type Verb = 'listen' | 'offer_food' | 'offer_glimmer' | 'offer_object' | 'rest' | 'invite' | 'befriend' | 'unravel' | 'banish' | 'steady' | 'ward';
-export const VERB_COST: Record<Verb, number> = { listen: 1, offer_food: 1, offer_glimmer: 1, offer_object: 1, rest: 1, invite: 1, befriend: 1, unravel: 2, banish: 2, steady: 1, ward: 1 };
+export type Verb = 'listen' | 'offer_food' | 'offer_glimmer' | 'offer_object' | 'rest' | 'invite' | 'befriend' | 'unravel' | 'banish' | 'steady' | 'ward' | 'name' | 'play';
+export const VERB_COST: Record<Verb, number> = { listen: 1, offer_food: 1, offer_glimmer: 1, offer_object: 1, rest: 1, invite: 1, befriend: 1, unravel: 2, banish: 2, steady: 1, ward: 1, name: 1, play: 2 };
 
 export function hasObjectFor(col: Colony, s: Spirit): boolean {
   if (s.home === undefined) return false;
@@ -468,6 +495,9 @@ export function verbsFor(col: Colony, _cl: Clearing, u: Unit, s: Spirit): { verb
   const res = col.community.resources;
   const add = (verb: Verb, ok: boolean, why?: string) => out.push({ verb, ok: ok && u.ap >= VERB_COST[verb], why: u.ap < VERB_COST[verb] ? 'Not enough time this turn.' : ok ? undefined : why });
   const more = s.known < 3 || (s.need === 'company' && s.calm < 3 && s.kind === 'remnant');
+  // The Folk's own gifts.
+  if (u.fae === 'elder') add('name', cheb(u, s) <= 3 && !u.used, u.used ? 'The elder has spoken a name already tonight.' : 'Within three paces.');
+  if (u.fae === 'piper') add('play', cheb(u, s) <= 3, 'Within three paces.');
   add('listen', reading !== 'none' && cheb(u, s) <= 5 && more, reading === 'none' ? 'They can\'t perceive it at all.' : !more ? 'There is nothing more to learn from it.' : 'Get within five paces.');
   if (s.kind === 'hollow') {
     add('unravel', near, 'Stand beside it.');
@@ -492,6 +522,7 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
   if (!u || cl.outcome) return 'They can\'t act.';
   const res = col.community.resources;
   if (verb === 'ward') {
+    if (u.fae) return 'The Folk won\'t touch iron or salt.';
     if (cl.wardsLeft <= 0) return 'No lanterns left to ward with.';
     if (u.ap < 1) return 'Not enough time this turn.';
     u.ap -= 1; cl.wardsLeft--;
@@ -506,7 +537,7 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
     if (cheb(u, ally) > 1) return 'Stand beside them.';
     if (u.ap < 1) return 'Not enough time this turn.';
     u.ap -= 1;
-    const gain = u.anchor ? 3 : 2;
+    const gain = u.anchor || u.fae === 'hob' ? 3 : 2;
     ally.nerve = Math.min(ally.maxNerve, ally.nerve + gain);
     say(cl, u.anchor ? `${u.name} put a hand on ${ally.name}'s shoulder and talked about ordinary things until the shaking stopped.` : `${u.name} held ${ally.name}'s hand for a while.`);
     checkBreak(cl); settleCheck(col, cl);
@@ -569,6 +600,28 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
       } else say(cl, `${u.name} tore at ${s.name}. (Its hold: ${s.integrity}.)`);
       break;
     }
+    case 'name': {
+      u.used = true;
+      if (s.kind === 'hollow') {
+        s.known = 3;
+        s.integrity = Math.max(0, s.integrity - 2);
+        say(cl, `${u.name} spoke the Hollow's true name, and it shrank from it. (Its hold: ${s.integrity}.)`);
+        if (s.integrity <= 0) { s.fate = 'unravelled'; say(cl, `${cap(s.name)} came apart at the sound of its own name.`); }
+      } else {
+        s.known = 3;
+        s.calm += 1;
+        say(cl, `${u.name} called ${s.name} by a name nobody had used in years. It stopped, and listened, and was half at peace already.`);
+      }
+      break;
+    }
+    case 'play': {
+      const calmed = clearingHaunt(col, cl).spirits.filter((x) => present(x) && x.kind !== 'hollow' && cheb(u, x) <= 3);
+      for (const x of calmed) x.calm += 1;
+      const eased = cl.units.filter((x) => x.state === 'in' && cheb(u, x) <= 3);
+      for (const x of eased) x.nerve = Math.min(x.maxNerve, x.nerve + 1);
+      say(cl, `${u.name} played. ${calmed.length ? `${calmed.map((x) => cap(x.name)).join(' and ')} stopped to listen.` : 'Nothing stirred, but the team breathed easier.'}`);
+      break;
+    }
     case 'banish':
       s.fate = 'banished';
       say(cl, `${u.name} drove ${s.name} out. It went, but the place feels colder for it.`);
@@ -593,6 +646,7 @@ function settleCheck(col: Colony, cl: Clearing) {
 function checkBreak(cl: Clearing) {
   for (const u of cl.units) {
     if (u.state !== 'in' || u.nerve > 0) continue;
+    if (u.fae) { u.state = 'fled'; say(cl, `${u.name} went pale as a moth and was simply not there any more. Gone home to the hill.`); continue; }
     if (u.lured) { u.state = 'taken'; say(cl, `${u.name} followed the light between two houses, and did not come out the other side.`); }
     else { u.state = 'fled'; say(cl, `${u.name}'s nerve broke. They ran for home and didn't stop.`); }
   }
@@ -624,6 +678,7 @@ export function endTurn(col: Colony, cl: Clearing) {
       for (const u of team()) {
         if (cheb(u, s) > 4) continue;
         let loss = (u.anchor ? 1 : 2) + deep;
+        if (u.fae) loss = Math.ceil(loss / 2);
         if (inWard(cl, u)) loss = Math.ceil(loss / 2);
         u.nerve -= loss;
       }
@@ -647,7 +702,7 @@ export function endTurn(col: Colony, cl: Clearing) {
         say(cl, `Something tugged ${u.name} toward the brambles.`);
       }
     } else if (s.kind === 'lamp' && s.calm < 2) {
-      const near = team().filter((u) => cheb(u, s) <= 8 && !inWard(cl, u)).sort((x, y) => x.nerve - y.nerve);
+      const near = team().filter((u) => cheb(u, s) <= 8 && !inWard(cl, u) && !u.fae).sort((x, y) => x.nerve - y.nerve);
       const u = near[0];
       if (!u) continue;
       pull(col, cl, u, s, 2);
@@ -694,6 +749,11 @@ function applyClearing(col: Colony, cl: Clearing) {
   }
   // The team.
   for (const u of cl.units) {
+    if (u.fae) {
+      // The Folk remember who they walked into the Veil with.
+      changeStanding(col, u.state === 'fled' ? -2 : cl.outcome === 'cleared' ? 5 : 2);
+      continue;
+    }
     const s = surv(u.id);
     if (u.state === 'fled') {
       s.morale = Math.max(0, s.morale - 12);
