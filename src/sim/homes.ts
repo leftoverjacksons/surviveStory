@@ -15,7 +15,7 @@ import type { Colony } from './colony';
 import type { Building, Cost, Footprint, Project, Tier, Village } from './buildings';
 import type { Rng } from './rng';
 import {
-  Ground, LANE_WEAR, PATH_WEAR, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
+  Ground, LANE_WEAR, PATH_WEAR, heightAt, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
   type Point, type World,
 } from './world';
 
@@ -124,6 +124,26 @@ export function houseContains(spec: HouseSpec, hc: Point, yaw: number, p: Point,
   if (!wg) return false;
   const wx = wg.side * (spec.W / 2 - wg.w / 2), wz = -(spec.D / 2 + wg.d / 2);
   return Math.abs(lx - wx) <= wg.w / 2 + pad && Math.abs(lz - wz) <= wg.d / 2 + pad;
+}
+
+/**
+ * The height a house's floor datum sits at. The ground is never reshaped:
+ * the house rises to within 0.2 of the highest ground under it (so its
+ * uphill wall isn't buried) and the foundation fills the gap downhill.
+ * A pure function of the terrain, so sim and renderer always agree.
+ */
+export function houseFloor(w: World, plot: { hc: Point; yaw: number; house: HouseSpec }): number {
+  const s = plot.house;
+  let hi = -Infinity;
+  const sample = (cx: number, cz: number, W: number, D: number) => {
+    for (let i = 0; i <= 5; i++) for (let j = 0; j <= 5; j++) {
+      const q = housePoint(plot.hc, plot.yaw, cx + (i / 5 - 0.5) * W, cz + (j / 5 - 0.5) * D);
+      hi = Math.max(hi, heightAt(w, q.x, q.z));
+    }
+  };
+  sample(0, 0, s.W, s.D);
+  if (s.wing) sample(s.wing.side * (s.W / 2 - s.wing.w / 2), -(s.D / 2 + s.wing.d / 2), s.wing.w, s.wing.d);
+  return Math.max(heightAt(w, plot.hc.x, plot.hc.z), hi - 0.2);
 }
 
 /** Where things are inside a house, in its local frame. */
@@ -489,6 +509,19 @@ function tryPlot(w: World, v: Village, cand: Candidate, beds: number, rng: Rng, 
   };
   const hc = add(add(O, t, hu), n, setback + Dh / 2);
   const yaw = Math.atan2(-n.x, -n.z);
+  // Hillsides are fine (the house stands on a foundation), cliffs are not:
+  // nobody builds where the base would be taller than a person's shoulder.
+  let lowest = Infinity;
+  for (let k = 0; k < 25; k++) {
+    const q = housePoint(hc, yaw, ((k % 5) / 4 - 0.5) * Wh, (Math.floor(k / 5) / 4 - 0.5) * Dh);
+    lowest = Math.min(lowest, heightAt(w, q.x, q.z));
+    if (wing) {
+      const r = housePoint(hc, yaw, wing.side * (Wh / 2 - wing.w / 2) + ((k % 5) / 4 - 0.5) * wing.w, -(Dh / 2 + wing.d / 2) + (Math.floor(k / 5) / 4 - 0.5) * wing.d);
+      lowest = Math.min(lowest, heightAt(w, r.x, r.z));
+    }
+  }
+  const drop = houseFloor(w, { hc, yaw, house: spec }) - lowest;
+  if (drop > 1.5) return null;
   const tileSet = new Set(tiles);
   const houseTiles: number[] = [];
   const trees: number[] = [];
@@ -511,7 +544,7 @@ function tryPlot(w: World, v: Village, cand: Candidate, beds: number, rng: Rng, 
     if (!tileSet.has(idx(w, toTileX(w, q.x), toTileZ(w, q.z)))) return null;
   }
   const dist = Math.hypot(O.x - CAMP.x, O.z - CAMP.z);
-  let score = Math.abs(dist - 12) * 0.35 + trees.length * 1.5 + lanes * 2 - meadow * 0.03 + cand.bonus + rng.next() * 1.5;
+  let score = Math.abs(dist - 12) * 0.35 + trees.length * 1.5 + lanes * 2 - meadow * 0.03 + cand.bonus + rng.next() * 1.5 + drop * 1.5;
   // Houses like to face the village, not turn their backs on it.
   if (dot({ x: -n.x, z: -n.z }, norm({ x: CAMP.x - O.x, z: CAMP.z - O.z })) < -0.2) score += 2;
   const plot: Plot = { id: 0, household: 0, origin: O, t, n, corners, tiles, house: spec, hc, yaw, yard: [] };

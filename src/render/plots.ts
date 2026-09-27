@@ -3,7 +3,7 @@
  * time, and the things households make behind their houses.
  */
 import * as THREE from 'three';
-import { plotPoint, type Plot, type YardItem } from '../sim/homes';
+import { houseFloor, housePoint, plotPoint, type Plot, type YardItem } from '../sim/homes';
 import type { Village } from '../sim/buildings';
 import { heightAt, type World } from '../sim/world';
 import { box, cyl, mat } from './kit';
@@ -67,6 +67,9 @@ function skirt(world: World, plot: Plot, season: number, seed: number): THREE.Gr
   const winter = season === 3, autumn = season === 2;
   const moss = mat(winter ? '#6f7560' : '#4f6b34'), moss2 = mat(winter ? '#7d8270' : '#5f7a3a');
   const grass = [mat(autumn ? '#9a8a48' : winter ? '#8a8468' : '#5d8a3a'), mat(autumn ? '#b0923e' : winter ? '#9a9278' : '#6f9a44')];
+  const floor = houseFloor(world, plot);
+  // Height of the ground at a house-local point, relative to the floor datum.
+  const gy = (x: number, z: number) => { const q = housePoint(plot.hc, plot.yaw, x, z); return heightAt(world, q.x, q.z) - floor; };
   const blade = new THREE.ConeGeometry(0.05, 1, 4);
   const lump = new THREE.IcosahedronGeometry(1, 0);
   // Walls: [x0, z0, x1, z1] along the outside of each face, 0.25 out.
@@ -87,11 +90,12 @@ function skirt(world: World, plot: Plot, season: number, seed: number): THREE.Gr
       if (front && Math.abs(x - doorX) < (porch ? 1.4 : 0.9)) continue;
       if (!front && z < -D / 2 && wing && Math.abs(x - wing.side * (W / 2 - wing.w / 2)) < wing.w / 2 + 0.3) continue;
       const r = rand();
+      const y0 = gy(x, z);
       if (r < 0.4) {
         const m = new THREE.Mesh(lump, rand() < 0.5 ? moss : moss2);
         const s = 0.14 + rand() * 0.14;
         m.scale.set(s * 1.4, s * 0.55, s * 1.2);
-        m.position.set(x, s * 0.2, z);
+        m.position.set(x, y0 + s * 0.2, z);
         m.rotation.y = rand() * 3;
         m.receiveShadow = true;
         g.add(m);
@@ -101,7 +105,7 @@ function skirt(world: World, plot: Plot, season: number, seed: number): THREE.Gr
           const h = (0.22 + rand() * 0.3) * (winter ? 0.6 : 1);
           const m = new THREE.Mesh(blade, grass[b % 2]);
           m.scale.set(1, h, 1);
-          m.position.set(x + (rand() - 0.5) * 0.18, h / 2, z + (rand() - 0.5) * 0.18);
+          m.position.set(x + (rand() - 0.5) * 0.18, y0 + h / 2, z + (rand() - 0.5) * 0.18);
           m.rotation.set((rand() - 0.5) * 0.5, rand() * 3, (rand() - 0.5) * 0.5);
           g.add(m);
         }
@@ -111,15 +115,16 @@ function skirt(world: World, plot: Plot, season: number, seed: number): THREE.Gr
             const h = 0.3 + rand() * 0.2;
             const head = new THREE.Mesh(lump, fm);
             head.scale.setScalar(0.045);
-            head.position.set(x + (rand() - 0.5) * 0.2, h, z + (rand() - 0.5) * 0.2);
+            head.position.set(x + (rand() - 0.5) * 0.2, y0 + h, z + (rand() - 0.5) * 0.2);
             g.add(head);
           }
         }
       }
     }
   }
-  g.position.set(plot.hc.x, heightAt(world, plot.hc.x, plot.hc.z), plot.hc.z);
+  g.position.set(plot.hc.x, floor, plot.hc.z);
   g.rotation.y = plot.yaw;
+  g.userData.ground = gy;
   return g;
 }
 
@@ -277,7 +282,7 @@ export class PlotsView {
     if (e) this.drop(e);
     const group = build();
     // Contact shade measured from the ground (yards are built in world coordinates).
-    mergeStatic(group, undefined, false, worldFrame ? (x, z) => heightAt(this.world, x, z) : () => 0);
+    mergeStatic(group, undefined, false, worldFrame ? (x, z) => heightAt(this.world, x, z) : group.userData.ground ?? (() => 0));
     this.group.add(group);
     this.entries.set(id, { key, group });
   }

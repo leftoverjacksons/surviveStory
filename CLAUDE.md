@@ -73,7 +73,11 @@ reference: Tiny Glade.
   - Performance pass 1 done (`src/render/merge.ts`; draw calls −73%, DESIGN §17).
   - Graphics pass 1 done: trees clear buildings (`render/clearance.ts`), canopy
     shading, contact shade, house skirts, colour grade (DESIGN §17). NOT published.
+  - Buildings adapt to slopes (foundations, steps, floor = f(terrain); user
+    rejected terrain flattening). DESIGN §17 "Buildings on slopes". NOT published.
   - Expeditions (milestone D) proposed; user said to hold off for now.
+  - Agreed order: slopes (done) → trees v2 → CC0 characters/animals (user must
+    allow quaternius.com, poly.pizza, github KayKit in the environment's network settings).
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
   - Published: the artifact has the performance-pass build (commit 998993c, version 10).

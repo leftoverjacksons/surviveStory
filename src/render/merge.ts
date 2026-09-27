@@ -42,7 +42,8 @@ type Ground = (x: number, z: number) => number;
 
 function normalise(g: THREE.BufferGeometry, m: THREE.Matrix4, color?: THREE.Color, ground?: Ground): THREE.BufferGeometry {
   let out = g.index ? g.toNonIndexed() : g.clone();
-  for (const name of Object.keys(out.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') out.deleteAttribute(name);
+  // Keep an existing vertex colour (vertex-coloured materials) unless a flat one replaces it.
+  for (const name of Object.keys(out.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv' && !(name === 'color' && !color)) out.deleteAttribute(name);
   if (!out.attributes.normal) out.computeVertexNormals();
   const n = out.attributes.position.count;
   if (!out.attributes.uv) out.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));

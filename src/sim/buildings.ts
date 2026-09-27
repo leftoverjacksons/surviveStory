@@ -6,10 +6,10 @@
 import { alive, log, type Community } from './community';
 import type { Site } from './sites';
 import type { Rng } from './rng';
-import type { Household, Plot } from './homes';
+import { houseFloor, type Household, type Plot } from './homes';
 import type { Fishery } from './fishing';
 import {
-  Ground, LANE_WEAR, PATH_WEAR, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
+  Ground, LANE_WEAR, PATH_WEAR, heightAt, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
   type Point, type World,
 } from './world';
 
@@ -152,6 +152,19 @@ export const bedsTotal = (v: Village) => v.buildings.reduce((n, b) => {
 /** Shared (non-home) beds. */
 export const sharedBeds = (v: Village) => v.buildings.reduce((n, b) => n + (b.kind === 'home' ? 0 : b.beds), 0);
 export const hasBuilt = (v: Village, k: BuildingKind) => v.buildings.some((b) => b.kind === k);
+/**
+ * Floor height for a footprint building: within 0.2 of the highest ground
+ * under it, so nothing is buried uphill; a foundation fills in downhill.
+ */
+export function footFloor(w: World, f: Footprint): number {
+  const c = footCenter(w, f);
+  let hi = -Infinity;
+  for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) {
+    hi = Math.max(hi, heightAt(w, c.x + (i / 4 - 0.5) * f.w, c.z + (j / 4 - 0.5) * f.d));
+  }
+  return Math.max(heightAt(w, c.x, c.z), hi - 0.2);
+}
+
 export const footCenter = (w: World, f: Footprint): Point => ({ x: tileX(w, f.tx) - 0.5 + f.w / 2, z: tileZ(w, f.tz) - 0.5 + f.d / 2 });
 
 /** Tiles of a footprint. */
@@ -194,6 +207,11 @@ function footprintFree(w: World, v: Village, f: Footprint, margin: number): { ok
       trees.push(w.treeAt[i]); // clear a tree standing right against the walls
     }
   }
+  // Too steep for a sensible foundation.
+  const c = footCenter(w, f);
+  let lowest = Infinity;
+  for (let i = 0; i <= 2; i++) for (let j = 0; j <= 2; j++) lowest = Math.min(lowest, heightAt(w, c.x + (i / 2 - 0.5) * f.w, c.z + (j / 2 - 0.5) * f.d));
+  if (footFloor(w, f) - lowest > 1.2) return { ok: false, trees };
   const x0 = tileX(w, f.tx) - 0.5, z0 = tileZ(w, f.tz) - 0.5;
   const pad = margin + 0.5;
   // Stay clear of other buildings and projects.
@@ -453,7 +471,11 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
   p.done = true;
   v.craftXp++;
   const res = com.resources;
-  const block = (f: Footprint) => { for (const [tx, tz] of footTiles(f)) w.blocked[idx(w, tx, tz)] = 1; };
+  const block = (f: Footprint) => {
+    // Blocked to walkers; anyone inside stands on the (possibly raised) floor.
+    const y = footFloor(w, f);
+    for (const [tx, tz] of footTiles(f)) { const i = idx(w, tx, tz); w.blocked[i] = 1; w.deck[i] = 1; w.deckY[i] = y; }
+  };
   switch (p.kind) {
     case 'clear_store': {
       const st = store(v);
@@ -490,7 +512,9 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
       const plot = v.plots.find((x) => x.id === p.plot);
       b.beds = plot ? plot.house.beds : 2;
       v.buildings.push(b);
-      for (const i of p.blockTiles ?? []) w.blocked[i] = 1;
+      // Indoors, people stand on the floor, which on a slope may be well above the ground.
+      const floor = plot ? houseFloor(w, plot) + 0.24 : 0;
+      for (const i of p.blockTiles ?? []) { w.blocked[i] = 1; if (plot) { w.deck[i] = 1; w.deckY[i] = floor; } }
       log(com, `${p.name} is finished.`, 'good');
       break;
     }

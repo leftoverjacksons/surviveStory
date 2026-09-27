@@ -5,7 +5,7 @@
  * around the house instead of through it. Built from the simulation's plans,
  * so a canopy already makes room while the walls are going up.
  */
-import { houseAxes } from '../sim/homes';
+import { houseAxes, houseFloor } from '../sim/homes';
 import { footCenter, type Village } from '../sim/buildings';
 import { heightAt, type World } from '../sim/world';
 
@@ -22,10 +22,11 @@ const TOP: Partial<Record<string, number>> = {
   annex: 3.1, hut: 3.5, workshop: 3.7, kitchen: 3.3, cellar: 1.6, shrine: 2.6, fishhut: 3.3, netshed: 2.9, garden: 0.9, upgrade: 3.7,
 };
 
-function box(w: World, cx: number, cz: number, yaw: number, hw: number, hd: number, top: number): Obstacle {
+function box(w: World, cx: number, cz: number, yaw: number, hw: number, hd: number, top: number, base?: number): Obstacle {
   const { X, Z } = houseAxes(yaw);
-  const y0 = heightAt(w, cx, cz) - 0.5;
-  return { cx, cz, ax: X.x, az: X.z, bx: Z.x, bz: Z.z, hw, hd, y0, y1: y0 + 0.5 + top };
+  const g = heightAt(w, cx, cz);
+  // Down past the foundations on a slope; up to the ridge from the floor.
+  return { cx, cz, ax: X.x, az: X.z, bx: Z.x, bz: Z.z, hw, hd, y0: g - 1.5, y1: (base ?? g) + top };
 }
 
 export function obstaclesFor(w: World, v: Village): Obstacle[] {
@@ -40,12 +41,13 @@ export function obstaclesFor(w: World, v: Village): Obstacle[] {
     const along = s.ridge === 'along';
     const rise = ((along ? s.D : s.W) / 2) * Math.tan(s.pitch);
     const eave = 0.45;
-    out.push(box(w, plot.hc.x, plot.hc.z, plot.yaw, s.W / 2 + eave, s.D / 2 + eave, s.wall + 0.24 + rise + 0.4));
+    const floor = houseFloor(w, plot);
+    out.push(box(w, plot.hc.x, plot.hc.z, plot.yaw, s.W / 2 + eave, s.D / 2 + eave, s.wall + 0.24 + rise + 0.4, floor));
     if (s.wing) {
       const { X, Z } = houseAxes(plot.yaw);
       const wx = s.wing.side * (s.W / 2 - s.wing.w / 2), wz = -(s.D / 2 + s.wing.d / 2);
       out.push(box(w, plot.hc.x + X.x * wx + Z.x * wz, plot.hc.z + X.z * wx + Z.z * wz, plot.yaw,
-        s.wing.w / 2 + eave, s.wing.d / 2 + eave, s.wall + rise * 0.8 + 0.2));
+        s.wing.w / 2 + eave, s.wing.d / 2 + eave, s.wall + rise * 0.8 + 0.2, floor));
     }
   };
   const foot = (kind: string, f: { tx: number; tz: number; w: number; d: number }) => {

@@ -640,3 +640,25 @@ with and without `?nomerge`:
   a soft vignette. `?nograde` turns it off.
 - **Cost**: draw calls are unchanged (about 520 on seed 8), because the new
   meshes merge.
+
+### Buildings on slopes (after graphics pass 1)
+The user rejected flattening terrain under buildings, so buildings adapt to
+the ground instead:
+- **Floor height.** A building's floor rises to within 0.2 of the highest
+  ground under it, so the uphill wall is never buried. This is a pure
+  function of the terrain (`houseFloor`, `footFloor`), so sim and renderer
+  agree without storing it.
+- **Foundation.** A stone foundation (timber cribbing for salvage houses),
+  built in courses, follows the ground along every outside wall, so the
+  downhill side shows a tall base and the uphill side a low one. Porch
+  posts reach the ground on stone pads.
+  - When the ground in front of the door falls more than 0.2, timber steps
+    run down to it.
+  - Bases over 1 m get a small undercroft door.
+  - Huts, workshops and fishing huts stand on the same kind of foundation.
+- **Indoors.** Floors are marked as deck tiles at floor height, so people
+  inside stand on the floor, not the hillside beneath.
+- **Site choice.** Survivors reject plots where the base would exceed 1.5 m
+  (1.2 m for footprint buildings) and prefer gentler ground.
+  - Over 10 seeds at day 30 (36 homes), the largest drop went from 3.05 m
+    to 1.48 m; the median is 0.28 m.

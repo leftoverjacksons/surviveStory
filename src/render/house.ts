@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { homeLayout, type HouseSpec } from '../sim/homes';
 import { GLOW, box, cyl, mat, smooth } from './kit';
-import { glowTexture, makeRand } from './util';
+import { enhance, glowTexture, makeRand } from './util';
 
 const DAUB = ['#e9dcc0', '#e2d2b0', '#efe4cb', '#dccbb0', '#e6d6c4', '#d9d0bc'];
 const FRAME = ['#4f3a28', '#5a4330', '#3f3226', '#634a34'];
@@ -255,7 +255,76 @@ function interior(spec: HouseSpec, pal: Palette, rand: () => number): THREE.Grou
  * A house at construction progress p (0..1). Returns the building group;
  * roof pieces sit in a child tagged `roofGroup` so they can be lifted off.
  */
-export function buildHouse(spec: HouseSpec, tier: number, p: number, glow: THREE.Mesh[]): THREE.Group {
+/** Ground height under a house-local point, relative to the house's floor datum. */
+export type LocalGround = (x: number, z: number) => number;
+
+const FOUNDATION = enhance(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+FOUNDATION.userData.noMerge = true;
+
+/**
+ * The foundation walls a house stands on: they run from the plinth down to
+ * the ground along every outside wall, so on a slope the downhill side shows
+ * a tall base of dry stone (or, for salvage houses, stacked timber cribbing)
+ * while the uphill side stays low. The terrain itself is never reshaped.
+ * Returns the tallest drop, so the caller can add an undercroft or steps.
+ */
+function foundation(rects: [number, number, number, number][], ground: LocalGround, tier: number, top: number, seed: number): { mesh: THREE.Mesh | null; drop: number; worst: { x: number; z: number; nx: number; nz: number; drop: number } } {
+  const rand = makeRand(seed);
+  const pos: number[] = [], col: number[] = [];
+  const base = tier === 0 ? [[0.42, 0.32, 0.21], [0.35, 0.27, 0.18], [0.47, 0.37, 0.25]] : [[0.56, 0.53, 0.48], [0.5, 0.48, 0.44], [0.62, 0.59, 0.53]];
+  const course = tier === 0 ? 0.16 : 0.22;
+  let drop = 0;
+  let worst = { x: 0, z: 0, nx: 0, nz: 1, drop: 0 };
+  const quad = (ax: number, az: number, bx: number, bz: number, y0a: number, y0b: number, y1: number, c: number[]) => {
+    // Two triangles, facing outward (counter-clockwise seen from outside).
+    pos.push(ax, y1, az, ax, y0a, az, bx, y0b, bz, ax, y1, az, bx, y0b, bz, bx, y1, bz);
+    for (let k = 0; k < 6; k++) col.push(c[0], c[1], c[2]);
+  };
+  for (const [cx, cz, w, d] of rects) {
+    const hw = w / 2 + 0.12, hd = d / 2 + 0.12;
+    // Corners in order so each edge's outward side is on its right.
+    const cs = [[cx - hw, cz + hd], [cx + hw, cz + hd], [cx + hw, cz - hd], [cx - hw, cz - hd]];
+    for (let e = 0; e < 4; e++) {
+      const [ax, az] = cs[e], [bx, bz] = cs[(e + 1) % 4];
+      const len = Math.hypot(bx - ax, bz - az);
+      const n = Math.max(1, Math.ceil(len / 0.45));
+      const nx = -(bz - az) / len, nz = (bx - ax) / len;
+      for (let i = 0; i < n; i++) {
+        const t0 = i / n, t1 = (i + 1) / n;
+        const x0 = ax + (bx - ax) * t0, z0 = az + (bz - az) * t0, x1 = ax + (bx - ax) * t1, z1 = az + (bz - az) * t1;
+        const g0 = Math.min(top - 0.02, ground(x0 + nx * 0.2, z0 + nz * 0.2)) - 0.2;
+        const g1 = Math.min(top - 0.02, ground(x1 + nx * 0.2, z1 + nz * 0.2)) - 0.2;
+        const dd = top - Math.max(g0, g1) - 0.2;
+        if (dd > worst.drop && i > 0 && i < n - 1) worst = { x: (x0 + x1) / 2, z: (z0 + z1) / 2, nx, nz, drop: dd };
+        drop = Math.max(drop, top - Math.min(g0, g1) - 0.2);
+        // Courses of stone (or timber), each cell its own shade.
+        const rows = Math.max(1, Math.ceil((top - Math.min(g0, g1)) / course));
+        for (let r = 0; r < rows; r++) {
+          const yt = Math.min(top, Math.min(g0, g1) + (r + 1) * course);
+          const ya = Math.max(g0, Math.min(g0, g1) + r * course), yb = Math.max(g1, Math.min(g0, g1) + r * course);
+          if (yt <= Math.min(ya, yb) + 1e-3) continue;
+          const c = base[Math.floor(rand() * 3)], k = 0.9 + rand() * 0.18;
+          quad(x0, z0, x1, z1, Math.min(ya, yt), Math.min(yb, yt), yt, [c[0] * k, c[1] * k, c[2] * k]);
+        }
+      }
+    }
+  }
+  if (!pos.length) return { mesh: null, drop, worst };
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, FOUNDATION);
+  mesh.castShadow = mesh.receiveShadow = true;
+  return { mesh, drop, worst };
+}
+
+/** A foundation under a plain rectangular building of W×D (local frame), up to `top`. */
+export function foundationUnder(W: number, D: number, ground: LocalGround, tier: number, seed: number, top = 0.02): THREE.Mesh | null {
+  return foundation([[0, 0, W - 0.24, D - 0.24]], ground, tier, top, seed).mesh;
+}
+
+export function buildHouse(spec: HouseSpec, tier: number, p: number, glow: THREE.Mesh[], ground: LocalGround = () => 0): THREE.Group {
   const g = new THREE.Group();
   g.userData.building = true;
   const rand = makeRand(spec.seed);
@@ -268,10 +337,34 @@ export function buildHouse(spec: HouseSpec, tier: number, p: number, glow: THREE
 
   // Plinth.
   const plinthK = smooth(0.05, 0.2, p);
+  const doorX = -chimney * Math.min(W * 0.2, W / 2 - 1.1);
   if (plinthK > 0) {
     const stone = mat(tier === 0 ? '#6b5236' : '#8f877a');
     g.add(box(W + 0.24, 0.24 * plinthK, D + 0.24, stone, 0, 0.12 * plinthK, 0));
     if (wg && wingAt) g.add(box(wg.w + 0.24, 0.24 * plinthK, wg.d + 0.1, stone, wingAt.x, 0.12 * plinthK, wingAt.z));
+    // Down the slope to the ground.
+    const rects: [number, number, number, number][] = [[0, 0, W, D]];
+    if (wg && wingAt) rects.push([wingAt.x, wingAt.z, wg.w, wg.d - 0.14]);
+    const f = foundation(rects, ground, tier, 0.24 * plinthK, spec.seed);
+    if (f.mesh) g.add(f.mesh);
+    // A tall base gets a little undercroft door: somewhere to keep roots and tools.
+    if (p >= 1 && f.worst.drop > 1.0) {
+      const u = box(0.55, Math.min(0.8, f.worst.drop - 0.25), 0.06, mat('#2a2622'), f.worst.x + f.worst.nx * 0.13, 0.24 - f.worst.drop + Math.min(0.8, f.worst.drop - 0.25) / 2 + 0.05, f.worst.z + f.worst.nz * 0.13);
+      u.rotation.y = Math.atan2(f.worst.nx, f.worst.nz);
+      g.add(u);
+    }
+    // Steps down from the door when the ground falls away in front of it.
+    const fall = 0.24 - ground(doorX, D / 2 + (spec.porch ? 1.3 : 0.7));
+    if (p >= 1 && fall > 0.2) {
+      const n = Math.min(7, Math.ceil(fall / 0.2)), rise = fall / (n + 1);
+      const z0 = D / 2 + 0.3 + (spec.porch ? 0.1 : 0);
+      for (let i = 0; i < n; i++) {
+        const y = 0.24 - rise * (i + 1);
+        const gz = ground(doorX, z0 + i * 0.3 + 0.15);
+        const h = Math.max(0.1, y - gz + 0.15);
+        g.add(box(1.0 - i * 0.02, h, 0.3, mat(tier === 0 ? '#6b5a44' : '#8a8478'), doorX, y - h / 2, z0 + i * 0.3 + 0.15));
+      }
+    }
   }
   // Corner posts, then walls rising.
   const postK = smooth(0.15, 0.3, p);
@@ -279,7 +372,6 @@ export function buildHouse(spec: HouseSpec, tier: number, p: number, glow: THREE
     for (const [x, z] of [[-W / 2, -D / 2], [W / 2, -D / 2], [-W / 2, D / 2], [W / 2, D / 2]]) g.add(box(0.14, H * postK, 0.14, mat('#6b4f33'), x, 0.24 + (H * postK) / 2, z));
   }
   const wallK = smooth(0.3, 0.72, p);
-  const doorX = -chimney * Math.min(W * 0.2, W / 2 - 1.1);
   if (wallK > 0) {
     const walls = new THREE.Group();
     walls.add(block(W, D, H, pal, rand, glow, {
@@ -338,7 +430,12 @@ export function buildHouse(spec: HouseSpec, tier: number, p: number, glow: THREE
   // Porch over the door.
   if (spec.porch && p >= 1) {
     const fm = mat(pal.frame);
-    for (const s of [-1, 1]) g.add(box(0.1, 2.1, 0.1, fm, doorX + s * 0.75, 1.05 + 0.1, D / 2 + 1.0));
+    for (const s of [-1, 1]) {
+      // Posts reach the ground, wherever it is; a stone pad under each.
+      const gy = Math.min(0.1, ground(doorX + s * 0.75, D / 2 + 1.0));
+      g.add(box(0.1, 2.2 - gy, 0.1, fm, doorX + s * 0.75, (2.2 + gy) / 2, D / 2 + 1.0));
+      g.add(box(0.2, 0.12, 0.2, mat('#7d7a70'), doorX + s * 0.75, gy + 0.03, D / 2 + 1.0));
+    }
     const pr = box(1.9, 0.08, 1.35, mat(pal.roof), doorX, 2.3, D / 2 + 0.62);
     pr.rotation.x = 0.28;
     roof.add(pr);

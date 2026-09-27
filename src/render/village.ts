@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import {
-  footCenter, type Footprint, type Project, type Village,
+  footCenter, footFloor, type Footprint, type Project, type Village,
 } from '../sim/buildings';
 import { CAR } from '../sim/layout';
 import type { Site } from '../sim/sites';
 import type { Building } from '../sim/buildings';
 import { WATER_Y, heightAt, tileX, tileZ, type Heap, type World } from '../sim/world';
 import type { StoreParts } from './station';
-import { homeLayout, housePoint } from '../sim/homes';
-import { buildHouse } from './house';
+import { homeLayout, houseFloor, housePoint } from '../sim/homes';
+import { buildHouse, foundationUnder } from './house';
 import { mergeStatic } from './merge';
 import type { RoofControl } from './roofs';
 import { glowTexture, makeRand } from './util';
@@ -649,10 +649,19 @@ export class VillageView {
 
   constructor(private world: World, private village: Village, private store: StoreParts, private roofs: RoofControl) {}
 
-  private place(g: THREE.Group, f: Footprint, facing: number) {
+  private place(g: THREE.Group, f: Footprint, facing: number, raise = false, tier = 1, seed = 0) {
     const c = footCenter(this.world, f);
-    g.position.set(c.x, heightAt(this.world, c.x, c.z), c.z);
+    const y = raise ? footFloor(this.world, f) : heightAt(this.world, c.x, c.z);
+    g.position.set(c.x, y, c.z);
     g.rotation.y = FACING_YAW[facing];
+    if (!raise) return;
+    // On a slope, stand on a foundation rather than sinking into the hill.
+    const yaw = FACING_YAW[facing];
+    const ground = (x: number, z: number) => heightAt(this.world, c.x + x * Math.cos(yaw) + z * Math.sin(yaw), c.z - x * Math.sin(yaw) + z * Math.cos(yaw)) - y;
+    const { W, D } = localSize(f, facing);
+    const fm = foundationUnder(W + 0.2, D + 0.2, ground, tier, seed);
+    if (fm) g.add(fm);
+    g.userData.ground = ground;
   }
 
   private meshFor(kind: string, tier: number, f: Footprint, facing: number, p: number, growth: number, seed: number, glow: THREE.Mesh[]): THREE.Group {
@@ -702,7 +711,7 @@ export class VillageView {
         g.add(bed);
       });
     }
-    this.place(g, f, facing);
+    this.place(g, f, facing, kind !== 'lantern' && kind !== 'garden', tier, seed);
     return g;
   }
 
@@ -710,9 +719,12 @@ export class VillageView {
   private homeMesh(plotId: number | undefined, tier: number, p: number, glow: THREE.Mesh[]): THREE.Group {
     const plot = this.village.plots.find((x) => x.id === plotId);
     if (!plot) return new THREE.Group();
-    const g = buildHouse(plot.house, tier, p, glow);
-    g.position.set(plot.hc.x, heightAt(this.world, plot.hc.x, plot.hc.z), plot.hc.z);
+    const y = houseFloor(this.world, plot);
+    const ground = (x: number, z: number) => { const q = housePoint(plot.hc, plot.yaw, x, z); return heightAt(this.world, q.x, q.z) - y; };
+    const g = buildHouse(plot.house, tier, p, glow, ground);
+    g.position.set(plot.hc.x, y, plot.hc.z);
     g.rotation.y = plot.yaw;
+    g.userData.ground = ground;
     return g;
   }
 
@@ -744,7 +756,7 @@ export class VillageView {
     const glow: THREE.Mesh[] = [];
     const group = build(glow);
     // Finished buildings don't change: bake them into a few meshes.
-    if (id.startsWith('b')) mergeStatic(group, new Set(glow), isBuilding(group));
+    if (id.startsWith('b')) mergeStatic(group, new Set(glow), isBuilding(group), group.userData.ground ?? (() => 0));
     this.register(group);
     this.group.add(group);
     this.entries.set(id, { key, group, glow });
