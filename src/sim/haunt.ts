@@ -78,7 +78,7 @@ const INTEGRITY: Partial<Record<DistrictKind, number>> = { suburb: 5, strip: 6, 
 
 export const KIND_NAME: Record<SpiritKind, string> = { remnant: 'a remnant', hedge: 'a hedge-spirit', lamp: 'a lamp', hollow: 'a Hollow' };
 export const NEED_TEXT: Record<Need, string> = {
-  object: 'something of theirs brought home',
+  object: 'something of theirs from their house, given back to them',
   company: 'someone to listen to them',
   light: 'a light to see by (a ward beside them)',
   food: 'food, freely given',
@@ -330,6 +330,8 @@ export interface Clearing {
   rng: number;
   /** What the team spent from the stores. */
   spent: { food: number; glimmer: number };
+  /** Keepsakes the team found in remnants' houses (spirit id → what it is). */
+  found: Record<number, string>;
 }
 
 export const AP_PER_TURN = 2;
@@ -409,7 +411,7 @@ export function startClearing(col: Colony, hauntIdx: number, team: number[], fae
   reveal(w, d.x, d.z, HAUNT_RADIUS);
   const cl: Clearing = {
     haunt: hauntIdx, turn: 1, maxTurns: 12, units, wards: [], wardsLeft: 2, log: [], outcome: null,
-    rng: (w.seed ^ (h.district * 7919) ^ (col.community.day * 104729) ^ h.attempts) >>> 0, spent: { food: 0, glimmer: 0 },
+    rng: (w.seed ^ (h.district * 7919) ^ (col.community.day * 104729) ^ h.attempts) >>> 0, spent: { food: 0, glimmer: 0 }, found: {},
   };
   cl.log.push(`${units.map((u) => u.name).join(', ')} stepped into the Veil at the edge of ${d.name}. At home, no time will pass.`);
   col.clearing = cl;
@@ -478,17 +480,18 @@ export function moveUnit(col: Colony, cl: Clearing, unitId: number, tx: number, 
 }
 
 /** What can be done to a spirit (or an ally) from where a unit stands. */
-export type Verb = 'listen' | 'offer_food' | 'offer_glimmer' | 'offer_object' | 'rest' | 'invite' | 'befriend' | 'unravel' | 'banish' | 'steady' | 'ward' | 'name' | 'play';
-export const VERB_COST: Record<Verb, number> = { listen: 1, offer_food: 1, offer_glimmer: 1, offer_object: 1, rest: 1, invite: 1, befriend: 1, unravel: 2, banish: 2, steady: 1, ward: 1, name: 1, play: 2 };
+export type Verb = 'listen' | 'offer_food' | 'offer_glimmer' | 'offer_object' | 'rest' | 'invite' | 'befriend' | 'unravel' | 'banish' | 'steady' | 'ward' | 'name' | 'play' | 'search';
+export const VERB_COST: Record<Verb, number> = { listen: 1, offer_food: 1, offer_glimmer: 1, offer_object: 1, rest: 1, invite: 1, befriend: 1, unravel: 2, banish: 2, steady: 1, ward: 1, name: 1, play: 2, search: 1 };
 
-export function hasObjectFor(col: Colony, s: Spirit): boolean {
+export function hasObjectFor(col: Colony, s: Spirit, cl?: Clearing): boolean {
   if (s.home === undefined) return false;
+  if (cl?.found[s.id]) return true;
   const r = col.world.ruins[s.home];
   return !!r && Object.keys(col.village.salvaged).some((k) => k.endsWith(`|${r.name}`));
 }
 
 /** Verbs a unit could use on a spirit right now (with reasons for the ones it can't). */
-export function verbsFor(col: Colony, _cl: Clearing, u: Unit, s: Spirit): { verb: Verb; ok: boolean; why?: string }[] {
+export function verbsFor(col: Colony, cl: Clearing, u: Unit, s: Spirit): { verb: Verb; ok: boolean; why?: string }[] {
   const out: { verb: Verb; ok: boolean; why?: string }[] = [];
   const reading = readingOf(col, u, s);
   const near = cheb(u, s) <= 1;
@@ -504,7 +507,11 @@ export function verbsFor(col: Colony, _cl: Clearing, u: Unit, s: Spirit): { verb
     return out;
   }
   if (s.kind === 'remnant') {
-    if (s.home !== undefined) add('offer_object', near && hasObjectFor(col, s), !near ? 'Stand beside them.' : 'The village has brought nothing home from their house yet.');
+    // Something of theirs: search the house for it, then give it back.
+    if (s.home !== undefined && (s.need === 'object' && s.known >= 2 || cl.found[s.id])) {
+      if (!hasObjectFor(col, s, cl)) add('search', near, 'Stand beside them, in their house.');
+      add('offer_object', near && hasObjectFor(col, s, cl), !near ? 'Stand beside them.' : 'Search their house for something of theirs first.');
+    }
     add('offer_food', near && res.food >= 2, !near ? 'Stand beside them.' : 'Not enough food in the stores.');
     add('rest', near && s.calm >= 2 && s.known >= 2, !near ? 'Stand beside them.' : s.known < 2 ? 'You don\'t know what they need yet.' : 'They aren\'t at peace yet.');
     add('invite', near && s.calm >= 3 && s.known >= 3, !near ? 'Stand beside them.' : s.known < 3 ? 'You must know them fully first.' : 'They need more peace first (calm 3).');
@@ -573,9 +580,22 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
       const match = s.need === what;
       s.calm += match ? 2 : 1;
       const ruin = s.home !== undefined ? col.world.ruins[s.home] : undefined;
+      const keep = cl.found[s.id];
       say(cl, what === 'object' && ruin
-        ? `${u.name} held out something the village had salvaged from ${ruin.name}. ${s.name} knew it at once.`
+        ? keep ? `${u.name} held out ${keep}. ${cap(s.name)} took it in both hands, and for a moment they were almost solid.` : `${u.name} held out something the village had salvaged from ${ruin.name}. ${s.name} knew it at once.`
         : `${u.name} offered ${what}. ${match ? `${cap(s.name)} took it gladly.` : `${cap(s.name)} took it, but it isn't what it wanted.`}`);
+      break;
+    }
+    case 'search': {
+      const r = s.home !== undefined ? col.world.ruins[s.home] : undefined;
+      const things = r?.kind === 'shop' || r?.kind === 'bigbox' ? ['a name badge on a lanyard', 'a till receipt with a phone number on the back', 'a mug that says WORLD\'S OKAYEST BOSS']
+        : r?.kind === 'garage' ? ['a spanner worn smooth by one hand', 'a car key on a fishing-float keyring']
+        : r?.kind === 'chapel' ? ['a hymn book with a pressed flower in it', 'the bell-rope\'s brass ring']
+        : r?.kind === 'warehouse' || r?.kind === 'shed' ? ['a thermos and a crossword, half done', 'a hi-vis vest with a name on it']
+        : ['a framed photograph from under the stairs', 'a teacup with a chip in the rim', 'a child\'s drawing of the house, taped to the fridge', 'a birthday card, still in its envelope', 'a wedding ring on a string'];
+      const rng = new Rng(cl.rng ^ (s.id * 31));
+      cl.found[s.id] = rng.pick(things);
+      say(cl, `${u.name} searched ${r ? r.name : 'the house'} and found ${cl.found[s.id]}. ${cap(s.name)} went very still.`);
       break;
     }
     case 'rest':

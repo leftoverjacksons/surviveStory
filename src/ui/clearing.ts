@@ -24,13 +24,13 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const VERB_LABEL: Record<Verb, string> = {
   listen: 'Listen', offer_food: 'Offer food', offer_glimmer: 'Offer glimmer', offer_object: 'Give back their things',
   rest: 'Lay to rest', invite: 'Ask them home', befriend: 'Befriend', unravel: 'Unravel', banish: 'Banish', steady: 'Steady', ward: 'Ward',
-  name: 'Speak its true name', play: 'Play for it',
+  name: 'Speak its true name', play: 'Play for it', search: 'Search their house',
 };
 const VERB_TIP: Record<Verb, string> = {
   listen: 'Learn what it is, what it wants, and how it could find peace. Needs Sight to perceive it.',
   offer_food: 'Two food from the stores.',
   offer_glimmer: 'One glimmer from the stores.',
-  offer_object: 'Something the village salvaged from their house. Doesn\'t use it up.',
+  offer_object: 'Give back what you found in their house (or something the village salvaged from it). Exactly what they wanted.',
   rest: 'Help them finish. They go, and the land is better for it.',
   invite: 'They come home with you and keep a hearth warm (+comfort in a home).',
   befriend: 'It goes to live with the Folk (another of them at the hill, and their thanks).',
@@ -40,6 +40,7 @@ const VERB_TIP: Record<Verb, string> = {
   ward: 'A lantern and a ring of salt: inside it, lures fail and dread is halved.',
   name: 'Once a clearing: the spirit is known at once and half at peace. A Hollow loses two of its hold.',
   play: 'Every spirit within three paces grows calmer; the team near the piper steadier.',
+  search: 'Look through the house for something of theirs (a photograph, a teacup). Then give it back.',
 };
 
 export function spiritLabel(s: Spirit, r: Reading): string {
@@ -146,6 +147,7 @@ function nextStep(s: Spirit, r: Reading): string {
   if (r === 'none' || r === 'chill') return 'Your Seers can barely sense it. Bring someone with more Sight closer.';
   if (s.kind === 'hollow') return s.known < 1 ? 'Listen from a distance to learn how strong it is (it costs a little Nerve).' : 'Unravel it: best done by an Anchor, standing inside a ward.';
   if (s.known < 2) return 'Listen to it to learn what it wants.';
+  if (s.calm < 2 && s.need === 'object') return 'Search their house for something of theirs, then give it back to them.';
   if (s.calm < 2) return `Give it what it wants: ${NEED_TEXT[s.need]}.`;
   if (s.kind === 'remnant') return s.known >= 3 && s.calm >= 3 ? 'They are ready: lay them to rest, or ask them home.' : 'At peace: lay them to rest (or calm them further and ask them home).';
   return 'Won over enough: befriend it, and it goes to the Folk.';

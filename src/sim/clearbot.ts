@@ -17,7 +17,7 @@ export function playTurn(col: Colony, cl: Clearing) {
       if (!target) break;
       if (target.kind === 'hollow' && cl.wardsLeft > 0 && cheb(u, target) <= 1 && !cl.wards.length && !act(col, cl, u.id, 'ward')) continue;
       const order: Verb[] = target.kind === 'hollow' ? ['unravel', 'listen']
-        : target.kind === 'remnant' ? ['invite', 'rest', 'offer_object', target.known < 2 ? 'listen' : 'offer_food', 'listen', 'offer_food']
+        : target.kind === 'remnant' ? ['invite', 'rest', 'offer_object', 'search', target.known < 2 ? 'listen' : 'offer_food', 'listen', 'offer_food']
         : ['befriend', target.known < 1 ? 'listen' : target.need === 'glimmer' ? 'offer_glimmer' : 'offer_food', 'offer_food', 'offer_glimmer', 'listen'];
       const ok = verbsFor(col, cl, u, target).filter((v) => v.ok).map((v) => v.verb);
       const verb = order.find((v) => ok.includes(v));

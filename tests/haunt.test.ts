@@ -114,3 +114,23 @@ describe('haunted districts', () => {
     void paintZone;
   });
 });
+
+describe('what remnants want', () => {
+  it('something of theirs can be found in their house and given back', () => {
+    const col = createColony(generateWorld(3), createCommunity(3));
+    for (const p of col.world.pois) p.discovered = true;
+    col.veil.influence += 30;
+    const hi = col.haunts.findIndex((h) => h.spirits.some((s) => s.kind === 'remnant'));
+    const s = col.haunts[hi].spirits.find((x) => x.kind === 'remnant')!;
+    s.need = 'object'; s.known = 2;
+    const cl = startClearing(col, hi, [alive(col.community)[0].id]) as Clearing;
+    const u = cl.units[0];
+    u.tx = s.tx + 1; u.tz = s.tz; u.ap = 2;
+    expect(act(col, cl, u.id, 'offer_object', s.id)).toMatch(/Search their house/);
+    expect(act(col, cl, u.id, 'search', s.id)).toBeNull();
+    expect(cl.found[s.id]).toBeTruthy();
+    expect(act(col, cl, u.id, 'offer_object', s.id)).toBeNull();
+    expect(s.calm).toBe(2);
+    expect(cl.log.some((l) => l.includes(cl.found[s.id]))).toBe(true);
+  });
+});

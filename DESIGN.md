@@ -1682,3 +1682,21 @@ process food. We need taverns, and solar panels on houses."
     were broken and nobody was led away before the borrowing was added.
     Folk proposals reached the council 9 times.
   - Balance probe unchanged: no deaths, morale 64–72.
+
+### 20.7 Remnants who want something of theirs (playtest note)
+The user met "the woman who waits at 9 Heron Close … wants something of
+theirs brought home" and could not tell what to do.
+- **The problem.** "Give back their things" only worked if the village had
+  already salvaged from that very house. But salvagers never go near a
+  spirit, so it was nearly impossible, and the only fallback (food, the
+  wrong gift, +1 calm each) was unexplained.
+- **The fix.**
+  - Once the need is known (two listens), a new action appears beside the
+    remnant: *Search their house* (1 action). The team finds a keepsake
+    fitting the building: a photograph from under the stairs, a chipped
+    teacup, a name badge, a spanner worn smooth, a hymn book with a
+    pressed flower.
+  - *Give back their things* then counts as exactly what they wanted
+    (+2 calm, at peace).
+  - The menu's next step says so: "Search their house for something of
+    theirs, then give it back to them."
