@@ -1605,3 +1605,28 @@ process food. We need taverns, and solar panels on houses."
     shared beds.
   - The §20.2 trades and taverns should become restoration targets (a
     shop as a tavern, a garage as a toolmaker's).
+
+### 20.5 Clearing, easier to read (after the user found the side panel confusing)
+- **In the world.**
+  - Left-click one of the team to choose them; left-click a lit tile to
+    walk.
+  - Click a spirit (or right-click anything) to open an action menu at the
+    cursor. It shows:
+    - what the spirit is, as far as the team can perceive it;
+    - who is acting and their actions left;
+    - the distance, its need and calm (once known);
+    - a plain next step ("Listen to it to learn what it wants", "Give it
+      what it wants: glimmer", "Unravel it: best done by an Anchor…");
+    - every action with its cost, and why a greyed-out one can't be done
+      yet;
+    - "Walk beside it" or "Walk toward it" when it is out of reach.
+  - Right-click a teammate to steady them (or walk beside them); right-click
+    the chosen person to set a ward.
+  - Hovering names what is under the cursor.
+  - Right-drag still rotates the camera.
+  - The camera follows the chosen person only when they are chosen or
+    move, so it no longer pulls the view back while the player looks
+    around.
+- **The side panel** keeps a short "How it works" (five steps), the team
+  with Nerve and actions, what lives here, the log, and the turn buttons.
+  The per-spirit action lists moved into the menu.

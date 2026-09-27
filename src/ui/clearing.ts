@@ -48,8 +48,12 @@ export function spiritLabel(s: Spirit, r: Reading): string {
 
 export class ClearingPanel {
   private el: HTMLElement;
+  private guideOpen = true;
   constructor(private col: Colony, act: ClearingActions) {
     this.el = document.getElementById('clearing')!;
+    this.el.addEventListener('toggle', (e) => {
+      if ((e.target as HTMLElement).classList.contains('guide')) this.guideOpen = (e.target as HTMLDetailsElement).open;
+    }, true);
     this.el.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
       if (!b || b.disabled) return;
@@ -91,22 +95,7 @@ export class ClearingPanel {
         ${cl.spent.food || cl.spent.glimmer ? `<p>Offered: ${cl.spent.food ? `${cl.spent.food} food` : ''}${cl.spent.food && cl.spent.glimmer ? ', ' : ''}${cl.spent.glimmer ? `${cl.spent.glimmer} glimmer` : ''}.</p>` : ''}
         <button type="button" data-c="return">Return home</button></div>`;
     } else if (u) {
-      const rows: string[] = [];
-      const adj = cl.units.filter((x) => x !== u && x.state === 'in' && cheb(x, u) <= 1);
-      const general = [`<button type="button" data-verb="ward" data-by="${u.id}" ${cl.wardsLeft > 0 && u.ap >= 1 ? '' : 'disabled'} title="${esc(VERB_TIP.ward)}">Ward here · ${cl.wardsLeft} left</button>`]
-        .concat(adj.map((x) => `<button type="button" data-verb="steady" data-by="${u.id}" data-target="${x.id}" ${u.ap >= 1 ? '' : 'disabled'} title="${esc(VERB_TIP.steady)}">Steady ${esc(x.name)}</button>`));
-      rows.push(`<div class="verbs">${general.join('')}</div>`);
-      for (const s of h.spirits) {
-        if (s.fate !== 'present') continue;
-        const r = readingOf(col, u, s);
-        if (r === 'none' && s.known < 1) continue;
-        const dist = cheb(u, s);
-        if (dist > 6) continue;
-        const vs = verbsFor(col, cl, u, s).filter((v) => v.ok || dist <= 1 || v.verb === 'listen');
-        const btns = vs.map((v) => `<button type="button" data-verb="${v.verb}" data-by="${u.id}" data-target="${s.id}" ${v.ok ? '' : 'disabled'} title="${esc(v.ok ? VERB_TIP[v.verb] : v.why ?? '')}">${VERB_LABEL[v.verb]}${VERB_COST[v.verb] > 1 ? ' ·2' : ''}</button>`).join('');
-        rows.push(`<div class="target"><div class="tn">${esc(spiritLabel(s, r === 'none' ? 'chill' : r))} <span>${dist <= 1 ? 'beside them' : `${dist} paces`}</span></div><div class="verbs">${btns}</div></div>`);
-      }
-      acts = `<div class="who">${esc(u.name)}: ${u.ap} action${u.ap === 1 ? '' : 's'} left. Click a lit tile to walk there.</div>${rows.join('')}`;
+      acts = `<div class="who"><b>${esc(u.name)}</b>: ${u.ap} action${u.ap === 1 ? '' : 's'} left this turn.</div>`;
     } else acts = '<div class="who">Choose someone in the team.</div>';
 
     const known = h.spirits.map((s) => {
@@ -121,8 +110,15 @@ export class ClearingPanel {
     }).join('');
 
     const isQuiet = quiet(col, cl);
+    const guide = `<details class="guide" ${this.guideOpen ? 'open' : ''}><summary>How it works</summary><ol>
+      <li><b>Click</b> one of your people, then <b>click a lit tile</b> to walk (1 action per 4 steps; 2 actions a turn).</li>
+      <li><b>Click a spirit</b> (or right-click anything) for what you can do. Listen to learn what it wants; give it that; then lay it to rest, befriend it, or ask it home.</li>
+      <li>The <b>Hollow</b> (the dark orb) is unravelled last: Anchors (low Sight) do it best, standing inside a ward.</li>
+      <li><b>End turn</b>: the spirits act on everyone's Nerve. If Nerve breaks, they run home; if a light is pulling them when it breaks, they are taken.</li>
+      <li>When the Hollow is gone and the rest are at peace, <b>come home</b>.</li></ol></details>`;
     const html = `<h3>In the Veil · ${esc(d.name)}</h3>
       <div class="sub">Turn ${cl.turn} of ${cl.maxTurns} before dawn · no time passes at home · food ${Math.floor(col.community.resources.food)}, glimmer ${col.community.resources.glimmer.toFixed(0)}</div>
+      ${guide}
       <div class="team">${team}</div>
       <div class="acts">${acts}</div>
       <div class="h">What lives here</div><ul class="known">${known}</ul>
@@ -134,3 +130,99 @@ export class ClearingPanel {
     if (this.el.innerHTML !== html) this.el.innerHTML = html;
   }
 }
+
+export type MenuTarget = { spirit: number } | { ally: number } | { self: true };
+export interface MenuActions {
+  onAct(unit: number, verb: Verb, target?: number): void;
+  onApproach(unit: number, target: { tx: number; tz: number }): void;
+  onSelect(unit: number): void;
+}
+
+/** What to try next with a spirit, in plain words. */
+function nextStep(s: Spirit, r: Reading): string {
+  if (r === 'none' || r === 'chill') return 'Your Seers can barely sense it. Bring someone with more Sight closer.';
+  if (s.kind === 'hollow') return s.known < 1 ? 'Listen from a distance to learn how strong it is (it costs a little Nerve).' : 'Unravel it: best done by an Anchor, standing inside a ward.';
+  if (s.known < 2) return 'Listen to it to learn what it wants.';
+  if (s.calm < 2) return `Give it what it wants: ${NEED_TEXT[s.need]}.`;
+  if (s.kind === 'remnant') return s.known >= 3 && s.calm >= 3 ? 'They are ready: lay them to rest, or ask them home.' : 'At peace: lay them to rest (or calm them further and ask them home).';
+  return 'Won over enough: befriend it, and it goes to the Folk.';
+}
+
+/** A small action menu at the cursor, for a spirit, a teammate, or where someone stands. */
+export class ClearingMenu {
+  private el: HTMLElement;
+  private tipEl: HTMLElement;
+  constructor(private col: Colony, act: MenuActions) {
+    this.el = document.getElementById('veil-menu')!;
+    this.tipEl = document.getElementById('veil-tip')!;
+    this.el.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button');
+      if (!b || b.disabled) return;
+      const d = b.dataset;
+      if (d.verb) act.onAct(Number(d.by), d.verb as Verb, d.target !== undefined ? Number(d.target) : undefined);
+      else if (d.go) { const [tx, tz] = d.go.split(',').map(Number); act.onApproach(Number(d.by), { tx, tz }); }
+      else if (d.sel) act.onSelect(Number(d.sel));
+      this.close();
+    });
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.close(); });
+  }
+  get isOpen() { return !this.el.hidden; }
+  close() { this.el.hidden = true; }
+
+  tip(x: number, y: number, text: string | null) {
+    if (!text || this.isOpen) { this.tipEl.hidden = true; return; }
+    this.tipEl.hidden = false;
+    this.tipEl.textContent = text;
+    this.tipEl.style.left = `${x + 14}px`;
+    this.tipEl.style.top = `${y + 10}px`;
+  }
+
+  /** `approach`: the best tile to walk to beside the target, if it is out of reach. */
+  open(x: number, y: number, cl: Clearing, sel: number, target: MenuTarget, approach: { tx: number; tz: number; beside: boolean } | null) {
+    const col = this.col, h = col.haunts[cl.haunt];
+    const u = cl.units.find((q) => q.id === sel && q.state === 'in');
+    const item = (verb: Verb, ok: boolean, why: string | undefined, target?: number, label = VERB_LABEL[verb]) =>
+      `<button type="button" data-verb="${verb}" data-by="${u?.id}" ${target !== undefined ? `data-target="${target}"` : ''} ${ok ? '' : 'disabled'} title="${esc(VERB_TIP[verb])}">
+        <span>${esc(label)}</span><i>${VERB_COST[verb]} action${VERB_COST[verb] > 1 ? 's' : ''}</i>${!ok && why ? `<em>${esc(why)}</em>` : ''}</button>`;
+    let head = '', body = '';
+    if (!u) {
+      head = '<b>Choose one of your people first</b>';
+    } else if ('spirit' in target) {
+      const s = h.spirits.find((q) => q.id === target.spirit);
+      if (!s) return;
+      const r = readingOf(col, u, s);
+      const best = teamReading(col, cl, s);
+      const shown: Reading = RANKS.indexOf(r) >= RANKS.indexOf(best) ? r : best;
+      const facts: string[] = [];
+      if (s.kind === 'hollow' && s.known >= 1) facts.push(`hold ${s.integrity}`);
+      else if (s.known >= 2) facts.push(`wants ${NEED_TEXT[s.need]}`, s.calm >= 2 ? 'at peace' : `calm ${s.calm} of 2`);
+      else if (s.known >= 1) facts.push(s.calm >= 2 ? 'at peace' : `calm ${s.calm} of 2`);
+      const dist = cheb(u, s);
+      head = `<b>${esc(spiritLabel(s, shown === 'none' ? 'chill' : shown))}</b>
+        <span>${esc(u.name)} · ${u.ap} action${u.ap === 1 ? '' : 's'} left · ${dist <= 1 ? 'beside it' : `${dist} paces away`}</span>
+        ${facts.length ? `<span>${esc(facts.join(' · '))}</span>` : ''}
+        <p class="next">${esc(nextStep(s, shown))}</p>`;
+      const vs = verbsFor(col, cl, u, s);
+      if (dist > 1 && approach) body += `<button type="button" data-go="${approach.tx},${approach.tz}" data-by="${u.id}"><span>${approach.beside ? 'Walk beside it' : 'Walk toward it'}</span><i>${Math.max(1, Math.ceil(Math.max(Math.abs(approach.tx - u.tx), Math.abs(approach.tz - u.tz)) / 4))} action${Math.ceil(Math.max(Math.abs(approach.tx - u.tx), Math.abs(approach.tz - u.tz)) / 4) > 1 ? 's' : ''}</i></button>`;
+      body += vs.map((v) => item(v.verb, v.ok, v.why, s.id)).join('');
+    } else if ('ally' in target) {
+      const a = cl.units.find((q) => q.id === target.ally && q.state === 'in');
+      if (!a) return;
+      head = `<b>${esc(a.name)}</b><span>Nerve ${Math.max(0, a.nerve)} of ${a.maxNerve}${a.anchor ? ' · Anchor' : a.sight >= 40 ? ' · Seer' : ''}</span>`;
+      const near = cheb(u, a) <= 1;
+      body += item('steady', near && u.ap >= 1, near ? 'No actions left.' : `${u.name} must stand beside them.`, a.id, `${u.name}: steady ${a.name}`);
+      if (!near && approach) body += `<button type="button" data-go="${approach.tx},${approach.tz}" data-by="${u.id}"><span>${u.name}: walk beside ${esc(a.name)}</span></button>`;
+      body += `<button type="button" data-sel="${a.id}"><span>Switch to ${esc(a.name)}</span></button>`;
+    } else {
+      head = `<b>${esc(u.name)}</b><span>Nerve ${Math.max(0, u.nerve)} of ${u.maxNerve} · ${u.ap} action${u.ap === 1 ? '' : 's'} left</span>`;
+      body += item('ward', cl.wardsLeft > 0 && u.ap >= 1, cl.wardsLeft <= 0 ? 'No lanterns left.' : 'No actions left.', undefined, `Ward here (${cl.wardsLeft} lantern${cl.wardsLeft === 1 ? '' : 's'} left)`);
+    }
+    this.el.innerHTML = `<div class="mh">${head}</div><div class="mb">${body}</div>`;
+    this.el.hidden = false;
+    const w = this.el.offsetWidth, hgt = this.el.offsetHeight;
+    this.el.style.left = `${Math.min(window.innerWidth - w - 8, x + 8)}px`;
+    this.el.style.top = `${Math.min(window.innerHeight - hgt - 8, y + 8)}px`;
+    this.tipEl.hidden = true;
+  }
+}
+const RANKS: Reading[] = ['none', 'chill', 'luminous', 'coherent'];

@@ -193,6 +193,21 @@
   #clearing button.primary { background: #8a5ad0; border-color: #8a5ad0; color: #fff; font-weight: 700; }
   #clearing button.good { background: #50c8aa; border-color: #50c8aa; color: #0b1210; font-weight: 700; }
   #clearing .result { font-size: 13px; display: grid; gap: 6px; } #clearing .result p { margin: 0; }
+  #clearing .guide { font-size: 12px; color: #d8d0ee; } #clearing .guide summary { cursor: pointer; color: var(--ink-dim); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+  #clearing .guide ol { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+  #veil-menu { position: absolute; z-index: 6; width: 250px; padding: 8px; display: grid; gap: 6px; border-color: #8a5ad0; box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+  #veil-menu[hidden] { display: none; }
+  #veil-menu .mh { display: grid; gap: 2px; font-size: 12px; color: var(--ink-dim); }
+  #veil-menu .mh b { font-size: 13.5px; color: #e8dcff; font-weight: 600; }
+  #veil-menu .mh .next { margin: 4px 0 0; color: #bff7ea; font-size: 12px; }
+  #veil-menu .mb { display: grid; gap: 3px; }
+  #veil-menu .mb button { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; text-align: left; padding: 5px 8px; font-size: 12.5px; }
+  #veil-menu .mb button i { font-style: normal; font-size: 11px; color: #ffd06a; }
+  #veil-menu .mb button em { grid-column: 1 / -1; font-style: normal; font-size: 11px; color: var(--ink-dim); }
+  #veil-menu .mb button:disabled { opacity: 0.55; cursor: not-allowed; }
+  #veil-menu .mb button:not(:disabled):hover { border-color: #e8dcff; background: rgba(138, 90, 208, 0.25); }
+  #veil-tip { position: absolute; z-index: 5; pointer-events: none; background: rgba(12, 10, 20, 0.85); color: #e8dcff; font-size: 12px; padding: 3px 7px; border-radius: 4px; border: 1px solid #6b4fa0; white-space: nowrap; }
+  #veil-tip[hidden] { display: none; }
 
   /* the council */
   #council-bar { top: calc(env(safe-area-inset-top, 0px) + 84px); left: 50%; transform: translateX(-50%); z-index: 4; }
@@ -271,6 +286,8 @@
 <section id="log" class="hud panel" aria-live="polite"></section>
 <section id="inspect" class="hud panel" hidden aria-live="polite"></section>
 <section id="clearing" class="panel" hidden aria-live="polite"></section>
+<div id="veil-menu" class="panel" hidden role="menu"></div>
+<div id="veil-tip" hidden></div>
 
 <footer id="controls" class="hud panel">
   <div class="grp">
