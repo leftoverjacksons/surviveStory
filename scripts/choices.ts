@@ -28,6 +28,9 @@ const POLICIES: Record<string, Policy | null> = {
   folk: pickBy((p) => FOLKISH.includes(p.kind)),
   village: pickBy((p) => !FOLKISH.includes(p.kind)),
   homes: pickBy((p) => p.kind === 'home'),
+  // For dilemmas (DESIGN §23.5): the answers come in a fixed order (generous or bold first, cautious last).
+  first: (col, ps) => ps.find((p) => resolvable(col, p)) ?? null,
+  last: (col, ps) => [...ps].reverse().find((p) => resolvable(col, p)) ?? null,
 };
 
 const METRICS = ['alive', 'morale', 'tier', 'homes', 'buildings', 'folkStanding', 'folkLevel', 'cleared', 'influence', 'food'] as const;
@@ -67,7 +70,7 @@ for (const [name, outs] of Object.entries(res)) {
 console.log('\nMean |change| from "favourite", paired by village; ratio to the control\'s |change| (chaos) in brackets:');
 const chaos = Object.fromEntries(METRICS.map((m) => [m, mean(res.control.map((o, i) => Math.abs(o[m] - res.favourite[i][m])))]));
 console.log('chaos'.padEnd(11) + METRICS.map((m) => chaos[m].toFixed(1).padStart(14)).join(''));
-for (const name of ['least', 'folk', 'village', 'homes']) {
+for (const name of ['least', 'folk', 'village', 'homes', 'first', 'last']) {
   console.log(name.padEnd(11) + METRICS.map((m) => {
     const d = res[name].map((o, i) => o[m] - res.favourite[i][m]);
     const md = mean(d);

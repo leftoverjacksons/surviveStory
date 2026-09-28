@@ -95,6 +95,12 @@
   #log-latest { display: none; flex: 1; min-width: 0; font: 12px var(--f-body); color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; }
   #log.collapsed #log-latest { display: block; }
   #log p { margin: 0; }
+  /* commitments: council choices still in force */
+  #top .midcol { display: grid; gap: 6px; justify-items: start; }
+  #commits[hidden], #asks[hidden] { display: none; }
+  #commits { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start; }
+  #commits .commit { font: 11px var(--f-mono); padding: 3px 8px; border-radius: 99px; background: rgba(12, 16, 14, 0.82); border: 1px solid rgba(201, 184, 255, 0.45); color: #e6dcff; cursor: help; }
+  #council .effect { font-size: 12px; color: #cfe8b8; margin: 2px 0 4px; }
   /* the request tray */
   #asks { flex: none; padding: 6px 10px 8px; display: grid; gap: 4px; font-size: 12.5px; line-height: 1.35; }
   #asks h2 { margin: 0; display: flex; gap: 8px; align-items: baseline; font: 400 14px var(--f-display); letter-spacing: 0.03em; }
@@ -365,7 +371,10 @@
     <div class="sub" id="clock">Day 1 · 07:00 · facing NE</div>
     <button id="chronicle-btn" type="button" aria-pressed="false" title="How the run has gone: charts by day, notable events, numbers by season (C)">Chronicle</button>
   </div>
-  <div id="res" class="panel"></div>
+  <div class="midcol">
+    <div id="res" class="panel"></div>
+    <div id="commits" hidden title="What the village has committed to, and for how long"></div>
+  </div>
 </div>
 
 <div id="leftcol" class="hud">

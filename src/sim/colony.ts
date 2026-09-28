@@ -32,6 +32,7 @@ import { planRestore, ruinDoor } from './restore';
 import { rareDaily, ruinToStrip, strip } from './rare';
 import { autopilotDaily } from './autopilot';
 import { requestsDaily, type Request } from './requests';
+import { committed } from './dilemmas';
 import { chronicleDaily, type Chronicle } from './chronicle';
 import { TRADES, clothFrom, clothed, finishBatch, needComfort, needRows, needTier, pickTrade, toolFactor, tradeDemand, tradesDaily } from './trades';
 import { createHaunts, hauntDaily, heapHaunted, senseDistrict, type Clearing, type Haunt, type TakenRecord } from './haunt';
@@ -400,10 +401,18 @@ export function fireWood(col: Colony, season: Season = seasonNow(col)): number {
   return fire + (season === 'winter' ? heat : Math.ceil(heat / 2));
 }
 
+/** Timber set aside for the first fence a worked field is waiting on (at most 25). */
+function fenceHold(col: Colony): number {
+  const f = col.world.fields.find((x) => x.fence === 0 && wantsFence(col.world, x));
+  return f ? Math.min(25, fenceWood(f)) : 0;
+}
+
 /** Wood worth keeping on hand: projects, spare, and (from late summer) enough for winter. */
 export function woodWanted(col: Colony): number {
   const need = activeProjects(col).reduce((n, p) => n + outstanding(p, 'wood'), 0);
-  return WOOD_TARGET + need + winterReserve(col);
+  // A worked field waiting for its fence: its timber has to be cut too (pickFence wants it all on hand).
+  const fence = col.world.fields.filter((f) => f.fence === 0 && wantsFence(col.world, f)).reduce((n, f) => n + fenceWood(f) + 10, 0);
+  return WOOD_TARGET + need + winterReserve(col) + (committed(col, 'all_hands') ? 40 : 0) + Math.min(fence, 30);
 }
 
 /** From late summer: the firewood the rest of winter will burn. Optional building doesn't touch it. */
@@ -476,7 +485,7 @@ function pickHaul(col: Colony, a: Agent): Task | null {
 function pickForage(col: Colony, a: Agent): Task | null {
   const w = col.world;
   // The Wild's berries are the Folk's; only the hungry take them.
-  const hungry = rationing(col) || col.community.resources.food < col.agents.length * 2;
+  const hungry = (rationing(col) && !committed(col, 'ration')) || col.community.resources.food < col.agents.length * 2;
   const key = hungry ? 'forageH' : 'forage';
   if (quiet(col, key)) return null;
   const found = findNearest(w, toTileX(w, a.x), toTileZ(w, a.z), 40, (tx, tz) => {
@@ -554,7 +563,8 @@ function pickSupply(col: Colony, a: Agent): Task | null {
   for (const p of activeProjects(col)) {
     for (const m of MATERIALS) {
       const need = outstanding(p, m);
-      const have = Math.floor(res[m] - (m === 'wood' ? FIRE_WOOD_PER_DAY * 2 + 2 : 0)); // keep the fire fed
+      // Keep the fire fed, and leave a worked field's fence timber on the pile.
+      const have = Math.floor(res[m] - (m === 'wood' ? FIRE_WOOD_PER_DAY * 2 + 2 + fenceHold(col) : 0));
       if (need <= 0 || have < 1) continue;
       const amount = Math.min(need, have, m === 'glimmer' ? 6 : 10);
       if (!deliver(col, a)) return null;
@@ -678,6 +688,7 @@ function pickGarden(col: Colony, a: Agent): Task | null {
 
 /** In winter, when the stores run low, meals are halved. */
 export function rationing(col: Colony): boolean {
+  if (committed(col, 'ration')) return true;
   return seasonNow(col) === 'winter' && col.community.resources.food < col.agents.length * 6;
 }
 
@@ -1076,6 +1087,8 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
   }
   switch (s.role) {
     case 'builder':
+      // All hands to the woodpile: no building for now (a council commitment).
+      if (committed(col, 'all_hands')) { t = pickTree(col, a) ?? pickForage(col, a) ?? pickHaul(col, a); break; }
       t = pickHaul(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
         ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickBuild(col, a)
         ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
@@ -2072,7 +2085,8 @@ function daily(col: Colony) {
     log(c, `${SEASON_NAMES[season]}. ${lines[season]}`, 'good');
     if (season === 'winter') for (const b of col.world.bushes) b.berries = 0;
   }
-  if (rationing(col) && !col.hints.has(`ration${dayOf(col) - (dayOf(col) - 1) % DAYS_PER_YEAR}`)) {
+  // (Half rations the council chose are announced when chosen, not as a shortage.)
+  if (rationing(col) && !committed(col, 'ration') && !col.hints.has(`ration${dayOf(col) - (dayOf(col) - 1) % DAYS_PER_YEAR}`)) {
     col.hints.add(`ration${dayOf(col) - (dayOf(col) - 1) % DAYS_PER_YEAR}`);
     log(c, 'The cellar is running low. Meals are cut to half rations until spring.', 'bad');
   }
@@ -2217,15 +2231,28 @@ function arrivals(col: Colony) {
     // Word gets around: a settled, thriving village draws more people.
     const draw = [0.6, 1, 1.4, 1.8][col.village.needTier ?? 1];
     if (!rng.chance((col.council.gates === 'open' ? 0.4 : 0.18) * draw)) return;
+    // Sometimes a group comes, and the council must decide (dilemmas.ts).
+    if (pop >= 6 && pop <= MAX_POP - 3 && !col.council.active && !col.council.strangers && rng.chance(0.5)) {
+      col.council.strangers = { n: rng.chance(0.4) ? 3 : 2 };
+      return;
+    }
+    welcome(col, 1);
+  });
+}
+
+/** Newcomers walk in off the highway and take up whatever work is short-handed. */
+export function welcome(col: Colony, n: number) {
+  const c = col.community;
+  for (let k = 0; k < n && alive(c).length < MAX_POP; k++) {
     const s = recruit(c);
     s.role = neededRole(col);
     syncAgents(col);
     const a = col.agents.find((x) => x.id === s.id);
     if (a) {
-      const side = rng.chance(0.5) ? 1 : -1;
+      const side = (s.id % 2) ? 1 : -1;
       a.x = side * 22; a.z = highwayZ(side * 22);
     }
-  });
+  }
 }
 
 /** Food in store (and in jars) per head. */

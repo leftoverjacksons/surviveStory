@@ -354,6 +354,24 @@ export class Hud {
     }
   }
 
+  /** What the village has committed to, and for how long (DESIGN §23.5). */
+  private commitKey = '';
+  private renderCommitments() {
+    const col = this.col, k = col.council, now = col.minute, day = col.community.day;
+    const days = (untilMin: number) => Math.max(1, Math.ceil((untilMin - now) / 1440));
+    const items: [string, string][] = [];
+    if (k.gates !== 'normal' && k.gatesUntil > day) items.push([`Gates ${k.gates} · ${k.gatesUntil - day}d`, k.gates === 'open' ? 'Newcomers are welcomed: more arrive.' : 'Nobody new is let in.']);
+    if (k.restUntil > now) items.push([`Rest day · ${days(k.restUntil)}d`, 'Nobody works; everyone rests.']);
+    if (k.festivalUntil > now) items.push([`Festival · ${days(k.festivalUntil)}d`, 'The village celebrates.']);
+    for (const m of k.commitments ?? []) if (m.until > now) items.push([`${m.title} · ${days(m.until)}d`, m.effect]);
+    const html = items.map(([t, tip]) => `<span class="commit" title="${esc(tip)}">${esc(t)}</span>`).join('');
+    if (html === this.commitKey) return;
+    this.commitKey = html;
+    const el = $('commits');
+    el.innerHTML = html;
+    el.hidden = !items.length;
+  }
+
   private renderVillage() {
     const v = this.col.village;
     const pop = this.col.agents.length;
@@ -385,6 +403,7 @@ export class Hud {
     this.renderInspect();
     this.renderVeil();
     this.renderCouncil();
+    this.renderCommitments();
   }
 
   /** The village's needs: the tier it has reached, and what the next one asks for. */
@@ -674,11 +693,13 @@ export class Hud {
       if (p.kind === 'home') return '<div class="who">If backed, you draw them a plot.</div>';
       return '';
     };
-    el.innerHTML = `<div class="top"><h2>The council meets</h2><span class="held">The day waits while they talk</span></div>
-      <div class="sub">Each of them wants something. Back one; the others will feel passed over.</div>
+    const q = active.question;
+    el.innerHTML = `<div class="top"><h2>${q ? esc(q.title) : 'The council meets'}</h2><span class="held">The day waits while they talk</span></div>
+      <div class="sub">${q ? `${esc(q.text)} Choose one; those who wanted another will feel passed over.` : 'Each of them wants something. Back one; the others will feel passed over.'}</div>
       ${active.proposals.map((p) => `<div class="prop">
         <div class="t"><b>${esc(p.title)}</b><span class="cost">${esc(cost(p))}</span></div>
         <div><q>${esc(p.pitch)}</q> <span class="who">${esc(name(p.proposer))}</span></div>
+        ${p.effect ? `<div class="effect">${esc(p.effect)}</div>` : ''}
         <div class="who">Backed by <em>${p.support.length} of ${living}</em>: ${esc(p.support.map(name).join(', '))}</div>
         ${place(p)}
         <button type="button" class="primary" data-prop="${p.id}" ${resolvable(col, p) ? '' : 'disabled title="Not enough in the stores"'}>Back ${esc(name(p.proposer))}</button>

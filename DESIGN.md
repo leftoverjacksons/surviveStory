@@ -2615,3 +2615,43 @@ From the pacing audit (§22.11, proposals D and E), which the user approved.
     the rest of the simulation. Self-planning villages (tests, autopilot)
     queue a waiting household after 3 days, about the council's old pace;
     autopilot answers personal and work asks too.
+
+### 23.5 Councils, step 2: dilemmas and commitments (built)
+- **When it meets:** the council convenes when a question arises
+  (`sim/dilemmas.ts#dilemmaDue`), at most every 2 days; if nothing has come
+  up for 6 days (`HEARTH_GAP`), a hearth talk (the old proposal mix, minus
+  home petitions and the Folk's land). No fixed 4-day cadence.
+- **The questions** (most pressing first), each answer spelled out in the
+  panel ("effect"):
+  - *Winter won't add up* (early autumn, once a year, when wood or food is
+    under 90% of the winter's need): all hands to the woodpile and hedges
+    (4 days, no building), half rations now (8 days), or trust to luck.
+  - *Strangers at the gate* (half of arrivals from 6 people on come as a
+    group of 2–3): take them all in, take the one who can build, or send
+    them on with food (8 each).
+  - *Too long without a celebration* (1.5 seasons): hold a festival, dance
+    at the Ring with the Folk (if friendly), or not now.
+  - *The Folk ask for land* (their room need unmet, once a season): give
+    the woods round the hill (standing +4), offer the far side (the Wild
+    grows away from the village; +3), or refuse (−6).
+  - *A quarrel* (a bond at −45 or worse): side with one, side with the
+    other (the backed +6, the other −8, their friends −2), or mend it over
+    a meal (10 food; bond +30).
+- **Commitments:** choices that last are kept (`Council.commitments`) and
+  shown as chips under the resources, with days left and the effect on
+  hover, alongside the old timers (gates, rest day, festival). Half rations
+  and all hands act in the simulation (`rationing`, the builder's work,
+  `woodWanted`).
+- **Measured** (`scripts/choices.ts`, 8 villages × 64 days, with new
+  policies "first answer" and "last answer"): population now follows the
+  strangers answers (first 15.0 vs last 10.3 people; drift 6.0) and Folk
+  standing follows the land answers (−7 to −8 for refusing; about 3× the
+  drift). Other outcomes still sit within the run's own drift.
+- **Soak** (6 × 4 years, with §22.12 D and E): all 24 alive, no stalls;
+  tier 3 from year 3; homes 12.7; the Folk hill reaches level 3.2 (was
+  ~2.5 before autopilot asked the Folk for works); ~110 ms per day.
+- **Found on the way:** fences waited forever for 20 wood to pile up, since
+  building sites took every stick and nobody cut for fences. Sites now leave
+  a worked field's fence timber on the pile, and it counts in the wood
+  target. Chosen half rations don't open the Folk's berries (only real
+  hunger does), and aren't announced as a shortage.

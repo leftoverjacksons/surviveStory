@@ -14,11 +14,14 @@ import { householdOf, waitingHouseholds } from './homes';
 import type { Rng } from './rng';
 import { communitySight, homeResonance, lanternGift, nurture, type EntityRequest } from './veil';
 import { Zone, idx, paintZone, reveal, toTileX, toTileZ, type Point } from './world';
-import { WILD_RADIUS, changeStanding, landWanted } from './folk';
+import { WILD_RADIUS, changeStanding } from './folk';
+import { applyDilemma, dilemmaAffinity, dilemmaDue, type Commitment, type Question } from './dilemmas';
 
 export type ProposalKind =
   | 'build' | 'festival' | 'wild_ring' | 'rest_day' | 'open_gates' | 'close_gates' | 'offering' | 'grove' | 'home' | 'commons'
-  | 'folk_festival' | 'folk_land' | 'folk_amends';
+  | 'folk_festival' | 'folk_land' | 'folk_amends'
+  // Answers to a dilemma (dilemmas.ts)
+  | 'take_all' | 'take_one' | 'send_on' | 'land_elsewhere' | 'land_refuse' | 'all_hands' | 'ration' | 'trust' | 'side_a' | 'side_b' | 'mend' | 'not_now';
 
 export interface Proposal {
   id: number;
@@ -32,10 +35,14 @@ export interface Proposal {
   request?: EntityRequest;
   /** Home petitions: the household asking. */
   household?: number;
+  /** What choosing it will do, spelled out (dilemma answers). */
+  effect?: string;
+  /** Who or how many it is about (dilemma answers). */
+  about?: number[];
 }
 
 export interface Council {
-  active: { proposals: Proposal[]; deadline: number } | null;
+  active: { proposals: Proposal[]; deadline: number; question?: Question } | null;
   nextDay: number;
   nextId: number;
   gates: 'normal' | 'open' | 'closed';
@@ -46,6 +53,14 @@ export interface Council {
   omen: Point | null;
   /** Last day word from the Folk came before the council. */
   folkDay?: number;
+  /** Day the council last met. */
+  lastHeld?: number;
+  /** When each kind of dilemma was last put to the council. */
+  asked?: Record<string, number>;
+  /** Strangers waiting at the gate for the council's answer. */
+  strangers?: { n: number };
+  /** Choices still in force (visible in the HUD). */
+  commitments?: Commitment[];
 }
 
 export const DREAM_COST = 15;
@@ -65,7 +80,7 @@ const avgMoraleOf = (living: Survivor[]) => living.reduce((n, s) => n + s.morale
 const inline = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 const has = (s: Survivor, t: string) => s.traits.includes(t as never);
 
-const FESTIVALS: Record<string, [string, string]> = {
+export const FESTIVALS: Record<string, [string, string]> = {
   spring: ['the Thaw Walk', 'Let\'s walk the bounds together and see what woke up.'],
   summer: ['a Midsummer fire', 'Long evening, big fire. We\'ve earned one night.'],
   autumn: ['a Harvest supper', 'Before we lock it all away, let\'s eat like people again.'],
@@ -186,16 +201,7 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
       }),
     });
   }
-  if (f.met && f.standing >= 40 && f.land < landWanted(f)) {
-    out.push({
-      score: 1.3,
-      make: () => ({
-        kind: 'folk_land', title: 'Give the Folk more of the woods by their hill', cost: {},
-        pitch: `${f.beings.find((b) => b.known)?.name ?? 'One of them'} asked me for room. Their hill wants to grow, and it can't without the land.`,
-        proposer: folkVoice(),
-      }),
-    });
-  }
+  // Asking for land is a dilemma now (dilemmas.ts).
   if (f.met && f.standing < 25) {
     out.push({
       score: 1.6,
@@ -297,6 +303,7 @@ function affinity(col: Colony, s: Survivor, p: Omit<Proposal, 'id' | 'support'>)
     case 'folk_festival': return s.sight / 90 + (has(s, 'storyteller') ? 0.2 : 0) - (has(s, 'skittish') ? 0.2 : 0);
     case 'folk_land': return s.sight / 100 - (s.role === 'builder' ? 0.15 : 0);
     case 'folk_amends': return s.sight / 100 + (has(s, 'tender') ? 0.2 : 0) - (has(s, 'hoarder') ? 0.2 : 0);
+    default: return 0;
   }
 }
 
@@ -307,6 +314,18 @@ export function maybeConvene(col: Colony, rng: Rng) {
   if (council.active || c.day < council.nextDay) return;
   const living = alive(c);
   if (living.length < 3) return;
+  // A real question comes first, whenever it arises (DESIGN §23.5).
+  const d = dilemmaDue(col, rng);
+  if (d) {
+    const proposals = d.options.map((o) => ({ ...o, id: council.nextId++, support: [] as number[] }));
+    vote(col, proposals, rng);
+    council.active = { proposals, deadline: col.minute + 1440, question: d.question };
+    council.lastHeld = c.day;
+    log(c, `The council met by the fire: ${d.question.title.charAt(0).toLowerCase()}${d.question.title.slice(1)}.`, 'info');
+    return;
+  }
+  // Otherwise a hearth talk, when nothing has come up for a while.
+  if (c.day - (council.lastHeld ?? 0) < HEARTH_GAP) return;
   const speakers = new Set<number>();
   const cands = candidates(col, rng, speakers).sort((a, b) => b.score + rng.next() * 0.6 - (a.score + rng.next() * 0.6));
   const picked: Proposal[] = [];
@@ -332,21 +351,30 @@ export function maybeConvene(col: Colony, rng: Rng) {
   }
   if (picked.some((p) => p.kind.startsWith('folk_'))) council.folkDay = c.day;
   if (picked.length < 2) { council.nextDay = c.day + 1; return; }
-  // Everyone lines up behind one voice: their own, or the one they like best.
-  for (const s of living) {
+  vote(col, picked, rng);
+  council.active = { proposals: picked, deadline: col.minute + 1440 };
+  council.lastHeld = c.day;
+  const names = picked.map((p) => first(c.survivors.find((s) => s.id === p.proposer)!));
+  log(c, `The council met by the fire. ${names.join(', ')} each spoke for something.`, 'info');
+}
+
+/** Everyone lines up behind one voice: their own, or the one they like best. */
+function vote(col: Colony, picked: Proposal[], rng: Rng) {
+  const c = col.community;
+  for (const s of alive(c)) {
     const own = picked.find((p) => p.proposer === s.id);
     if (own) { own.support.push(s.id); continue; }
     let best = picked[0], bestScore = -Infinity;
     for (const p of picked) {
-      const sc = bondValue(c, s.id, p.proposer) / 100 + affinity(col, s, p) + rng.range(-0.25, 0.25);
+      const sc = bondValue(c, s.id, p.proposer) / 100 + (dilemmaAffinity(col, s, p) ?? affinity(col, s, p)) + rng.range(-0.25, 0.25);
       if (sc > bestScore) { best = p; bestScore = sc; }
     }
     best.support.push(s.id);
   }
-  council.active = { proposals: picked, deadline: col.minute + 1440 };
-  const names = picked.map((p) => first(c.survivors.find((s) => s.id === p.proposer)!));
-  log(c, `The council met by the fire. ${names.join(', ')} each spoke for something.`, 'info');
 }
+
+/** Days without a real question before the council meets anyway, for a hearth talk. */
+export const HEARTH_GAP = 6;
 
 /** Resolve the open council. `choice` is a proposal id; `dream` spends Influence to soften it. */
 export function resolveCouncil(col: Colony, choice: number, dream = false, auto = false): boolean {
@@ -380,11 +408,12 @@ export function resolveCouncil(col: Colony, choice: number, dream = false, auto 
     log(c, `The council backed ${proposer}: ${inline(chosen.title)}.${hurt.length ? ` ${hurt.join(' and ')} took it quietly.` : ''}`, 'good');
   }
   council.active = null;
-  council.nextDay = c.day + 4;
+  council.nextDay = c.day + 2;
   return true;
 }
 
 function applyProposal(col: Colony, p: Proposal) {
+  if (applyDilemma(col, p)) return;
   const c = col.community, w = col.world;
   const living = alive(c);
   switch (p.kind) {
@@ -471,7 +500,7 @@ export function councilDaily(col: Colony) {
   const council = col.council;
   if (council.active && col.minute >= council.active.deadline) {
     const top = councilFavourite(col)!;
-    if (!resolveCouncil(col, top.id, false, true)) { council.active = null; council.nextDay = col.community.day + 4; }
+    if (!resolveCouncil(col, top.id, false, true)) { council.active = null; council.nextDay = col.community.day + 2; }
   }
   if (council.gates !== 'normal' && col.community.day >= council.gatesUntil) council.gates = 'normal';
   // Stale requests fade.
