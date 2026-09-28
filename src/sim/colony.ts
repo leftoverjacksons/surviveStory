@@ -20,6 +20,7 @@ import {
 import {
   SITE_CREW, YARD, homeComfort, homeOf, householdName, householdOf, householdsDaily, onHomeBuilt, planHome, plotPoint,
   type Plot,
+  plotFence,
 } from './homes';
 import { bedSpot, seatSpot } from './sites';
 import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill, type Craft } from './purpose';
@@ -770,15 +771,15 @@ function yardSpot(plot: Plot, i: number, a: Agent): Point {
   const y = plot.yard[i];
   if (y.kind === 'fence') {
     // Work along the sides and back, in the order the fence goes up.
-    const path = [plot.corners[1], plot.corners[2], plot.corners[3], plot.corners[0]];
-    const lens = [0, 1, 2].map((k) => Math.hypot(path[k + 1].x - path[k].x, path[k + 1].z - path[k].z));
+    const path = plotFence(plot);
+    const lens = path.slice(0, -1).map((p, k) => Math.hypot(path[k + 1].x - p.x, path[k + 1].z - p.z));
     let d = Math.min(0.999, y.progress) * lens.reduce((m, n) => m + n, 0);
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0; k < lens.length; k++) {
       if (d <= lens[k]) {
         const f = d / lens[k];
         const p = { x: path[k].x + (path[k + 1].x - path[k].x) * f, z: path[k].z + (path[k + 1].z - path[k].z) * f };
         // A step inside the plot.
-        const cx = (plot.corners[0].x + plot.corners[2].x) / 2, cz = (plot.corners[0].z + plot.corners[2].z) / 2;
+        const cx = plot.corners.reduce((m, q) => m + q.x, 0) / plot.corners.length, cz = plot.corners.reduce((m, q) => m + q.z, 0) / plot.corners.length;
         const l = Math.hypot(cx - p.x, cz - p.z) || 1;
         return { x: p.x + ((cx - p.x) / l) * 0.7, z: p.z + ((cz - p.z) / l) * 0.7 };
       }

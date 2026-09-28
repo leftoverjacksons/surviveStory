@@ -21,6 +21,12 @@ import { Fireflies, Orb, Wisps } from './render/mystic';
 import { FolkView } from './render/folk';
 import { ClearingView } from './render/clearing';
 import { ClearingMenu, ClearingPanel, spiritLabel } from './ui/clearing';
+import { BuildPanel, type BuildTool } from './ui/build';
+import { PlacementView } from './render/placement';
+import { DEFS, canPlace, footAt, placeProject, type SiteKind as PlaceKind } from './sim/buildings';
+import { claimPlot, outlinePlot } from './sim/homes';
+import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
+import { Rng } from './sim/rng';
 import { playTurn } from './sim/clearbot';
 import { act as veilAct, endTurn, finish, giveDistrict, moveUnit, reachable, startClearing, teamReading, type Clearing } from './sim/haunt';
 import { People } from './render/people';
@@ -44,6 +50,8 @@ document.querySelector('#place h1')!.textContent = world.site.place;
 document.title = `Survive Story · ${world.site.place}`;
 const community = createCommunity(seed);
 const colony = createColony(world, community);
+// The player places buildings and draws plots (DESIGN §21); ?auto keeps the old self-planning village.
+colony.village.autoPlan = new URLSearchParams(location.search).has('auto');
 
 /** Game minutes per real second at each speed setting. */
 const SPEEDS = [0, 2, 6, 16]; // labelled 1×, 3×, 8×
@@ -276,6 +284,7 @@ let zoneTool: ZoneTool | null = null;
 const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, fishing: Zone.Fishing, wild: Zone.Wild, erase: Zone.None };
 function setZoneTool(mode: ZoneTool | null) {
   zoneTool = mode;
+  if (mode && build) setBuild(null);
   if (mode !== 'field') clearDraft();
   hud.setZoneMode(mode);
   worldUniforms.uZone.value = mode ? 1 : 0;
@@ -306,6 +315,21 @@ function drawDraft(cursor?: THREE.Vector3 | null) {
 }
 function clearDraft() { draft.length = 0; drawDraft(); }
 function closeDraft() {
+  if (build?.kind === 'plot') {
+    if (draft.length >= 3) {
+      const rng = new Rng((world.seed ^ (community.day * 7919) ^ (colony.village.nextId * 104729)) >>> 0);
+      const plan = outlinePlot(world, colony.village, draft.slice(), rng);
+      if (typeof plan === 'string') { buildPanel.hint(`${plan} Keep clicking corners, or Esc to start again.`); return; }
+      const plot = claimPlot(colony, plan, rng);
+      log(community, `A plot is pegged out: ${plot.tiles.length} squares, the house to stand near the front. It waits for a household.`, 'good');
+      replan(colony);
+    }
+    clearDraft();
+    setBuild(null);
+    syncScene();
+    hud.render();
+    return;
+  }
   if (draft.length >= 3) {
     const f = createField(world, draft.slice(), world.campfire);
     if (f) {
@@ -321,7 +345,7 @@ function closeDraft() {
 function fieldClick(clientX: number, clientY: number) {
   const g = groundAt(clientX, clientY);
   if (!g) return;
-  if (!draft.length) {
+  if (!draft.length && build?.kind !== 'plot') {
     const f = fieldAtPoint(world, g.x, g.z);
     if (f) {
       if (confirm('Remove this field? Anything growing in it will be lost.')) { deleteField(world, f.id); replan(colony); hud.render(); }
@@ -331,6 +355,67 @@ function fieldClick(clientX: number, clientY: number) {
   if (draft.length >= 3 && Math.hypot(g.x - draft[0].x, g.z - draft[0].z) < 1.2) { closeDraft(); return; }
   draft.push({ x: g.x, z: g.z });
   drawDraft(g);
+}
+
+// ---------- the build menu (DESIGN §21) ----------
+let build: BuildTool | null = null;
+const lastPointer = { x: 0, y: 0 };
+const placement = new PlacementView(world);
+scene.add(placement.group);
+const buildPanel = new BuildPanel(colony, (tool) => setBuild(tool));
+/** Drawing an outline: a field, or a plot for a home. */
+function drafting() { return zoneTool === 'field' || build?.kind === 'plot'; }
+function setBuild(tool: BuildTool | null) {
+  if (tool) { setZoneTool(null); setOmen(false); hud.inspect(null); }
+  build = tool;
+  clearDraft();
+  placement.hide();
+  draftLine.material.color.set(tool?.kind === 'plot' ? '#f4ecd0' : '#f0a040');
+  buildPanel.hint(!tool ? null
+    : tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
+    : tool.kind === 'restore' ? 'Click a ruin in a cleared district to restore it. Esc to stop.'
+    : `Place the ${DEFS[tool.site].name[tool.site === 'lantern' ? 0 : colony.village.tier].toLowerCase()}: click to place, right-click or T to turn it. Esc to stop.`);
+}
+/** The old-world building under a point, if any. */
+function ruinAtPoint(x: number, z: number) {
+  return world.ruins.find((r) => {
+    const cs = Math.cos(r.yaw), sn = Math.sin(r.yaw), px = x - r.x, pz = z - r.z;
+    return Math.abs(px * cs - pz * sn) <= r.w / 2 + 0.3 && Math.abs(px * sn + pz * cs) <= r.d / 2 + 0.3;
+  });
+}
+function placeHover(cx: number, cy: number) {
+  if (!build || build.kind === 'plot') return;
+  const g = groundAt(cx, cy);
+  if (!g) { placement.hide(); return; }
+  if (build.kind === 'restore') {
+    const r = ruinAtPoint(g.x, g.z) ?? null;
+    const why = r ? whyNotRestore(colony, r) : null;
+    placement.showRuin(r, !why);
+    buildPanel.hint(r ? (why ? `${r.name}: ${why}` : `${r.name}: becomes ${RESTORE[r.kind]!.name(r)}. Click to restore it.`) : 'Click a ruin in a cleared district to restore it. Esc to stop.');
+    return;
+  }
+  const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
+  const fit = canPlace(world, colony.village, build.site, foot);
+  placement.showFoot(foot, facing, build.site === 'lantern' ? 2.6 : 2.4, fit.ok);
+  buildPanel.hint(fit.ok ? `Click to place. ${fit.trees.length ? `${fit.trees.length} tree${fit.trees.length > 1 ? 's' : ''} will come down.` : ''} Right-click or T to turn.` : `${fit.why ?? 'It won\'t fit there.'} Right-click or T to turn; Esc to stop.`);
+}
+function placeClick(cx: number, cy: number) {
+  if (!build || build.kind === 'plot') return;
+  const g = groundAt(cx, cy);
+  if (!g) return;
+  if (build.kind === 'restore') {
+    const r = ruinAtPoint(g.x, g.z);
+    if (!r) return;
+    const res = requestRestore(colony, r.id);
+    if (typeof res === 'string') { buildPanel.hint(`${r.name}: ${res}`); return; }
+  } else {
+    const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
+    const res = placeProject(world, colony.village, community, build.site, foot, facing);
+    if (typeof res === 'string') { buildPanel.hint(`${res} Right-click or T to turn; Esc to stop.`); return; }
+  }
+  setBuild(null);
+  syncScene();
+  hud.render();
 }
 
 function paintAt(clientX: number, clientY: number) {
@@ -529,7 +614,9 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 });
 canvas.addEventListener('pointermove', (e) => {
-  if (zoneTool === 'field' && draft.length) drawDraft(groundAt(e.clientX, e.clientY));
+  lastPointer.x = e.clientX; lastPointer.y = e.clientY;
+  if (drafting() && draft.length) drawDraft(groundAt(e.clientX, e.clientY));
+  if (build && build.kind !== 'plot' && !pointers.size) placeHover(e.clientX, e.clientY);
   if (veil) { const g = groundAt(e.clientX, e.clientY); veil.hover = g ? { tx: toTileX(world, g.x), tz: toTileZ(world, g.z) } : null; if (!pointers.size) veilHover(e.clientX, e.clientY); }
   const p = pointers.get(e.pointerId);
   if (!p) return;
@@ -564,9 +651,13 @@ canvas.addEventListener('pointerup', (e) => {
     if (p && (p.button === 0 || p.button === 2) && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) <= 6) veilClick(e.clientX, e.clientY, p.button);
     return;
   }
-  if (zoneTool === 'field' && p?.button === 0) {
+  if (drafting() && p?.button === 0) {
     if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) <= 6) fieldClick(e.clientX, e.clientY);
     return;
+  }
+  if (build && build.kind !== 'plot' && p && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) <= 6) {
+    if (p.button === 2 && build.kind === 'place') { build.turn = (build.turn + 1) % 4; placeHover(e.clientX, e.clientY); return; }
+    if (p.button === 0) { placeClick(e.clientX, e.clientY); return; }
   }
   if (zoneTool && p?.button === 0) { replan(colony); return; }
   if (omenMode && p?.button === 0 && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) <= 6) {
@@ -639,6 +730,9 @@ window.addEventListener('keydown', (e) => {
     if (speed === 0) setSpeed(lastSpeed); else { lastSpeed = speed; setSpeed(0); }
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
   else if (k === 'r') cycleRoofs();
+  else if (k === 'b' && !veil) buildPanel.toggle();
+  else if (k === 't' && build?.kind === 'place') { build.turn = (build.turn + 1) % 4; placeHover(lastPointer.x, lastPointer.y); }
+  else if (k === 'escape' && build && !draft.length) setBuild(null);
   else if (k === 'v') { veilView = !veilView; hud.setVeilView(veilView); hud.render(); }
   else if (k === 'escape' && draft.length) clearDraft();
   else if (k === 'enter' && draft.length) closeDraft();
@@ -918,4 +1012,7 @@ const veilDebug = {
     return toScreen(x, heightAt(world, x, z) + 1.1, z);
   },
 };
-Object.assign(window, { __game: { ...veilDebug, stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); } } });
+Object.assign(window, { __game: { ...veilDebug, stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
+  fits: (k: PlaceKind, x: number, z: number, turn = 0) => canPlace(world, colony.village, k, footAt(k, toTileX(world, x), toTileZ(world, z), turn).foot).ok,
+  screenOf: (x: number, z: number) => toScreen(x, heightAt(world, x, z), z),
+  plotTry: (pts: { x: number; z: number }[]) => { const r = outlinePlot(world, colony.village, pts, new Rng(1)); return typeof r === 'string' ? r : 'ok'; } } });

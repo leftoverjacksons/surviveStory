@@ -123,7 +123,9 @@ reference: Tiny Glade.
     verbs), council emissaries (folk_festival/land/amends), rules broken in the Wild,
     led astray + searches (folk.led; Omen shows the place), borrowed for a dance. NOT published.
   - CURRENT PLAN: DESIGN §21.2 (loop v2). Step 1 (cutaway for ruins) DONE §21.3;
-    next is step 2, the build menu and placement. Unpublished: §20.6–20.7, §21.3.
+    step 2 (build menu, placement, drawn plots, restore from the menu) DONE §21.4:
+    the game runs with `village.autoPlan = false` (`?auto` for the old self-planning).
+    Next is step 3, the council pausing and asking. Unpublished: §20.6–20.7, §21.3–21.4.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

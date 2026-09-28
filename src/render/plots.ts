@@ -3,7 +3,7 @@
  * time, and the things households make behind their houses.
  */
 import * as THREE from 'three';
-import { houseFloor, housePoint, plotPoint, type Plot, type YardItem } from '../sim/homes';
+import { houseFloor, housePoint, plotFence, plotPoint, type Plot, type YardItem } from '../sim/homes';
 import type { Village } from '../sim/buildings';
 import { heightAt, type World } from '../sim/world';
 import { box, cyl, mat } from './kit';
@@ -26,11 +26,11 @@ function fence(world: World, plot: Plot, progress: number, seed: number): THREE.
   const rand = makeRand(seed);
   const wood = mat('#7a5a38'), dark = mat('#5f4630'), weave = mat('#8f7048');
   // Sides and back: front-right → back-right → back-left → front-left.
-  const path = [plot.corners[1], plot.corners[2], plot.corners[3], plot.corners[0]];
-  const lens = [0, 1, 2].map((k) => Math.hypot(path[k + 1].x - path[k].x, path[k + 1].z - path[k].z));
+  const path = plotFence(plot);
+  const lens = path.slice(0, -1).map((p, k) => Math.hypot(path[k + 1].x - p.x, path[k + 1].z - p.z));
   const total = lens.reduce((a, b) => a + b, 0);
   let budget = progress * total;
-  for (let k = 0; k < 3 && budget > 0; k++) {
+  for (let k = 0; k < lens.length && budget > 0; k++) {
     const a = path[k], b = path[k + 1];
     const len = Math.min(lens[k], budget);
     budget -= lens[k];

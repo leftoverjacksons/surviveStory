@@ -43,7 +43,8 @@ describe('the Folk and the village together', () => {
     expect(col.folk.offendedUntil).toBeGreaterThan(col.community.day);
     col.folk.standing = 15;
     let seen = false;
-    for (let d = 0; d < 14 && !seen; d++) { days(col, 1); if (col.folk.led) seen = true; }
+    // Kept cross (offerings would otherwise mend it within days), so this is not left to a few dice rolls.
+    for (let d = 0; d < 14 && !seen; d++) { col.folk.standing = Math.min(col.folk.standing, 15); days(col, 1); if (col.folk.led) seen = true; }
     expect(seen).toBe(true);
     const led = col.folk.led!;
     // An omen shows the searchers exactly where.

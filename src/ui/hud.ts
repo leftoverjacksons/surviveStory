@@ -34,7 +34,7 @@ const BUILDING_INFO: Record<string, string> = {
   garden: 'A kitchen garden. Tended daily, it adds a little food in summer and autumn.',
   workshop: 'The workbench. With it, and some practice, they learn to work timber.',
   kitchen: 'The canopy kitchen. Hot meals lift everyone\'s morale.',
-  lantern: 'A wisp lantern. Lights the dark between houses (a little morale each) and thins the Veil nearby.',
+  lantern: 'A lamp post on salvaged solar, with a little glimmer in the glass. Lights the dark between houses (a little morale each) and thins the Veil nearby.',
   cellar: 'A root cellar. Keeps food from spoiling: more room in the stores.',
   shrine: 'A shrine. Raises Resonance around it; a place to leave things for the unseen.',
   jetty: 'A jetty out over the pond. Fishers sit at its end; in winter they cut holes in the ice beside it.',

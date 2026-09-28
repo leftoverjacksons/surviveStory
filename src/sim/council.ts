@@ -145,7 +145,7 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
       (s) => s.sight / 30 + (s.role === 'attune' ? 1 : 0));
   }
   if (r.glimmer >= 8 && v.buildings.filter((b) => b.kind === 'lantern').length < 6) {
-    buildCand('lantern', 0.9, 'Hang another wisp lantern', 'The dark between the houses is too deep.',
+    buildCand('lantern', 0.9, 'Put up another solar lantern', 'The dark between the houses is too deep.',
       (s) => (s.role === 'attune' ? 1 : 0) + (has(s, 'skittish') ? 1 : 0));
   }
   if (!hasBuilt(v, 'workshop')) {

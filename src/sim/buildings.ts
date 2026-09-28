@@ -10,7 +10,7 @@ import { houseFloor, type Household, type Plot } from './homes';
 import type { Fishery } from './fishing';
 import { RESTORE } from './restore';
 import {
-  Ground, LANE_WEAR, PATH_WEAR, heightAt, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
+  Ground, Zone, LANE_WEAR, PATH_WEAR, heightAt, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
   type Point, type World,
 } from './world';
 
@@ -115,6 +115,8 @@ export interface Village {
   hearths: { name: string; building: number; ruin?: number }[];
   /** Day the last restoration was planned. */
   lastRestore?: number;
+  /** The village plans and places its own buildings (tests, probes). Off in the game: the player places them. */
+  autoPlan?: boolean;
 }
 
 interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]; work: [number, number]; beds?: [number, number] }
@@ -131,7 +133,7 @@ export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_st
   kitchen:  { name: ['Canopy kitchen', 'Canopy kitchen'], w: 4, d: 2, cost: [c(12, 6), c(12, 6)], work: [480, 480] },
   cellar:   { name: ['Root cellar', 'Stone-lined cellar'], w: 3, d: 3, cost: [c(10, 4), c(20, 0)], work: [360, 480] },
   shrine:   { name: ['Wayside shrine', 'Stone shrine'], w: 2, d: 2, cost: [c(8, 2, 8), c(14, 0, 8)], work: [300, 360] },
-  lantern:  { name: ['Wisp lantern', 'Wisp lantern'], w: 1, d: 1, cost: [c(2, 2, 6), c(2, 2, 6)], work: [120, 120] },
+  lantern:  { name: ['Solar lantern', 'Solar lantern'], w: 1, d: 1, cost: [c(2, 2, 6), c(2, 2, 6)], work: [120, 120] },
 };
 
 export const GARDEN_YIELD: [number, number] = [2, 3]; // food per tended day: kitchen plots, not staples
@@ -203,7 +205,7 @@ export function doorOf(w: World, f: Footprint, facing: number): Point {
 
 // ---------- site selection ----------
 
-function footprintFree(w: World, v: Village, f: Footprint, margin: number): { ok: boolean; trees: number[] } {
+export function footprintFree(w: World, v: Village, f: Footprint, margin: number, needZone = true): { ok: boolean; trees: number[]; why?: string } {
   const trees: number[] = [];
   for (let dz = -margin; dz < f.d + margin; dz++) for (let dx = -margin; dx < f.w + margin; dx++) {
     const tx = f.tx + dx, tz = f.tz + dz;
@@ -211,16 +213,23 @@ function footprintFree(w: World, v: Village, f: Footprint, margin: number): { ok
     if (!inBounds(w, tx, tz)) return { ok: false, trees };
     const i = idx(w, tx, tz);
     if (inner) {
-      if (!inZone(w, tx, tz) || !isExplored(w, tx, tz)) return { ok: false, trees };
+      if (!isExplored(w, tx, tz)) return { ok: false, trees, why: 'Nobody has been out that far yet.' };
+      if (needZone && !inZone(w, tx, tz)) return { ok: false, trees };
+      if (w.haunted?.[i]) return { ok: false, trees, why: 'Something still lives there. Clear the district first.' };
+      if (w.zone[i] === Zone.Wild) return { ok: false, trees, why: 'That is the Folk\'s land.' };
+      if (w.fieldAt?.[i] > 0) return { ok: false, trees, why: 'That is a field.' };
       const g = w.ground[i];
-      if (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete) return { ok: false, trees };
-      if (w.blocked[i] || w.bushAt[i] >= 0 || v.plotAt[i] || w.folk?.path[i]) return { ok: false, trees };
+      if (g === Ground.Water) return { ok: false, trees, why: 'That is water.' };
+      if (g === Ground.Asphalt || g === Ground.Concrete) return { ok: false, trees, why: 'That is road or old paving.' };
+      if (v.plotAt[i]) return { ok: false, trees, why: 'That is someone\'s plot.' };
+      if (w.folk?.path[i]) return { ok: false, trees, why: 'That is a Folk path.' };
+      if (w.blocked[i] || w.bushAt[i] >= 0) return { ok: false, trees, why: 'Something is in the way.' };
       if (w.treeAt[i] >= 0) {
         if (w.trees[w.treeAt[i]].protected) return { ok: false, trees };
         trees.push(w.treeAt[i]);
       }
     } else if (w.blocked[i]) {
-      return { ok: false, trees }; // keep a walkway around buildings
+      return { ok: false, trees, why: 'Leave a walkway around it.' }; // keep a walkway around buildings
     } else if (w.treeAt[i] >= 0 && !w.trees[w.treeAt[i]].protected && Math.max(-dx - 1, dx - f.w, -dz - 1, dz - f.d) < 1) {
       trees.push(w.treeAt[i]); // clear a tree standing right against the walls
     }
@@ -229,20 +238,20 @@ function footprintFree(w: World, v: Village, f: Footprint, margin: number): { ok
   const c = footCenter(w, f);
   let lowest = Infinity;
   for (let i = 0; i <= 2; i++) for (let j = 0; j <= 2; j++) lowest = Math.min(lowest, heightAt(w, c.x + (i / 2 - 0.5) * f.w, c.z + (j / 2 - 0.5) * f.d));
-  if (footFloor(w, f) - lowest > 1.2) return { ok: false, trees };
+  if (footFloor(w, f) - lowest > 1.2) return { ok: false, trees, why: 'Too steep.' };
   const x0 = tileX(w, f.tx) - 0.5, z0 = tileZ(w, f.tz) - 0.5;
   const pad = margin + 0.5;
   // Stay clear of other buildings and projects.
   for (const o of [...v.buildings.map((b) => b.foot), ...v.projects.filter((p) => !p.done).map((p) => p.foot)]) {
     if (f.tx < o.tx + o.w + margin && f.tx + f.w + margin > o.tx && f.tz < o.tz + o.d + margin && f.tz + f.d + margin > o.tz) {
-      return { ok: false, trees };
+      return { ok: false, trees, why: 'Too close to another building.' };
     }
   }
   // Keep the fire circle, bedrolls and stockpile open.
   const cx = x0 + f.w / 2, cz = z0 + f.d / 2;
-  if (Math.hypot(cx - w.campfire.x, cz - w.campfire.z) < 5.5 + Math.max(f.w, f.d) / 2) return { ok: false, trees };
+  if (Math.hypot(cx - w.campfire.x, cz - w.campfire.z) < 5.5 + Math.max(f.w, f.d) / 2) return { ok: false, trees, why: 'Keep the fire circle open.' };
   const sp = w.stockpile;
-  if (x0 < sp.x1 + pad && x0 + f.w > sp.x0 - pad && z0 < sp.z1 + pad && z0 + f.d > sp.z0 - pad) return { ok: false, trees };
+  if (x0 < sp.x1 + pad && x0 + f.w > sp.x0 - pad && z0 < sp.z1 + pad && z0 + f.d > sp.z0 - pad) return { ok: false, trees, why: 'Keep the stockpile open.' };
   return { ok: true, trees };
 }
 
@@ -395,6 +404,8 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
     return null;
   };
   const site = (kind: SiteKind): Project | null => {
+    // In the game the player places buildings; the village only plans its own in tests and probes.
+    if (v.autoPlan === false) return null;
     const s = findSite(w, v, kind, rng);
     if (!s) return null;
     const def = DEFS[kind];
@@ -492,6 +503,43 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
     if (p) return p;
   }
   return null;
+}
+
+/** What the build menu can place, with a word on each. */
+export const PLACEABLE: { kind: SiteKind; blurb: string }[] = [
+  { kind: 'hut', blurb: 'Shared beds for people without a home of their own.' },
+  { kind: 'cellar', blurb: 'Keeps food from spoiling. Winter needs one.' },
+  { kind: 'workshop', blurb: 'A workbench: where joinery is learned, and tools will be made.' },
+  { kind: 'garden', blurb: 'A kitchen garden: a little food, tended daily.' },
+  { kind: 'shrine', blurb: 'Somewhere the land can rest: Resonance around it.' },
+  { kind: 'lantern', blurb: 'A lamp post on salvaged solar. Light between the houses.' },
+];
+
+/** The footprint of a building placed at a tile, turned (0–3). */
+export function footAt(kind: SiteKind, tx: number, tz: number, turn: number): { foot: Footprint; facing: number } {
+  const def = DEFS[kind];
+  const swap = turn % 2 === 1;
+  const fw = swap ? def.d : def.w, fd = swap ? def.w : def.d;
+  return { foot: { tx: tx - Math.floor(fw / 2), tz: tz - Math.floor(fd / 2), w: fw, d: fd }, facing: turn % 4 };
+}
+
+/** Can the player put this building here? Returns trees to clear, or why not. */
+export function canPlace(w: World, v: Village, kind: SiteKind, foot: Footprint): { ok: boolean; trees: number[]; why?: string } {
+  return footprintFree(w, v, foot, kind === 'lantern' ? 0 : 1, false);
+}
+
+/** The player places a building: it becomes a project the village works on. */
+export function placeProject(w: World, v: Village, com: Community, kind: SiteKind, foot: Footprint, facing: number): Project | string {
+  const free = canPlace(w, v, kind, foot);
+  if (!free.ok) return free.why ?? 'It won\'t fit there.';
+  const def = DEFS[kind];
+  const tier = kind === 'lantern' ? 0 : v.tier;
+  const p = newProject(v, {
+    kind, tier, name: def.name[tier], foot, facing, cost: { ...def.cost[tier] }, workNeeded: def.work[tier], target: 0, clearTrees: free.trees,
+  });
+  if (v.priority === kind) v.priority = undefined;
+  log(com, `Stakes and string where you marked it: ${def.name[tier].toLowerCase()}.`, 'good');
+  return p;
 }
 
 function projectBeds(p: Project, v: Village): number {

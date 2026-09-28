@@ -68,6 +68,7 @@ export function ruinDoor(w: World, r: Ruin): Point {
  */
 export function planRestore(col: Colony, lead: string, newProject: (p: Omit<Project, 'id' | 'delivered' | 'incoming' | 'work' | 'done'>) => Project): Project | null {
   const v = col.village, w = col.world;
+  if (v.autoPlan === false) return null; // the player chooses what to restore
   if (v.projects.some((p) => !p.done && p.kind === 'restore')) return null;
   const options = restorable(col);
   if (!options.length) return null;
@@ -104,3 +105,36 @@ export function planRestore(col: Colony, lead: string, newProject: (p: Omit<Proj
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Can the player restore this ruin? Returns why not, or null. */
+export function whyNotRestore(col: Colony, r: Ruin): string | null {
+  const def = RESTORE[r.kind];
+  if (!def) return 'There is nothing left of it worth saving.';
+  if (r.restored) return 'Already restored.';
+  if (col.village.projects.some((p) => !p.done && p.kind === 'restore' && p.ruin === r.id)) return 'Already being restored.';
+  const h = col.haunts.find((x) => x.district === r.district);
+  if (h && h.state !== 'cleared') return 'Something still lives there. Clear the district first.';
+  if (h?.owner === 'folk') return 'That district was given to the Folk.';
+  return null;
+}
+
+/** The player chooses a ruin to restore. */
+export function requestRestore(col: Colony, ruinId: number): Project | string {
+  const v = col.village, w = col.world;
+  const r = w.ruins[ruinId];
+  if (!r) return 'Nothing there.';
+  const why = whyNotRestore(col, r);
+  if (why) return why;
+  const h = col.haunts.find((x) => x.district === r.district);
+  if (h && !h.owner) h.owner = 'village';
+  const def = RESTORE[r.kind]!;
+  const door = ruinDoor(w, r);
+  const p: Project = {
+    id: v.nextId++, kind: 'restore', tier: 0, name: cap(def.name(r)), foot: { tx: toTileX(w, door.x), tz: toTileZ(w, door.z), w: 1, d: 1 }, facing: 0,
+    cost: { ...def.cost }, delivered: { wood: 0, scrap: 0, glimmer: 0 }, incoming: { wood: 0, scrap: 0, glimmer: 0 },
+    work: 0, workNeeded: def.work, target: 0, clearTrees: [], done: false, ruin: r.id, door, inside: { x: r.x, z: r.z },
+  };
+  v.projects.push(p);
+  log(col.community, `They'll make ${r.name} good again: ${def.name(r)}.`, 'good');
+  return p;
+}

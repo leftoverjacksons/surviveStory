@@ -1780,3 +1780,63 @@ moon and festival rule) is folded into steps 5–7.
   - A lavender hemisphere light (intensity 1.6, faded in over about half a
     second) lights the district while a team is inside, so floors, walls
     and what grows in the houses read clearly.
+
+### 21.4 Step 2: the build menu and placement (built)
+- **The player plans; the survivors live in it.** In the game the village no
+  longer sites buildings, homes or restorations by itself
+  (`Village.autoPlan = false`, set in `main.ts`). `?auto` restores the old
+  self-planning village. Tests and `npm run sim` keep `autoPlan` unset, so
+  the balance probe still measures a village that plans for itself.
+  - The one exception is the opening project from `createColony` (the
+    first garden or workbench): it gives a new game something to watch.
+  - Upgrades (patching up, glasshouses, rebuilding in timber) and yards stay
+    emergent. They are improvements to what the player placed, in keeping
+    with "organic in-between elements stay emergent".
+- **Build menu** (the Build button or **B**; `ui/build.ts`): a plot for a
+  home, the six placeable buildings (`PLACEABLE`: bunk shack, root cellar,
+  workbench, garden, shrine, solar lantern) with costs, and restoring a ruin.
+  Costs the village can't meet say "(they'll gather it)"; placing is never
+  blocked by materials, because hauling follows demand.
+- **Placing a building** (`sim/buildings.ts#footAt/canPlace/placeProject`,
+  `render/placement.ts`): a ghost box follows the cursor, green where it
+  fits and red where it doesn't, with a cone at the door. Right-click or
+  **T** turns it; click places it, and it becomes an ordinary project.
+  - The hint line gives the reason when it won't fit. Reasons come from
+    `footprintFree`: water, paving, a plot, a field, the Folk's land or
+    paths, a haunted district, too steep, too close to another building,
+    the fire circle, unexplored ground.
+  - Zones are not required for placement (`needZone = false`); they still
+    guide the survivors' own choices.
+- **Drawing a plot** (`sim/homes.ts#outlinePlot/claimPlot`): click corners
+  with the same outline tool as fields; close on the first corner or press
+  Enter.
+  - The plot must be 36–260 squares on explored, dry, unpaved ground that
+    overlaps no plot, field, building, Folk land or haunted district.
+  - Its front is the edge (at least 3 long) whose middle is nearest a worn
+    path, a road or the fire. The house is fitted near the front: several
+    sizes, setbacks and offsets are tried; the door faces the street and
+    the slope is limited as for auto plots.
+  - The rest is yard, filled in over time by the household as before
+    (`planYard`, fences along `plotFence`, which now works for any
+    polygon).
+  - A drawn plot waits empty (`household = 0`). The next waiting household
+    takes the empty plot nearest the fire (`homeOnDrawnPlot`) and starts
+    its house. With no empty plot, the log asks every other day: "Draw
+    them a plot: Build → Plot for a home."
+- **Restoring from the menu** (`sim/restore.ts#whyNotRestore/requestRestore`):
+  hovering a ruin highlights it (green if restorable) and names what it
+  becomes. It is refused, with the reason, in a district still haunted,
+  in one given to the Folk, or when the ruin is already done or under way.
+  Choosing a ruin in an unclaimed cleared district claims it for the
+  village.
+- **Also:** the "wisp lantern" is renamed the solar lantern (it has been a
+  solar lamp post since round 3). The Folk "led astray" test now holds
+  standing at 15; it had relied on a few dice rolls before offerings mended
+  things.
+- **Debug hooks:** `__game.build({kind:'place', site:'cellar', turn:0})`,
+  `__game.fits(kind, x, z, turn)`, `__game.plotTry(pts)`,
+  `__game.screenOf(x, z)`.
+- **Tests:** `tests/build.test.ts` covers plot validation messages, a drawn
+  plot getting the only home, no self-placed buildings with `autoPlan`
+  false, placement and refusal (and completion), and restoring only after
+  clearing.

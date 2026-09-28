@@ -359,14 +359,12 @@ export function planYard(plot: Plot, traits: Set<string>): YardItem[] {
   const hs = plot.house;
   const hu = dot({ x: plot.hc.x - plot.origin.x, z: plot.hc.z - plot.origin.z }, plot.t);
   const hv = dot({ x: plot.hc.x - plot.origin.x, z: plot.hc.z - plot.origin.z }, plot.n);
-  const back = Math.min(...plot.corners.slice(2).map((p) => dot({ x: p.x - plot.origin.x, z: p.z - plot.origin.z }, plot.n)));
+  const back = plotDepthAt(plot, hu);
   const houseBack = hv + hs.D / 2 + (hs.wing ? hs.wing.d : 0);
   const yardV0 = houseBack + 0.9, yardV1 = back - 0.9;
   const widthAt = (v: number) => {
-    // Half-width of the plot at depth v (conservative: the narrower side).
-    const [fl, fr, br, bl] = plot.corners.map((p) => ({ u: dot({ x: p.x - plot.origin.x, z: p.z - plot.origin.z }, plot.t), v: dot({ x: p.x - plot.origin.x, z: p.z - plot.origin.z }, plot.n) }));
-    const lerp = (a: { u: number; v: number }, b: { u: number; v: number }) => a.u + (b.u - a.u) * Math.max(0, Math.min(1, (v - a.v) / ((b.v - a.v) || 1)));
-    return { lo: lerp(fl, bl) + 0.8, hi: lerp(fr, br) - 0.8 };
+    const s = plotSpanAt(plot, v);
+    return { lo: s.lo + 0.8, hi: s.hi - 0.8 };
   };
   const item = (kind: YardKind, u: number, v: number, w: number, d: number): YardItem => ({ kind, u, v, w, d, progress: 0, tended: 0, growth: 0 });
   const items: YardItem[] = [];
@@ -402,6 +400,37 @@ export function planYard(plot: Plot, traits: Set<string>): YardItem[] {
   if (traits.has('tender')) pref.flowers = 3.1;
   return fits.sort((a, b) => pref[a.kind] - pref[b.kind]);
 }
+
+/** Plot-local (u along the frontage, v back from it) coordinates of the corners. */
+const plotUV = (plot: Plot) => plot.corners.map((p) => ({ u: dot({ x: p.x - plot.origin.x, z: p.z - plot.origin.z }, plot.t), v: dot({ x: p.x - plot.origin.x, z: p.z - plot.origin.z }, plot.n) }));
+
+/** Across the plot at depth v: where it starts and ends along the frontage (any outline). */
+export function plotSpanAt(plot: Plot, v: number): { lo: number; hi: number } {
+  const uv = plotUV(plot);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < uv.length; i++) {
+    const a = uv[i], b = uv[(i + 1) % uv.length];
+    if ((a.v - v) * (b.v - v) > 0 || a.v === b.v) continue;
+    const u = a.u + ((b.u - a.u) * (v - a.v)) / (b.v - a.v);
+    lo = Math.min(lo, u); hi = Math.max(hi, u);
+  }
+  return lo <= hi ? { lo, hi } : { lo: 0, hi: 0 };
+}
+
+/** How far back the plot reaches along the line u. */
+export function plotDepthAt(plot: Plot, u: number): number {
+  const uv = plotUV(plot);
+  let far = 0;
+  for (let i = 0; i < uv.length; i++) {
+    const a = uv[i], b = uv[(i + 1) % uv.length];
+    if ((a.u - u) * (b.u - u) > 0 || a.u === b.u) continue;
+    far = Math.max(far, a.v + ((b.v - a.v) * (u - a.u)) / (b.u - a.u));
+  }
+  return far || Math.max(...uv.map((p) => p.v));
+}
+
+/** The fence line: every side but the front (corners 0→1 are the frontage). */
+export const plotFence = (plot: Plot): Point[] => [...plot.corners.slice(1), plot.corners[0]];
 
 /** Comfort a home gives the people who live in it (morale target points). */
 export function homeComfort(v: Village, b: Building): number {
@@ -636,6 +665,8 @@ export function waitingHouseholds(v: Village): Household[] {
  */
 export function planHome(col: Colony, rng: Rng, lead: string, urgent: boolean): Project | null {
   const v = col.village, w = col.world, c = col.community;
+  // The player draws the plots: households wait for one.
+  if (v.autoPlan === false) return homeOnDrawnPlot(col);
   if (v.projects.filter((p) => !p.done && p.kind === 'home').length >= 2) return null;
   const waiting = waitingHouseholds(v);
   let h = v.homeQueue.map((id) => waiting.find((x) => x.id === id)).find((x) => !!x);
@@ -686,5 +717,185 @@ export function planHome(col: Colony, rng: Rng, lead: string, urgent: boolean): 
   const facing = plan.from === 'street' ? 'fronting the lane' : plan.from === 'row' ? 'next to their neighbours' : 'facing the green';
   if (selfStart) log(c, `Tired of waiting on the council, ${name} paced out a plot ${where} of the fire anyway, ${facing}.`, 'info');
   else log(c, `${name} paced out a plot ${where} of the fire, ${facing}. ${lead} is drawing up the house.`, 'good');
+  return proj;
+}
+
+// ---------- plots the player draws (DESIGN §21) ----------
+
+export const PLOT_MIN = 36;
+export const PLOT_MAX = 260;
+
+/** Tiles a house would cover on a plot, and the trees in its way; null if it can't stand there. */
+function houseSite(w: World, plot: Plot, tiles: Set<number>): { houseTiles: number[]; trees: number[] } | null {
+  const spec = plot.house, hc = plot.hc, yaw = plot.yaw;
+  const houseTiles: number[] = [], trees: number[] = [];
+  for (const i of tiles) {
+    const p = { x: tileX(w, i % w.w), z: tileZ(w, (i / w.w) | 0) };
+    if (!houseContains(spec, hc, yaw, p, 0.2)) {
+      const tr = w.treeAt[i];
+      if (tr >= 0 && !w.trees[tr].protected && houseContains(spec, hc, yaw, p, 1.0)) trees.push(tr);
+      continue;
+    }
+    if (w.bushAt[i] >= 0 || w.blocked[i]) return null;
+    const tr = w.treeAt[i];
+    if (tr >= 0) { if (w.trees[tr].protected) return null; trees.push(tr); }
+    houseTiles.push(i);
+  }
+  for (let k = 0; k < 24; k++) {
+    const q = housePoint(hc, yaw, ((k % 6) / 5 - 0.5) * spec.W, (Math.floor(k / 6) / 3 - 0.5) * spec.D);
+    if (!tiles.has(idx(w, toTileX(w, q.x), toTileZ(w, q.z)))) return null;
+  }
+  let lowest = Infinity;
+  for (let k = 0; k < 25; k++) {
+    const q = housePoint(hc, yaw, ((k % 5) / 4 - 0.5) * spec.W, (Math.floor(k / 5) / 4 - 0.5) * spec.D);
+    lowest = Math.min(lowest, heightAt(w, q.x, q.z));
+  }
+  if (houseFloor(w, plot) - lowest > 1.5) return null;
+  return { houseTiles, trees };
+}
+
+/**
+ * A plot the player pegged out: validate it, find its front (the side facing
+ * the nearest lane, path or the fire), and fit a house near the front. The
+ * rest is yard. Returns the plan, or why it won't do.
+ */
+export function outlinePlot(w: World, v: Village, pts: Point[], rng: Rng): PlotPlan | string {
+  if (pts.length < 3) return 'Click at least three corners.';
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const c of pts) { x0 = Math.min(x0, c.x); x1 = Math.max(x1, c.x); z0 = Math.min(z0, c.z); z1 = Math.max(z1, c.z); }
+  const others = [
+    ...v.buildings.filter((b) => b.kind !== 'home' && b.ruin === undefined).map((b) => b.foot),
+    ...v.projects.filter((p) => !p.done && p.kind !== 'home' && p.kind !== 'restore').map((p) => p.foot),
+  ];
+  const sp = w.stockpile, CAMP = w.campfire;
+  const tiles: number[] = [];
+  for (let tz = toTileZ(w, z0); tz <= toTileZ(w, z1); tz++) for (let tx = toTileX(w, x0); tx <= toTileX(w, x1); tx++) {
+    const p = { x: tileX(w, tx), z: tileZ(w, tz) };
+    if (!pointInPoly(p, pts)) continue;
+    if (!inBounds(w, tx, tz) || !isExplored(w, tx, tz)) return 'Nobody has been out that far yet.';
+    const i = idx(w, tx, tz);
+    const g = w.ground[i];
+    if (g === Ground.Water) return 'That runs into the water.';
+    if (g === Ground.Asphalt || g === Ground.Concrete) return 'That runs over a road or old paving.';
+    if (w.haunted?.[i]) return 'Something still lives there. Clear the district first.';
+    if (w.zone[i] === 6 /* Zone.Wild */ || w.folk?.path[i]) return 'That is the Folk\'s land.';
+    if (w.fieldAt?.[i] > 0) return 'That runs over a field.';
+    if (v.plotAt[i]) return 'That overlaps another plot.';
+    if (w.blocked[i] && w.treeAt[i] < 0) return 'Something is in the way there.';
+    if (Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 4.5) return 'Too close to the fire.';
+    if (p.x > sp.x0 - 1 && p.x < sp.x1 + 1 && p.z > sp.z0 - 1 && p.z < sp.z1 + 1) return 'That runs over the stockpile.';
+    for (const f of others) if (tx >= f.tx && tx < f.tx + f.w && tz >= f.tz && tz < f.tz + f.d) return 'That runs over a building.';
+    tiles.push(i);
+  }
+  if (tiles.length < PLOT_MIN) return `Too small for a house and a yard (at least ${PLOT_MIN} squares; this is ${tiles.length}).`;
+  if (tiles.length > PLOT_MAX) return `Too big for one household (at most ${PLOT_MAX} squares; this is ${tiles.length}).`;
+
+  // The front: the side whose middle is nearest a lane, a path, a road or the fire.
+  const streetScore = (m: Point) => {
+    const cx = toTileX(w, m.x), cz = toTileZ(w, m.z);
+    let best = Math.hypot(m.x - CAMP.x, m.z - CAMP.z) * 0.7;
+    for (let dz = -9; dz <= 9; dz++) for (let dx = -9; dx <= 9; dx++) {
+      if (!inBounds(w, cx + dx, cz + dz)) continue;
+      const i = idx(w, cx + dx, cz + dz);
+      const g = w.ground[i];
+      if (w.wear[i] >= PATH_WEAR || g === Ground.Asphalt || g === Ground.Concrete) best = Math.min(best, Math.hypot(dx, dz));
+    }
+    return best;
+  };
+  let front = 0, bestS = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    if (Math.hypot(b.x - a.x, b.z - a.z) < 3) continue; // a doorway needs some frontage
+    const s = streetScore({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 });
+    if (s < bestS) { bestS = s; front = i; }
+  }
+  const corners = pts.map((_, k) => ({ ...pts[(front + k) % pts.length] }));
+  const A = corners[0], B = corners[1];
+  const O = { x: (A.x + B.x) / 2, z: (A.z + B.z) / 2 };
+  const t = norm({ x: B.x - A.x, z: B.z - A.z });
+  let n = { x: -t.z, z: t.x };
+  if (!pointInPoly(add(O, n, 0.6), pts)) n = { x: -n.x, z: -n.z };
+  // Keep the frontage running left to right as seen from the street (t × n consistent with auto plots).
+  const tt = { x: -n.z, z: n.x };
+  const flip = dot(tt, t) < 0;
+  const ordered = flip ? [corners[1], corners[0], ...corners.slice(2).reverse()] : corners;
+  const tile = new Set(tiles);
+  const yaw = Math.atan2(-n.x, -n.z);
+  const frontLen = Math.hypot(B.x - A.x, B.z - A.z);
+  for (const Wh of [5.4, 5.0, 4.6, 4.2]) {
+    for (const Dh of [4.6, 4.2, 3.8]) {
+      for (const setback of [1.2, 1.8, 2.6, 3.6]) {
+        for (const hu of [0, -1.2, 1.2, -2.4, 2.4]) {
+          if (Math.abs(hu) + Wh / 2 > frontLen / 2 + 3) continue;
+          const spec: HouseSpec = {
+            W: Wh, D: Dh, wall: rng.range(2.1, 2.5), ridge: rng.chance(0.62) ? 'along' : 'across', pitch: rng.range(0.55, 0.85),
+            wing: null, porch: rng.chance(0.45), chimney: rng.chance(0.5) ? 1 : -1, beds: 3, seed: rng.int(1, 1e6),
+          };
+          const hc = add(add(O, tt, hu), n, setback + Dh / 2);
+          const plot: Plot = { id: 0, household: 0, origin: O, t: tt, n, corners: ordered, tiles, house: spec, hc, yaw, yard: [] };
+          const site = houseSite(w, plot, tile);
+          if (!site) continue;
+          return { plot, trees: site.trees, houseTiles: site.houseTiles, score: 0, from: 'drawn' };
+        }
+      }
+    }
+  }
+  return 'There is no room on that plot to stand a house near the front. Try a wider frontage, or flatter ground.';
+}
+
+/** Peg out a drawn plot. It waits for a household (see planHome). */
+export function claimPlot(col: Colony, plan: PlotPlan, rng: Rng): Plot {
+  const v = col.village;
+  const plot = plan.plot;
+  plot.house.clad = chooseCladding(v, rng);
+  plot.id = v.nextId++;
+  plot.household = 0;
+  v.plots.push(plot);
+  for (const i of plot.tiles) v.plotAt[i] = plot.id;
+  return plot;
+}
+
+/** Start building a household's house on a plot (drawn or found). */
+function startHomeOn(col: Colony, h: Household, plot: Plot, houseTiles: number[], trees: number[]): Project {
+  const v = col.village, c = col.community;
+  const beds = Math.min(4, h.members.length + 1);
+  plot.household = h.id;
+  plot.house.beds = beds;
+  v.homeQueue = v.homeQueue.filter((id) => id !== h.id);
+  const tier = v.tier;
+  const { Z } = houseAxes(plot.yaw);
+  const door = { x: plot.hc.x + Z.x * (plot.house.D / 2 + 0.7), z: plot.hc.z + Z.z * (plot.house.D / 2 + 0.7) };
+  const name = householdName(c, h);
+  const proj: Project = {
+    id: v.nextId++, kind: 'home', tier, name: `${h.members.length > 1 ? `${name}'s house` : `${name}'s cottage`}`,
+    foot: footOfTiles(col.world, houseTiles), facing: 0, cost: HOME_COST(tier, beds), delivered: { wood: 0, scrap: 0, glimmer: 0 },
+    incoming: { wood: 0, scrap: 0, glimmer: 0 }, work: 0, workNeeded: HOME_WORK(tier, beds), target: 0, clearTrees: trees, done: false,
+    plot: plot.id, household: h.id, blockTiles: houseTiles, door, inside: { ...plot.hc }, yaw: plot.yaw,
+  };
+  v.projects.push(proj);
+  return proj;
+}
+
+/** With the player planning: a waiting household takes an empty plot that was drawn for them. */
+function homeOnDrawnPlot(col: Colony): Project | null {
+  const v = col.village, c = col.community, w = col.world;
+  if (v.projects.filter((p) => !p.done && p.kind === 'home').length >= 2) return null;
+  const waiting = waitingHouseholds(v);
+  if (!waiting.length) return null;
+  const empty = v.plots.filter((p) => !p.household);
+  const h = v.homeQueue.map((id) => waiting.find((x) => x.id === id)).find((x) => !!x) ?? [...waiting].sort((a, b) => a.since - b.since)[0];
+  if (!empty.length) {
+    const key = `drawplot${c.day}`;
+    if (!col.hints.has(key) && c.day - h.since >= 1 && c.day % 2 === 0) {
+      col.hints.add(key);
+      log(c, `${householdName(c, h)} would like a home of their own. (Draw them a plot: Build → Plot for a home.)`, 'info');
+    }
+    return null;
+  }
+  const plot = empty.sort((a, b) => Math.hypot(a.origin.x - w.campfire.x, a.origin.z - w.campfire.z) - Math.hypot(b.origin.x - w.campfire.x, b.origin.z - w.campfire.z))[0];
+  const site = houseSite(w, plot, new Set(plot.tiles));
+  if (!site) return null;
+  const proj = startHomeOn(col, h, plot, site.houseTiles, site.trees);
+  log(c, `${householdName(c, h)} walked the plot you pegged out, and liked it. They start on the house tomorrow.`, 'good');
   return proj;
 }
