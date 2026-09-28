@@ -44,6 +44,8 @@ export interface Council {
   festivalUntil: number;
   /** A place the player marked with an omen, for scouts to seek. */
   omen: Point | null;
+  /** Last day word from the Folk came before the council. */
+  folkDay?: number;
 }
 
 export const DREAM_COST = 15;
@@ -152,14 +154,16 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
   }
   // The trades: someone who wants to make things speaks for each.
   const tinker = (s: Survivor) => (has(s, 'tinkerer') ? 2 : 0) + (s.role === 'maker' ? 1.5 : 0) + (s.aspiration?.kind === 'craft' ? 1 : 0);
-  if (hasBuilt(v, 'workshop') && !hasBuilt(v, 'toolshop') && pop >= 4) {
+  // Backyard trades need a household with a finished house to keep them.
+  const yards = v.buildings.some((b) => b.kind === 'home');
+  if (yards && hasBuilt(v, 'workshop') && !hasBuilt(v, 'toolshop') && pop >= 4) {
     buildCand('toolshop', r.tools < pop * 0.4 ? 1.9 : 1.1, 'Set up a tool bench', 'Half our tools are broken and the rest are borrowed. Give me a forge and a grindstone.', tinker);
   }
-  if (!hasBuilt(v, 'smokehouse') && pop >= 4 && (season === 'summer' || season === 'autumn')) {
+  if (yards && !hasBuilt(v, 'smokehouse') && pop >= 4 && (season === 'summer' || season === 'autumn')) {
     buildCand('smokehouse', 1.6, 'Build a smoke shed', 'We catch more than we can eat and it rots. Smoke it, jar it, and it keeps till spring.',
       (s) => (s.role === 'fisher' ? 2 : 0) + (has(s, 'hoarder') ? 1 : 0) + tinker(s) / 2);
   }
-  if (!hasBuilt(v, 'tailor') && pop >= 5 && day >= 10) {
+  if (yards && !hasBuilt(v, 'tailor') && pop >= 5 && day >= 10) {
     buildCand('tailor', season === 'autumn' ? 2 : 1.2, 'Open a sewing room', 'There are curtains in every house out there. We could all be warm by winter.',
       (s) => (s.background.includes('teacher') ? 1 : 0) + tinker(s) + s.stats.empathy / 10);
   }
@@ -331,6 +335,14 @@ export function maybeConvene(col: Colony, rng: Rng) {
     speakers.add(p.proposer);
     picked.push({ ...p, id: council.nextId++, support: [] });
   }
+  // The hill's word gets a seat: if the Folk have something to ask and haven't been heard for 8 days, it displaces the last pick.
+  const folkCand = cands.map((x) => x.make()).find((p) => p.kind.startsWith('folk_'));
+  if (folkCand && !picked.some((p) => p.kind.startsWith('folk_')) && c.day - (council.folkDay ?? -99) >= 8 && !speakers.has(folkCand.proposer)) {
+    if (picked.length >= 3) { const out = picked.pop()!; speakers.delete(out.proposer); }
+    speakers.add(folkCand.proposer);
+    picked.push({ ...folkCand, id: council.nextId++, support: [] });
+  }
+  if (picked.some((p) => p.kind.startsWith('folk_'))) council.folkDay = c.day;
   if (picked.length < 2) { council.nextDay = c.day + 1; return; }
   // Everyone lines up behind one voice: their own, or the one they like best.
   for (const s of living) {

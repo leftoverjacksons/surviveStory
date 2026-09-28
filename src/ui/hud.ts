@@ -645,6 +645,7 @@ export class Hud {
     const wasChecked = ($('dream') as HTMLInputElement | null)?.checked ?? false;
     const fav = councilFavourite(col);
     const place = (p: typeof active.proposals[number]) => {
+      if (col.village.autoPlan !== false && (p.kind === 'build' || p.kind === 'home')) return '<div class="who">If backed, they choose the spot themselves (autopilot).</div>';
       if (p.kind === 'build' && p.build) {
         const c0 = DEFS[p.build].cost[tierFor(col.village, col.community, p.build)];
         const mats = costText(c0);
@@ -664,6 +665,7 @@ export class Hud {
       </div>`).join('')}
       <div class="foot">
         <label><input id="dream" type="checkbox" ${dreamOk ? '' : 'disabled'} ${wasChecked && dreamOk ? 'checked' : ''}> Send a dream so nobody feels passed over (${DREAM_COST} Influence)</label>
+        <span class="auto" id="council-auto"></span>
         ${fav ? `<button type="button" id="council-settle" title="The most-backed proposal carries; nobody is soothed.">Let them decide (${esc(name(fav.proposer))}, ${fav.support.length} backing)</button>` : ''}
       </div>`;
     el.hidden = false;

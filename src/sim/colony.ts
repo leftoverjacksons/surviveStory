@@ -239,7 +239,7 @@ export function replan(col: Colony) {
     if (store(v).level >= 1) planFishery(col, rng, leadName(col));
     // A cleared district of the village's: patch up one of its buildings.
     if (v.projects.filter((p) => !p.done).length < MAX_ACTIVE) planRestore(col, leadName(col), (p) => newProject(v, p));
-    while (plan(col.world, col.village, col.community, rng, leadName(col), seasonIndex(dayOf(col)))) { /* fill up to the active limit */ }
+    while (plan(col.world, col.village, col.community, rng, leadName(col), seasonIndex(dayOf(col)), col)) { /* fill up to the active limit */ }
   });
 }
 
@@ -622,7 +622,7 @@ function pickStrip(col: Colony, a: Agent): Task | null {
 function pickCraft(col: Colony, a: Agent): Task | null {
   if (hourOf(col) >= 18) return null;
   const busy = new Set(col.agents.filter((o) => o !== a && o.task?.kind === 'craft').map((o) => (o.task as { building: number }).building));
-  const b = pickTrade(col, busy);
+  const b = pickTrade(col, busy, a.id);
   if (!b) return null;
   const c = footCenter(col.world, b.foot);
   if (!setDest(col, a, (c.x + b.door!.x) / 2, (c.z + b.door!.z) / 2)) return null;
@@ -2156,7 +2156,8 @@ function neededRole(col: Colony): RoleId {
   if (fieldTiles(col).length > 20 * Math.max(1, count('farmer'))) return 'farmer';
   const huts = col.village.fisheries.filter((f) => hasBuilding(col, f.hut)).length;
   if (huts > 0 && count('fisher') < huts) return 'fisher';
-  const benches = col.village.buildings.filter((b) => b.kind in TRADES).length;
+  // Standalone benches (from before backyard trades) want makers; a household's trade is staffed by its household.
+  const benches = col.village.buildings.filter((b) => b.kind in TRADES && !b.household).length;
   if (benches > 0 && count('maker') < Math.min(3, Math.ceil(benches / 2))) return 'maker';
   if (count('builder') < 2) return 'builder';
   if (count('forager') < 1) return 'forager';

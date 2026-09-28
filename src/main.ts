@@ -25,6 +25,7 @@ import { BuildPanel, type BuildTool } from './ui/build';
 import { PlacementView } from './render/placement';
 import { DEFS, canPlace, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
 import { FOLK_WORKS, orderFolkWork, whyNotFolkWork } from './sim/folk';
+import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
 import { claimPlot, outlinePlot } from './sim/homes';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
@@ -37,7 +38,7 @@ import { PlotsView } from './render/plots';
 import { seasonIndex } from './sim/calendar';
 import { RoofControl, type RoofMode } from './render/roofs';
 import { PhenomenaView, ResonanceTexture } from './render/veil';
-import { nudgeCalm, nudgeOmen, resolveCouncil } from './sim/council';
+import { councilFavourite, nudgeCalm, nudgeOmen, resolveCouncil } from './sim/council';
 import { PIXEL, worldUniforms } from './render/util';
 import { Hud, type ZoneTool } from './ui/hud';
 
@@ -52,7 +53,10 @@ document.title = `Survive Story · ${world.site.place}`;
 const community = createCommunity(seed);
 const colony = createColony(world, community);
 // The player places buildings and draws plots (DESIGN §21); ?auto keeps the old self-planning village.
-colony.village.autoPlan = new URLSearchParams(location.search).has('auto');
+// Autopilot (?auto, or the button): the village plans and places for itself, and the council settles itself after 10 s.
+let autopilot = new URLSearchParams(location.search).has('auto');
+try { if (localStorage.getItem('ss-autopilot') === '1') autopilot = true; } catch { /* storage may be unavailable */ }
+colony.village.autoPlan = autopilot;
 
 /** Game minutes per real second at each speed setting. */
 const SPEEDS = [0, 2, 6, 16]; // labelled 1×, 3×, 8×
@@ -192,6 +196,19 @@ syncScene();
 
 // ---------- HUD ----------
 let following = false;
+/** The council's answer. Building choices go straight to placement (DESIGN §21); the day waits until it's placed. */
+function answerCouncil(id: number, dream: boolean, settle: boolean) {
+  const p = colony.council.active?.proposals.find((x) => x.id === id);
+  if (!p || !resolveCouncil(colony, id, dream, settle)) return;
+  councilHeld = false;
+  // Under autopilot the village sites it itself (village.priority, planHome).
+  const manual = colony.village.autoPlan === false;
+  if (manual && p.kind === 'build' && p.build) councilPlace(p.build);
+  else if (manual && p.kind === 'home' && !colony.village.plots.some((q) => !q.household)) councilPlace('plot');
+  else resumeAfterCouncil();
+  hud.render();
+}
+
 const hud = new Hud(colony, {
   onKill(id) {
     const reports = killSurvivor(community, id, 'lost beyond the treeline');
@@ -223,17 +240,7 @@ const hud = new Hud(colony, {
   onSelect(id) { select(id); },
   onFollow() { setFollow(!following); },
   onZoneTool(mode) { setOmen(false); setZoneTool(mode); },
-  onCouncil(id, dream, settle) {
-    const p = colony.council.active?.proposals.find((x) => x.id === id);
-    if (!p || !resolveCouncil(colony, id, dream, !!settle)) return;
-    councilHeld = false;
-    // Building choices go straight to placement (DESIGN §21); the day waits until it's placed.
-    const manual = colony.village.autoPlan === false;
-    if (manual && p.kind === 'build' && p.build) councilPlace(p.build);
-    else if (manual && p.kind === 'home' && !colony.village.plots.some((q) => !q.household)) councilPlace('plot');
-    else resumeAfterCouncil();
-    hud.render();
-  },
+  onCouncil(id, dream, settle) { answerCouncil(id, dream, !!settle); },
   onFolkAsk() { hud.inspect(null); buildPanel.show(); document.querySelector('#build h3.folk')?.scrollIntoView({ block: 'start' }); },
   onAgreed(what) { setBuild(what === 'plot' ? { kind: 'plot' } : { kind: 'place', site: what, turn: 0 }); },
   onVeilView() { veilView = !veilView; hud.setVeilView(veilView); hud.render(); },
@@ -389,13 +396,43 @@ function setBuild(tool: BuildTool | null, why = '') {
     : (why ? `${why} ` : '') + (tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
     : tool.kind === 'restore' ? 'Click a ruin in a cleared district to restore it. Esc to stop.'
     : tool.kind === 'folk' ? `Ask the Folk for a ${FOLK_WORKS[tool.work].name.toLowerCase()}: click a spot in the Wild. They build it at night. Esc to stop.`
+    : isBackyard(tool.site) ? `Click a household's plot to give them the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: it goes at the back of their yard, and one of them works it. Esc to stop.`
     : `Place the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: click to place, right-click or T to turn it. Esc to stop.`));
 }
 
 // ---------- the council waits for an answer (DESIGN §21.5) ----------
 let councilHeld = false, resumeSpeed = 1, resumeAfterBuild = false;
+/** Real time (ms) when an unanswered council settles itself under autopilot; the pointer over the council holds it. */
+let councilAutoAt = 0;
+const COUNCIL_AUTO_MS = 10000;
+function setAutopilot(on: boolean) {
+  autopilot = on;
+  colony.village.autoPlan = on;
+  try { localStorage.setItem('ss-autopilot', on ? '1' : '0'); } catch { /* ignore */ }
+  document.getElementById('autopilot-btn')!.setAttribute('aria-pressed', String(on));
+  if (on) { setBuild(null); councilAutoAt = performance.now() + COUNCIL_AUTO_MS; replan(colony); }
+  log(community, on ? 'Autopilot on: the village plans and builds for itself, and the council settles itself if you don\'t answer.' : 'Autopilot off: placement is in your hands again.', 'info');
+  hud.render();
+}
+document.getElementById('autopilot-btn')!.addEventListener('click', () => setAutopilot(!autopilot));
+document.getElementById('autopilot-btn')!.setAttribute('aria-pressed', String(autopilot));
+document.getElementById('council')!.addEventListener('pointermove', () => { if (autopilot) councilAutoAt = performance.now() + COUNCIL_AUTO_MS; });
+/** Each frame: under autopilot, count down an unanswered council and settle it on the favourite. */
+function councilAutopilot() {
+  if (!autopilot || !colony.council.active) return;
+  if (!councilAutoAt) councilAutoAt = performance.now() + COUNCIL_AUTO_MS;
+  const left = Math.ceil((councilAutoAt - performance.now()) / 1000);
+  const el = document.getElementById('council-auto');
+  if (el) { const t = `Autopilot: settling in ${Math.max(0, left)} s (hover here to hold)`; if (el.textContent !== t) el.textContent = t; }
+  if (left > 0) return;
+  councilAutoAt = 0;
+  const fav = councilFavourite(colony);
+  if (fav) answerCouncil(fav.id, false, true);
+}
+
 function holdForCouncil() {
   councilHeld = true;
+  councilAutoAt = performance.now() + COUNCIL_AUTO_MS;
   resumeSpeed = speed;
   if (speed > 0) lastSpeed = speed;
   setSpeed(0);
@@ -436,6 +473,15 @@ function placeHover(cx: number, cy: number) {
     buildPanel.hint(why ?? `Click to ask for a ${FOLK_WORKS[build.work].name.toLowerCase()} here. Esc to stop.`);
     return;
   }
+  if (isBackyard(build.site)) {
+    // Backyard trades: pick a household's plot; the spot at the back is found for you.
+    const plot = plotAtPoint(colony, g.x, g.z);
+    const why = whyNotBackyard(colony, plot, build.site);
+    const site = plot && !why ? backyardSite(colony, plot, build.site) : null;
+    if (site) placement.showFoot(site.foot, site.facing, 2.2, true); else placement.hideFoot();
+    buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (why ?? `Click to give this household the ${DEFS[build.site].name[0].toLowerCase()}. Esc to stop.`));
+    return;
+  }
   const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
   const fit = canPlace(world, colony.village, build.site, foot);
   placement.showFoot(foot, facing, build.site === 'lantern' ? 2.6 : 2.4, fit.ok);
@@ -453,6 +499,11 @@ function placeClick(cx: number, cy: number) {
   } else if (build.kind === 'folk') {
     const res = orderFolkWork(colony, build.work, tileX(world, toTileX(world, g.x)), tileZ(world, toTileZ(world, g.z)));
     if (typeof res === 'string') { buildPanel.hint(res); return; }
+  } else if (isBackyard(build.site)) {
+    const plot = plotAtPoint(colony, g.x, g.z);
+    const res = plot ? placeBackyard(colony, plot.id, build.site) : whyNotBackyard(colony, undefined, build.site)!;
+    if (typeof res === 'string') { buildPanel.hint(res); return; }
+    if (colony.village.priority === build.site) colony.village.priority = undefined;
   } else {
     const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
     const res = placeProject(world, colony.village, community, build.site, foot, facing);
@@ -472,7 +523,8 @@ function paintAt(clientX: number, clientY: number) {
 }
 
 function setSpeed(level: number) {
-  if (level > 0 && colony.council.active) level = 0; // the council is waiting for an answer
+  // The council is waiting for an answer: remember the wish, and resume at it once answered.
+  if (level > 0 && colony.council.active) { resumeSpeed = level; level = 0; }
   speed = level;
   hud.setSpeed(level);
 }
@@ -837,6 +889,7 @@ function frame() {
   const tSim = performance.now();
   if (speed > 0) tick(colony, dt * SPEEDS[speed]);
   if (colony.council.active && !councilHeld) holdForCouncil();
+  councilAutopilot();
   perf.sim += (performance.now() - tSim - perf.sim) * 0.05;
   for (const ev of colony.events) {
     if (ev.type === 'felled') trees.fell(ev.tree, ev.dirX, ev.dirZ);

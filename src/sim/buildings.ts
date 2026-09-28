@@ -3,6 +3,8 @@
  * what the community builds next and where. Survivors make these choices;
  * the player only shapes the home zone.
  */
+import { autoBackyard, isBackyard } from './backyard';
+import type { Colony } from './colony';
 import { alive, log, type Community } from './community';
 import type { Site } from './sites';
 import { Rng } from './rng';
@@ -151,9 +153,10 @@ export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_st
   lantern:  { name: ['Solar lantern', 'Solar lantern'], w: 1, d: 1, cost: [c(2, 2, 6), c(2, 2, 6)], work: [120, 120] },
   // The trades (DESIGN §21.6): small salvage buildings, each with its own yard of work.
   // Timber versions want a little of what only the old world has (DESIGN §21.7); without it, they're built in salvage.
-  toolshop:   { name: ['Tool bench', 'Toolmaker\'s shop'], w: 4, d: 3, cost: [c(14, 10), c(28, 8, 0, { steel: 3 })], work: [480, 660] },
-  tailor:     { name: ['Sewing room', 'Tailor\'s shop'], w: 3, d: 3, cost: [c(12, 6), c(26, 4, 0, { glass: 2 })], work: [420, 600] },
-  smokehouse: { name: ['Smoke shed', 'Smokehouse'], w: 3, d: 3, cost: [c(16, 4), c(26, 2, 0, { steel: 1 })], work: [420, 560] },
+  // The tool bench, sewing room and smoke shed are backyard trades (backyard.ts): small, at the back of a plot.
+  toolshop:   { name: ['Tool bench', 'Toolmaker\'s shop'], w: 3, d: 2, cost: [c(14, 10), c(28, 8, 0, { steel: 3 })], work: [480, 660] },
+  tailor:     { name: ['Sewing room', 'Tailor\'s shop'], w: 3, d: 2, cost: [c(12, 6), c(26, 4, 0, { glass: 2 })], work: [420, 600] },
+  smokehouse: { name: ['Smoke shed', 'Smokehouse'], w: 3, d: 2, cost: [c(16, 4), c(26, 2, 0, { steel: 1 })], work: [420, 560] },
   tavern:     { name: ['Tap room', 'Tavern'], w: 5, d: 4, cost: [c(24, 12), c(40, 8, 0, { glass: 3, copper: 1 })], work: [900, 1200] },
   // A geodesic greenhouse of salvaged glass on a steel frame: food all year, even in the snow.
   dome:       { name: ['Glass dome', 'Glass dome'], w: 4, d: 4, cost: [c(12, 6, 0, { glass: 12, steel: 4 }), c(12, 6, 0, { glass: 12, steel: 4 })], work: [700, 700] },
@@ -388,7 +391,7 @@ const activeProjects = (v: Village) => v.projects.filter((p) => !p.done);
  * Decide what the community wants next. Called each morning and whenever a
  * project finishes. Returns the project started, if any.
  */
-export function plan(w: World, v: Village, com: Community, rng: Rng, lead: string, seasonIdx = 0): Project | null {
+export function plan(w: World, v: Village, com: Community, rng: Rng, lead: string, seasonIdx = 0, col?: Colony): Project | null {
   const active = activeProjects(v);
   if (active.length >= MAX_ACTIVE) return null;
   const pop = alive(com).length;
@@ -430,6 +433,8 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   const site = (kind: SiteKind): Project | null => {
     // In the game the player places buildings; the village only plans its own in tests and probes.
     if (v.autoPlan === false) return null;
+    // The small trades go at the back of a household's yard (backyard.ts).
+    if (isBackyard(kind)) return col ? autoBackyard(col, kind) : null;
     const s = findSite(w, v, kind, rng);
     if (!s) return null;
     const def = DEFS[kind];
@@ -560,9 +565,9 @@ export const PLACEABLE: { kind: SiteKind; blurb: string }[] = [
   { kind: 'garden', blurb: 'A kitchen garden: a little food, tended daily.' },
   { kind: 'shrine', blurb: 'Somewhere the land can rest: Resonance around it.' },
   { kind: 'lantern', blurb: 'A lamp post on salvaged solar. Light between the houses.' },
-  { kind: 'toolshop', blurb: 'A maker turns scrap and wood into tools. Tools make every job go faster.' },
-  { kind: 'tailor', blurb: 'A maker sews salvaged cloth into clothes. Winter is kinder to the well dressed.' },
-  { kind: 'smokehouse', blurb: 'A maker puts up food in smoke and jars. Preserves never spoil.' },
+  { kind: 'toolshop', blurb: 'At the back of a household\'s yard: one of them turns scrap and wood into tools. Tools make every job go faster.' },
+  { kind: 'tailor', blurb: 'At the back of a household\'s yard: one of them sews salvaged cloth into clothes. Winter is kinder to the well dressed.' },
+  { kind: 'smokehouse', blurb: 'At the back of a household\'s yard: one of them puts up food in smoke and jars. Preserves never spoil.' },
   { kind: 'tavern', blurb: 'Somewhere to go of an evening: company, a fiddle, something to drink.' },
   { kind: 'dome', blurb: 'A geodesic greenhouse: food all year, even in winter. Glass and steel from a cleared district.' },
 ];
@@ -704,7 +709,8 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
       const b: Building = {
         id: v.nextId++, kind, tier: p.tier, foot: p.foot, facing: p.facing,
         door: kind === 'kitchen' ? { ...v.site.kitchen } : doorOf(w, p.foot, p.facing),
-        inside: cen, beds: def.beds ? def.beds[p.tier] : 0, level: 0, tended: 0, growth: 0.1, name: def.name[p.tier], clad: p.clad,
+        inside: cen, beds: def.beds ? def.beds[p.tier] : 0, level: 0, tended: 0, growth: 0.1, name: p.household ? p.name : def.name[p.tier], clad: p.clad,
+        plot: p.plot, household: p.household,
       };
       v.buildings.push(b);
       if (kind !== 'kitchen' && kind !== 'garden' && kind !== 'dome') block(p.foot); // gardens and domes are walked into

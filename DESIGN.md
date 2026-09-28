@@ -2096,3 +2096,52 @@ moon and festival rule) is folded into steps 5–7.
     stores fell to 0.7). Watch this in play.
 - **Scripts:** `npm run sim` and `npm run balance` default to one year and
   read winter from the calendar.
+
+### 21.10 Autopilot, and trades in the back yard (built)
+Two requests from the user after version 19:
+- **Autopilot**, for letting the game run unattended while building and
+  testing.
+  - It is switched by the Autopilot button (remembered in localStorage) or
+    `?auto`, and sets `village.autoPlan`.
+  - The village plans and places its own buildings, home plots (along lanes
+    and the green), restorations and backyard trades. The site finder faces
+    doors to the busiest path alongside, else toward the fire at the
+    village's centre.
+  - The Folk order their own works.
+  - A council that is not answered within 10 real seconds settles on its
+    favourite, the best-backed affordable proposal (`main.ts#councilAutopilot`).
+    The countdown shows in the council panel, and the pointer over the
+    panel holds it.
+  - Proposal cards say "they choose the spot themselves".
+  - Pressing play while a council waits now sets the speed to resume at
+    once it is answered, so an unattended game never stalls paused.
+  - Switching autopilot off hands placement back to the player.
+- **Trades in the back yard** (`sim/backyard.ts`), after Manor Lords'
+  burgage extensions: building isn't cheap after the collapse, and not
+  every business needs its own building.
+  - The tool bench, sewing room and smoke shed (now 3×2) go at the back of
+    a household's plot. The spot is the deepest free one behind the house
+    (`backyardSite`), and the door faces the house.
+  - They are named for the household ("Hollis and Jory's tool bench") and
+    clad in the same salvage as the house. Yard features on that spot give
+    way.
+  - One trade per household, and only once its house is finished.
+  - In the Build menu, pick the trade, then click a household's plot.
+  - The household staffs it: one member becomes the Maker (`staffTrades`).
+    That maker works only their own household's bench (`pickTrade(…,
+    maker)`).
+  - A trade of their own adds 0.6 to the household's home comfort.
+  - The tavern and the glass dome stay standalone.
+  - The council proposes backyard trades only once some household has a
+    finished house. Self-planning uses `autoBackyard`, which picks the
+    household with tinkerers, crafters or makers (fishers for the smoke
+    shed).
+- **The Folk's seat at council:** if the Folk have something to ask and
+  haven't been heard for 8 days, their proposal takes the last seat
+  (`council.folkDay`). This replaces relying on its score.
+- **Probe, one year:**
+  - no deaths or cold nights, morale 67, food at winter 154;
+  - 2.1 trades and need tier 1.0 (3.5 and 1.7 before). Trades now wait for
+    finished houses, one per household. Revisit if the Settled tier comes
+    too late in play.
+- **Tests:** `tests/backyard.test.ts`.

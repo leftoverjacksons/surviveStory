@@ -132,8 +132,10 @@ reference: Tiny Glade.
     Step 5 (glass/copper/steel stripped from ruins in cleared districts; glass dome;
     `sim/rare.ts`) DONE §21.7. Step 6 (Folk orders built at night from dew and song;
     Folk needs gate the hill's growth) DONE §21.8. Step 7 (8-day seasons, full moon,
-    Veil free on full moons/festivals, rebalance) DONE §21.9. Loop v2 complete; awaiting
-    the user's playtest feedback. Unpublished: §21.7–21.9.
+    Veil free on full moons/festivals, rebalance) DONE §21.9. Loop v2 complete.
+    Then (§21.10): AUTOPILOT button/`?auto` (self-planning + council settles itself after
+    10 s) and BACKYARD TRADES (tool bench/sewing room/smoke shed at the back of a household's
+    plot, `sim/backyard.ts`). Unpublished: §21.7–21.10.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

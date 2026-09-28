@@ -238,6 +238,8 @@
   .prop .who { font-size: 12px; color: var(--ink-dim); }
   .prop .who em { font-style: normal; color: var(--ink); }
   .prop button { justify-self: start; margin-top: 4px; }
+  #council .auto { font: 11px var(--f-mono); color: #ffd06a; }
+  #autopilot-btn[aria-pressed="true"] { background: #ffd06a; color: #1a1408; border-color: #ffd06a; font-weight: 700; }
   #council .held { font: 11px var(--f-mono); color: var(--glimmer); letter-spacing: 0.04em; }
   #council:not([hidden]) { box-shadow: 0 0 0 100vmax rgba(6, 4, 14, 0.38); z-index: 7; }
   .vneeds { margin: 2px 0 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; font-size: 11.5px; }
@@ -346,6 +348,7 @@
     <button id="roof-btn" type="button" title="Look inside: roofs shown, hidden, or walls cut away (R)">Roofs: shown</button>
     <button id="follow-btn" type="button" title="Follow the selected survivor (F)">Follow</button>
     <button id="labels-btn" type="button" title="Toggle names (L)">Names</button>
+    <button id="autopilot-btn" type="button" aria-pressed="false" title="Autopilot: the village plans and places its own buildings and home plots, and an unanswered council settles itself after 10 seconds. For letting it run unattended.">Autopilot</button>
   </div>
   <div id="hint">Click someone to select · R: look inside · Drag to pan · Right-drag or Q/E to rotate · Scroll to zoom</div>
 </footer>

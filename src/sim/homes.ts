@@ -439,7 +439,9 @@ export function homeComfort(v: Village, b: Building): number {
   // A patched-up house is warmer and drier; a well-kept one, with its glasshouse, more so.
   // A remnant from the Veil keeping the hearth: the house feels lived-in, in a good way.
   const hearth = v.hearths?.some((x) => x.building === b.id) ? 0.8 : 0;
-  return 2 + Math.min(3, done * 0.5) + b.level * 0.5 + hearth;
+  // A trade of their own at the back: purpose, and a little income of goods.
+  const trade = v.buildings.some((x) => x.plot === b.plot && x.household && x.kind !== 'home') ? 0.6 : 0;
+  return 2 + Math.min(3, done * 0.5) + b.level * 0.5 + hearth + trade;
 }
 
 // ---------- finding a plot ----------

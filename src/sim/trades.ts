@@ -72,11 +72,14 @@ export function clothed(col: Colony): number {
 const has = (r: Resources, input: Input) => Object.entries(input).every(([k, n]) => (r[k as keyof Resources] ?? 0) >= (n ?? 0));
 
 /** Which bench a maker should work, if any: the good furthest below what's wanted, with its materials in store. */
-export function pickTrade(col: Colony, taken: Set<number>): Building | null {
+export function pickTrade(col: Colony, taken: Set<number>, maker?: number): Building | null {
   const r = col.community.resources;
+  // A household's trade is worked by its own people (backyard.ts).
+  const hh = maker !== undefined ? col.village.households.find((h) => h.members.includes(maker))?.id : undefined;
   let best: Building | null = null, bestNeed = 0;
   for (const b of col.village.buildings) {
     if (b.kind === 'tavern' || !(b.kind in TRADES) || taken.has(b.id)) continue;
+    if (maker !== undefined && b.household && b.household !== hh) continue;
     const def = TRADES[b.kind as keyof typeof TRADES];
     // Food isn't put up while people are going hungry.
     if (b.kind === 'smokehouse' && r.food < pop(col) * 6) continue;
@@ -151,7 +154,18 @@ export function tradesDaily(col: Colony) {
 /** The trades want makers; someone takes one up (the survivors decide who does what). */
 function staffTrades(col: Colony) {
   const v = col.village, c = col.community;
-  const benches = v.buildings.filter((b) => b.kind === 'toolshop' || b.kind === 'tailor' || b.kind === 'smokehouse').length;
+  // A household's own trade: one of them takes it up (the survivors decide who).
+  for (const b of v.buildings) {
+    if (!b.household || !(b.kind in TRADES)) continue;
+    const h = v.households.find((x) => x.id === b.household);
+    const members = alive(c).filter((s) => h?.members.includes(s.id));
+    if (!members.length || members.some((s) => s.role === 'maker')) continue;
+    const who = members.filter((s) => s.role !== 'scout' || members.length === 1).sort((a, b2) => score(b2) - score(a))[0];
+    if (!who) continue;
+    who.role = 'maker';
+    log(c, `${who.name.split(' ')[0]} works ${b.name.toLowerCase()} now.`, 'good');
+  }
+  const benches = v.buildings.filter((b) => !b.household && (b.kind === 'toolshop' || b.kind === 'tailor' || b.kind === 'smokehouse')).length;
   if (!benches) return;
   const living = alive(c);
   const makers = living.filter((s) => s.role === 'maker').length;
