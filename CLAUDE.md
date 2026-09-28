@@ -142,6 +142,9 @@ reference: Tiny Glade.
     panel DONE (§22.3, `sim/chronicle.ts`, `ui/chronicle.ts`, key C); start menu DONE
     (§22.4, `ui/startmenu.ts`: Continue / new village by site, seed, autopilot). Published in v21.
     Smoke-testing the single-file build now needs `?new` (or click Begin), since the menu waits.
+  - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
+    fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
+    (spanning tree + poles, `plots.ts#planLights`). Unpublished.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

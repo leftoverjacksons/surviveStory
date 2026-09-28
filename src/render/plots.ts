@@ -5,7 +5,8 @@
 import * as THREE from 'three';
 import { houseFloor, housePoint, plotFence, plotPoint, type Plot, type YardItem } from '../sim/homes';
 import type { Village } from '../sim/buildings';
-import { heightAt, type World } from '../sim/world';
+import { footCenter } from '../sim/buildings';
+import { heightAt, idx, inBounds, toTileX, toTileZ, type World } from '../sim/world';
 import { box, cyl, mat } from './kit';
 import { enhance, makeRand } from './util';
 import { mergeStatic } from './merge';
@@ -157,9 +158,97 @@ const FLAGS = ['#b8453a', '#e0b050', '#4f7fa8', '#f0e6cc', '#6f9a5a', '#a8608a']
 
 interface Anchor { id: string; pts: THREE.Vector3[] }
 
-/** Strings of pennants between eaves (world coordinates). */
-function bunting(pairs: [THREE.Vector3, THREE.Vector3][]): THREE.Group {
+/** A salvaged pole carrying the lights across open ground: its top, and where it stands. */
+interface Pole { top: THREE.Vector3; base: THREE.Vector3 }
+
+const SPAN = 12; // the longest string that hangs between two eaves unaided
+const POLE_H = 3.1;
+
+/**
+ * The village's string lights are how it shares power (DESIGN §22.5): a
+ * spanning tree that reaches every home from the commons (or the first
+ * house), with salvaged poles carrying long runs across open ground, and a
+ * few extra strings between close neighbours for the web of it.
+ */
+export function planLights(world: World, groups: Anchor[]): { pairs: [THREE.Vector3, THREE.Vector3][]; poles: Pole[] } {
+  const pairs: [THREE.Vector3, THREE.Vector3][] = [];
+  const poles: Pole[] = [];
+  if (groups.length < 2) return { pairs, poles };
+  const near = (a: Anchor, b: Anchor): [number, THREE.Vector3, THREE.Vector3] => {
+    let best: [number, THREE.Vector3, THREE.Vector3] = [Infinity, a.pts[0], b.pts[0]];
+    for (const pa of a.pts) for (const pb of b.pts) { const d = pa.distanceTo(pb); if (d < best[0]) best = [d, pa, pb]; }
+    return best;
+  };
+  const standAt = (x: number, z: number, dx: number, dz: number): THREE.Vector3 => {
+    // Step aside (across the run) until the pole stands on open ground.
+    for (const off of [0, 1, -1, 2, -2, 3, -3]) {
+      const px = x - dz * off, pz = z + dx * off;
+      const tx = toTileX(world, px), tz = toTileZ(world, pz);
+      if (inBounds(world, tx, tz) && !world.blocked[idx(world, tx, tz)] && world.treeAt[idx(world, tx, tz)] < 0) return new THREE.Vector3(px, heightAt(world, px, pz), pz);
+    }
+    return new THREE.Vector3(x, heightAt(world, x, z), z);
+  };
+  const run = (a: THREE.Vector3, b: THREE.Vector3) => {
+    const d = a.distanceTo(b);
+    if (d <= SPAN) { pairs.push([a, b]); return; }
+    const n = Math.ceil(d / (SPAN - 2));
+    const dir = new THREE.Vector3().subVectors(b, a).setY(0).normalize();
+    let prev = a;
+    for (let i = 1; i < n; i++) {
+      const t = i / n;
+      const base = standAt(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, dir.x, dir.z);
+      const top = base.clone().add(new THREE.Vector3(0, POLE_H, 0));
+      poles.push({ top, base });
+      pairs.push([prev, top]);
+      prev = top;
+    }
+    pairs.push([prev, b]);
+  };
+  // Prim's spanning tree from the first group (the commons, if there is one).
+  const inTree = new Set<number>([0]);
+  const linked = new Set<string>();
+  const used = new Map<string, number>();
+  while (inTree.size < groups.length) {
+    let best: [number, number, number, THREE.Vector3, THREE.Vector3] | null = null;
+    for (const i of inTree) for (let j = 0; j < groups.length; j++) {
+      if (inTree.has(j)) continue;
+      const [d, pa, pb] = near(groups[i], groups[j]);
+      if (!best || d < best[0]) best = [d, i, j, pa, pb];
+    }
+    if (!best) break;
+    const [, i, j, pa, pb] = best;
+    inTree.add(j);
+    linked.add(`${i}:${j}`);
+    used.set(groups[i].id, (used.get(groups[i].id) ?? 0) + 1); used.set(groups[j].id, (used.get(groups[j].id) ?? 0) + 1);
+    run(pa, pb);
+  }
+  // A few more between close neighbours, for the web of it.
+  const extra: [number, THREE.Vector3, THREE.Vector3, number, number][] = [];
+  for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++) {
+    if (linked.has(`${i}:${j}`) || linked.has(`${j}:${i}`)) continue;
+    const [d, pa, pb] = near(groups[i], groups[j]);
+    if (d > 3 && d < 10) extra.push([d, pa, pb, i, j]);
+  }
+  extra.sort((x, y) => x[0] - y[0]);
+  for (const [, pa, pb, i, j] of extra) {
+    if ((used.get(groups[i].id) ?? 0) >= 3 || (used.get(groups[j].id) ?? 0) >= 3) continue;
+    pairs.push([pa, pb]);
+    used.set(groups[i].id, (used.get(groups[i].id) ?? 0) + 1); used.set(groups[j].id, (used.get(groups[j].id) ?? 0) + 1);
+  }
+  return { pairs, poles };
+}
+
+/** Strings of pennants and lights between eaves and poles (world coordinates). */
+function bunting(pairs: [THREE.Vector3, THREE.Vector3][], poles: Pole[] = []): THREE.Group {
   const g = new THREE.Group();
+  if (poles.length) {
+    const wood = mat('#5a4430'), dark = mat('#3a3028');
+    for (const p of poles) {
+      const h = p.top.y - p.base.y;
+      g.add(cyl(0.07, h + 0.1, wood, p.base.x, p.base.y + h / 2, p.base.z, 6));
+      g.add(box(0.7, 0.06, 0.06, dark, p.top.x, p.top.y - 0.08, p.top.z));
+    }
+  }
   const pos: number[] = [], col: number[] = [];
   const line: number[] = [];
   const c = new THREE.Color();
@@ -433,24 +522,18 @@ export class PlotsView {
       const K = this.village.site.kitchen;
       groups.push({ id: 'kitchen', pts: [new THREE.Vector3(K.x, heightAt(this.world, K.x, K.z) + 2.5, K.z)] });
     }
-    const pairs: [THREE.Vector3, THREE.Vector3][] = [];
-    const used = new Map<string, number>();
-    const cands: [number, THREE.Vector3, THREE.Vector3, string, string][] = [];
-    for (let i = 0; i < groups.length; i++) for (let j = i + 1; j < groups.length; j++) {
-      let best: [number, THREE.Vector3, THREE.Vector3] | null = null;
-      for (const pa of groups[i].pts) for (const pb of groups[j].pts) { const d = pa.distanceTo(pb); if (!best || d < best[0]) best = [d, pa, pb]; }
-      if (best && best[0] > 3 && best[0] < 17) cands.push([best[0], best[1], best[2], groups[i].id, groups[j].id]);
+    // The tavern is lit too.
+    for (const b of this.village.buildings.filter((x) => x.kind === 'tavern')) {
+      const c = footCenter(this.world, b.foot);
+      groups.push({ id: `t${b.id}`, pts: [new THREE.Vector3(c.x, heightAt(this.world, c.x, c.z) + 2.6, c.z)] });
     }
-    cands.sort((x, y) => x[0] - y[0]);
-    for (const [, pa, pb, ia, ib] of cands) {
-      if ((used.get(ia) ?? 0) >= 2 || (used.get(ib) ?? 0) >= 2) continue;
-      pairs.push([pa, pb]);
-      used.set(ia, (used.get(ia) ?? 0) + 1); used.set(ib, (used.get(ib) ?? 0) + 1);
-    }
+    // The commons first: power runs out from the middle of the village.
+    groups.sort((a, b) => (a.id === 'hall' ? -2 : a.id === 'kitchen' ? -1 : 0) - (b.id === 'hall' ? -2 : b.id === 'kitchen' ? -1 : 0));
+    const { pairs, poles } = planLights(this.world, groups);
     if (pairs.length) {
       const key = pairs.map(([x, y]) => `${x.x.toFixed(1)},${x.z.toFixed(1)}-${y.x.toFixed(1)},${y.z.toFixed(1)}`).join(';');
       live.add('bunting');
-      this.upsert('bunting', key, () => bunting(pairs), false);
+      this.upsert('bunting', key, () => bunting(pairs, poles), false);
     }
     for (const [id, e] of this.entries) if (!live.has(id)) { this.drop(e); this.entries.delete(id); }
   }

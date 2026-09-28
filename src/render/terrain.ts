@@ -268,7 +268,8 @@ function buildGrass(w: World): THREE.Group {
       const i = idx(w, tx, tz);
       if (w.blocked[i]) continue;
       const g = w.ground[i];
-      let k = density[g] * (PIXEL ? 0.45 : 1);
+      // Pixel look: fewer tufts (each is a few pixels; many read as speckle).
+      let k = density[g] * (PIXEL ? 0.28 : 1);
       const x0 = tx - w.w / 2, z0 = tz - w.h / 2;
       k *= 0.5 + fbm(x0 * 0.08, z0 * 0.08, 5, 2);
       const count = Math.floor(k) + (rand() < k % 1 ? 1 : 0);
@@ -282,7 +283,8 @@ function buildGrass(w: World): THREE.Group {
         m.compose(p, q, s);
         mesh.setMatrixAt(n, m);
         const hue = g === Ground.Meadow ? 0.17 + rand() * 0.07 : 0.22 + rand() * 0.07;
-        col.setHSL(hue, 0.45 + rand() * 0.2, SOFT ? 0.25 + rand() * 0.07 : 0.22 + rand() * 0.15);
+        // Close to the turf they grow from, in the pixel look: texture, not confetti.
+        col.setHSL(hue, PIXEL ? 0.38 + rand() * 0.12 : 0.45 + rand() * 0.2, PIXEL ? 0.2 + rand() * 0.04 : SOFT ? 0.25 + rand() * 0.07 : 0.22 + rand() * 0.15);
         mesh.setColorAt(n, col);
         n++;
       }

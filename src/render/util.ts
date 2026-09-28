@@ -157,10 +157,15 @@ const SURFACE_GLSL = `
   float sh21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   // Pixel-scale surface detail in world space: planks and masonry on walls,
   // shingles on slopes, slabs and grit on flat tops, loam or paving on the
-  // ground. Fades out where a texel would be smaller than a screen pixel.
+  // ground. Each pattern fades out on its own as it gets smaller than a
+  // screen pixel (sub-pixel detail is what turns into grain when zoomed out).
+  float gFw = 1.0;
+  // 1 while a pattern of this frequency (cycles per world unit) spans a few pixels, 0 once it is sub-pixel.
+  float lodk(float f) { return 1.0 - smoothstep(0.35, 0.75, gFw * f); }
   vec3 surfaceTex(vec3 col, vec3 wp, vec3 wn, int kind) {
     float fw = max(length(fwidth(wp)), 1e-4);
-    float fade = 1.0 - smoothstep(0.1, 0.24, fw);
+    gFw = fw;
+    float fade = 1.0 - smoothstep(0.14, 0.3, fw);
     if (fade <= 0.0) return col;
     float T = 7.0;
     float mx = max(col.r, max(col.g, col.b)), mn = min(col.r, min(col.g, col.b));
@@ -176,8 +181,9 @@ const SURFACE_GLSL = `
         float c = floor(uu / 0.24);
         k = 0.86 + 0.26 * sh21(vec2(row, c));
         if (fract(v / 0.09) < 0.22 || fract(uu / 0.24) < 0.1) { k = 1.18; }
+        k = mix(1.02, k, lodk(11.0));
       } else {                  // corrugated steel: ribs, streaks of rust
-        k = fract(u / 0.14) < 0.5 ? 1.08 : 0.86;
+        k = mix(0.97, fract(u / 0.14) < 0.5 ? 1.08 : 0.86, lodk(7.0));
         float rust = smoothstep(0.55, 0.85, sh21(floor(vec2(u * 1.2, v * 0.6))) * 0.6 + sh21(floor(vec2(u * 5.0, v * 2.0))) * 0.4);
         tint = (vec3(0.42, 0.22, 0.1) - col) * rust * 0.45;
       }
@@ -186,19 +192,18 @@ const SURFACE_GLSL = `
       vec3 c = floor(q);
       float h = sh21(c.xz + c.y * 17.3);
       float up = dot(normalize(fract(q) - 0.5 + 1e-4), normalize(vec3(0.3, 1.0, 0.2)));
-      k = 0.78 + 0.34 * h + 0.14 * up;
-      k *= 0.9 + 0.2 * sh21(floor(wp.xz * T * 1.4) + floor(wp.y * T * 1.4));
-      fade = max(fade, 0.6);
+      k = 1.0 + (0.34 * h + 0.14 * up - 0.2) * lodk(4.5);
+      k *= 1.0 + (0.2 * sh21(floor(wp.xz * T * 1.4) + floor(wp.y * T * 1.4)) - 0.1) * lodk(T * 1.4);
     } else if (kind == 2) {            // soil and turf: loam blotches, grit
-      k = (0.92 + 0.16 * sh21(floor(wp.xz * 1.3))) * (0.93 + 0.14 * sh21(floor(wp.xz * T)));
+      k = (1.0 + (0.16 * sh21(floor(wp.xz * 1.3)) - 0.08) * lodk(1.3)) * (1.0 + (0.14 * sh21(floor(wp.xz * T)) - 0.07) * lodk(T));
     } else if (kind == 3) {     // paving: broken slabs, dark seams, moss in the cracks
       vec2 g = wp.xz / 0.9;
       float row = floor(g.y);
       g.x += row * 0.5 + sh21(vec2(row, 7.0)) * 0.3;
       vec2 cell = floor(g), f = fract(g);
-      k = (0.86 + 0.28 * sh21(cell)) * (0.94 + 0.12 * sh21(floor(wp.xz * T)));
-      float seam = step(f.x, 0.07) + step(f.y, 0.07);
-      if (seam > 0.0) { k *= 0.62; tint = sh21(cell + 3.1) < 0.4 ? vec3(-0.02, 0.03, -0.02) : vec3(0.0); }
+      k = (1.0 + (0.28 * sh21(cell) - 0.14) * lodk(1.1)) * (1.0 + (0.12 * sh21(floor(wp.xz * T)) - 0.06) * lodk(T));
+      float seam = (step(f.x, 0.07) + step(f.y, 0.07)) * lodk(6.0);
+      if (seam > 0.0) { k *= mix(1.0, 0.62, min(1.0, seam)); tint = sh21(cell + 3.1) < 0.4 ? vec3(-0.02, 0.03, -0.02) : vec3(0.0); }
     } else {
       vec3 an = abs(wn);
       if (an.y < 0.35) {
@@ -210,13 +215,15 @@ const SURFACE_GLSL = `
           float c = floor(uu / 0.52);
           k = 0.9 + 0.2 * sh21(vec2(row, c));
           if (fract(v / 0.26) < 0.15 || fract(uu / 0.52) < 0.07) k *= 0.74;
+          k = mix(0.95, k, lodk(3.8));
         } else {                // wood: planks with seams, grain
           float row = floor(v / 0.2);
           float len = 0.9 + 0.8 * sh21(vec2(row, 2.0));
           float seg = floor((u + sh21(vec2(row, 1.0)) * 3.0) / len);
           k = 0.88 + 0.24 * sh21(vec2(row, seg));
           if (fract(v / 0.2) < 0.16) k *= 0.7;
-          k *= 0.95 + 0.1 * sh21(floor(vec2(u * T * 2.0, v * T)));
+          k = mix(0.97, k, lodk(5.0));
+          k *= 1.0 + (0.1 * sh21(floor(vec2(u * T * 2.0, v * T))) - 0.05) * lodk(T * 2.0);
         }
       } else if (an.y < 0.93) { // roof slope: staggered shingles
         vec2 d = normalize(wn.xz + 1e-5);
@@ -226,8 +233,9 @@ const SURFACE_GLSL = `
         k = 0.84 + 0.3 * sh21(vec2(row, c));
         if (fract(wp.y / 0.11) < 0.3) k *= 0.72;
         else if (fract(u / 0.3) < 0.08) k *= 0.85;
+        k = mix(0.92, k, lodk(9.0));
       } else {                  // flat tops: grit
-        k = 0.93 + 0.14 * sh21(floor(wp.xz * T));
+        k = 1.0 + (0.14 * sh21(floor(wp.xz * T)) - 0.07) * lodk(T);
       }
     }
     return mix(col, col * k + tint, fade);
@@ -248,9 +256,10 @@ const SEASON_GLSL: Record<SeasonStyle, string> = {
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.37, 0.30, 0.22), smoothstep(0.1, 0.55, wv) * 0.85);
       snowK *= 1.0 - smoothstep(0.3, 1.0, wv) * 0.5;
     }`,
+  // Tufts take the season only lightly in the pixel look, where a pale tuft on dark turf reads as a speck.
   grass: `
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.6, 0.25), uAutumn * 0.5);
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.54, 0.38), uBare * 0.65);`,
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.6, 0.25), uAutumn * ${PIXEL ? 0.22 : 0.5});
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.54, 0.38), uBare * ${PIXEL ? 0.3 : 0.65});`,
   broadleaf: `
     {
       vec3 aut = vHash < 0.2 ? vec3(0.62, 0.16, 0.08) : mix(vec3(0.85, 0.38, 0.1), vec3(0.95, 0.72, 0.18), vHash);

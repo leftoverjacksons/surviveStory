@@ -32,8 +32,15 @@ const GradeShader = {
       // Vignette.
       vec2 d = vUv - 0.5;
       c *= 1.0 - smoothstep(0.35, 0.85, length(d * vec2(1.1, 1.0))) * 0.22;
-      // Pixel art: colour in steps (a limited palette, stepped light).
-      if (uSteps > 0.0) c = floor(clamp(c, 0.0, 1.0) * uSteps + 0.5) / uSteps;
+      // Pixel art: light in steps. Only brightness is stepped, so hues stay
+      // continuous (stepping each channel flips neighbouring pixels between
+      // hues, which reads as grain).
+      if (uSteps > 0.0) {
+        c = clamp(c, 0.0, 1.0);
+        float L = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        float Lq = floor(L * uSteps + 0.5) / uSteps;
+        c = clamp(c * (Lq / max(L, 1e-3)), 0.0, 1.0);
+      }
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), src.a);
     }`,
 };
@@ -398,7 +405,7 @@ export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);
-  grade.uniforms.uSteps.value = PIXEL ? 14 : 0;
+  grade.uniforms.uSteps.value = PIXEL ? 20 : 0;
   grade.enabled = !new URLSearchParams(location.search).has('nograde');
   composer.addPass(grade);
   const syncXray = () => {

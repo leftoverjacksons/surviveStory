@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CANOPY, CAR, SIGN, STORE } from '../sim/layout';
-import { enhance, enhanced, lambert, makeRand, shadowed } from './util';
+import { PIXEL, enhance, enhanced, lambert, makeRand, shadowed } from './util';
 
 /** Surfaces that vines should grow over, collected while building the station. */
 export interface VineSurface {
@@ -286,7 +286,10 @@ function buildVineMesh(surfaces: VineSurface[], edges: VineEdge[], total: number
   ]), 3));
   leaf.setIndex([0, 1, 2, 0, 2, 3]);
   leaf.computeVertexNormals();
-  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25, fog: false, season: 'broadleaf' });
+  // Ivy is evergreen: no autumn colour or bare branches (pale leaves on a dark wall read as specks).
+  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25, fog: false, season: 'conifer' });
+  // The pixel look: fewer, larger leaves, so ivy reads as masses rather than grain.
+  const big = PIXEL ? 1.7 : 1, sparse = PIXEL ? 0.4 : 1;
   const max = 16000;
   const mesh = new THREE.InstancedMesh(leaf, mat, max);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();
@@ -299,17 +302,17 @@ function buildVineMesh(surfaces: VineSurface[], edges: VineEdge[], total: number
     q.setFromUnitVectors(up, normal);
     const spin = new THREE.Quaternion().setFromAxisAngle(normal, rand() * Math.PI * 2);
     q.premultiply(spin);
-    s.setScalar(scale);
+    s.setScalar(scale * big);
     m.compose(p, q, s);
     mesh.setMatrixAt(n, m);
-    col.setHSL(0.24 + rand() * 0.1, 0.5 + rand() * 0.25, 0.18 + rand() * 0.16);
+    col.setHSL(0.25 + rand() * 0.08, PIXEL ? 0.36 + rand() * 0.14 : 0.5 + rand() * 0.2, PIXEL ? 0.15 + rand() * 0.07 : 0.18 + rand() * 0.16);
     mesh.setColorAt(n, col);
     n++;
   };
 
   const totalW = surfaces.reduce((a, sf) => a + sf.weight, 0);
   for (const sf of surfaces) {
-    const count = Math.floor((sf.weight / totalW) * total);
+    const count = Math.floor((sf.weight / totalW) * total * sparse);
     for (let i = 0; i < count; i++) {
       const { p, n: nrm } = sf.sample(rand);
       // Clump: skip some samples to leave bare patches.
@@ -324,7 +327,7 @@ function buildVineMesh(surfaces: VineSurface[], edges: VineEdge[], total: number
     const len = e.a.distanceTo(e.b);
     const strands = Math.floor(len * 2.6);
     for (let i = 0; i < strands; i++) {
-      if (rand() < 0.3) continue;
+      if (rand() < 1 - 0.7 * sparse) continue;
       tmp.lerpVectors(e.a, e.b, rand());
       const hang = 0.4 + Math.pow(rand(), 1.5) * 3.4;
       for (let y = 0; y < hang; y += 0.09) {

@@ -107,7 +107,7 @@ export function buildRuins(world: World): THREE.Group {
   leaf.computeVertexNormals();
   const perWall = 22;
   const leaves = new THREE.InstancedMesh(
-    leaf, enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25, season: 'broadleaf' }),
+    leaf, enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), { wind: 0.25, season: 'conifer' }), // ivy: evergreen
     Math.max(1, world.walls.length * perWall),
   );
   const up = new THREE.Vector3(0, 0, 1);

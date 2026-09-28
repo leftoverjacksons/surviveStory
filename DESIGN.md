@@ -2266,3 +2266,38 @@ order: save and resume, multi-year soak testing, a chronicle of the run.
   sharing and scripts).
 - In game, Testing tools has **Start menu…**, which saves and goes back to
   the menu.
+
+### 22.5 Visual quality: less grain; lights that reach every house (built)
+The user found the pixel look grainy when zoomed out, and better when
+zoomed in. Their reference: pixelated but soft and warm, not jagged.
+- **Diagnosis.** Hiding scene layers one at a time found three sources:
+  - *Sub-pixel surface patterns.* Grit, leaf specks, plank grain, shingles
+    and seams are fixed world sizes. Zoomed out, several fall inside one
+    render pixel, and each pixel picks one at random: grain.
+  - *Grass tufts.* Pale seasonal tints (straw in early spring, gold in
+    autumn) on dark turf: confetti.
+  - *Ivy on roofs and walls.* Tiny leaves with deciduous seasonal tints:
+    pale specks on dark red.
+  - Also, the colour grade stepped each RGB channel separately into 14
+    levels, so neighbouring pixels on a gradient flipped between hues.
+- **Fixes:**
+  - *Surface detail* (`util.ts#surfaceTex`): each pattern fades out on its
+    own as it gets smaller than a pixel (`lodk(frequency)`, from
+    `fwidth`), toward its mean, so the average colour holds while the
+    speckle goes. Leaves no longer force texture when far off.
+  - *Colour grade:* only brightness is stepped, in 20 steps; hue stays
+    continuous.
+  - *Grass tufts (pixel look):* density ×0.28 (was ×0.45), colour close to
+    the turf, and seasonal tints ×0.44 (autumn) and ×0.46 (bare).
+  - *Ivy* (`station.ts#buildVineMesh`, ruin ivy): evergreen, with no
+    seasonal tint. In the pixel look it has 40% as many leaves, 1.7× the
+    size, and a deeper, narrower green, so it reads as masses.
+- **The string lights are the village's power** (`plots.ts#planLights`).
+  Before, they linked only homes 3–17 units apart, at most two strings a
+  house, chosen greedily, so a far house got nothing. Now:
+  - a spanning tree reaches every home, the commons hall, the kitchen and
+    the tavern, running out from the commons;
+  - runs longer than 12 units are carried on salvaged poles (3.1 m, with a
+    crossbar), stepped aside onto open ground;
+  - extra strings between neighbours under 10 units apart, up to three a
+    house, keep the web.
