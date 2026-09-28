@@ -147,8 +147,10 @@ reference: Tiny Glade.
     panel DONE (§22.3, `sim/chronicle.ts`, `ui/chronicle.ts`, key C); start menu DONE
     (§22.4, `ui/startmenu.ts`: Continue / new village by site, seed, autopilot). Published in v21.
     Smoke-testing the single-file build now needs `?new` (or click Begin), since the menu waits.
-  - SEE-THROUGH WOODS §22.6: canopies on the Folk's Wild drawn as rim ghosts (`enhance` `thin`,
-    `worldUniforms.uThin`), button/key O cycles Wild thinned → all thinned → full. Published in v23.
+  - SEE-THROUGH WOODS §22.6: trees on the Folk's Wild become translucent ghosts (solid meshes
+    discard them, `ghostTwin` alpha twins share instance buffers, no shadows; `enhance` `thin`,
+    `worldUniforms.uThin`); button/key O cycles Wild ghosted → all ghosted → solid. The v23 rim
+    outlines were rejected by the user. Ghost version NOT published.
   - HUD TIDY §22.7: village plans, Crew and Events collapse (`.fold-btn`, remembered); Events is a
     short running log (5 in view, 30 back); left column sized by measured `--top`/`--foot`. Published in v24.
   - NEXT (agreed): economy balance from soak data (§22.2 open findings: food surplus >1,500 by

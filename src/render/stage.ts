@@ -104,8 +104,6 @@ class OutlinePass extends Pass {
           float clearAir = 1.0 - smoothstep(uFogNear, uFogFar, d);
           float ink = seen * clearAir;
           edge *= step(0.5, ink); crease *= ink;
-          // Stippled canopies (alpha 0.5, see enhance's thin) stay uninked: a lace, not a net.
-          if (src.a < 0.75) { edge = 0.0; crease = 0.0; }
           if (uDebug > 0.5) { gl_FragColor = vec4(edge, texture2D(tDepth, vUv).x * 20.0 - floor(texture2D(tDepth, vUv).x * 20.0), crease, 1.0); return; }
           if (edge > 0.0) c = c * 0.38 + vec3(0.025, 0.012, 0.03);          // ink: a deep warm violet-brown
           else if (crease > 0.0) c = c * (1.0 + 0.5 * clamp(crease * 2.0, 0.0, 1.0)) + 0.015;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { heightAt, type Tree, type World } from '../sim/world';
-import { SOFT, enhance, makeRand, soften } from './util';
+import { SOFT, enhance, ghostTwin, makeRand, soften, type EnhanceOptions } from './util';
 import { clumpOverlaps, fitClump, trunkBlocked, type Obstacle } from './clearance';
 
 interface Slot { mesh: THREE.InstancedMesh; index: number }
@@ -191,9 +191,17 @@ export class TreeField {
   group = new THREE.Group();
   private slots = new Map<number, Slot[]>();
   private geos: Record<Part['geo'], THREE.BufferGeometry>;
-  private trunkMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { surface: 'none' });
-  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { wind: 0.04, season: 'broadleaf', shade: 1, thin: true });
-  private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { wind: 0.03, season: 'conifer', shade: 2, thin: true });
+  /** Material options per part; 'solid' trees can turn to ghosts on the Folk's Wild (DESIGN §22.6). */
+  private opts: Record<Part['geo'], EnhanceOptions> = {
+    trunk: { surface: 'none', thin: 'solid' },
+    blob: { wind: 0.04, season: 'broadleaf', shade: 1, thin: 'solid' },
+    cone: { wind: 0.03, season: 'conifer', shade: 2, thin: 'solid' },
+  };
+  private trunkMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), this.opts.trunk);
+  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), this.opts.blob);
+  private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), this.opts.cone);
+  /** Translucent twins of every tree mesh, shown while see-through woods is on. */
+  private ghosts = new THREE.Group();
   private falling: { g: THREE.Group; t: number; axis: THREE.Vector3; pivot: THREE.Vector3 }[] = [];
   private stumps: THREE.InstancedMesh;
   private stumpCount = 0;
@@ -255,8 +263,10 @@ export class TreeField {
         mesh.receiveShadow = true;
         mesh.computeBoundingSphere();
         this.group.add(mesh);
+        this.ghosts.add(ghostTwin(mesh, this.opts[k as Part['geo']]));
       }
     }
+    this.group.add(this.ghosts);
 
     this.stumps = new THREE.InstancedMesh(
       new THREE.CylinderGeometry(0.22, 0.3, 0.35, 7).translate(0, 0.17, 0),
@@ -283,8 +293,8 @@ export class TreeField {
       const col = p.color.clone();
       // Clones lose the shader patch, so re-apply it with the same seasonal style.
       const mat = p.geo === 'trunk' ? enhance(this.trunkMat.clone(), { surface: 'none' })
-        : p.geo === 'cone' ? enhance(this.pineMat.clone(), { season: 'conifer', shade: 2, thin: true })
-        : enhance(this.leafMat.clone(), { season: 'broadleaf', shade: 1, thin: true });
+        : p.geo === 'cone' ? enhance(this.pineMat.clone(), { season: 'conifer', shade: 2 })
+        : enhance(this.leafMat.clone(), { season: 'broadleaf', shade: 1 });
       (mat as THREE.MeshLambertMaterial).color = col;
       mat.transparent = true;
       const mesh = new THREE.Mesh(this.geos[p.geo], mat);
@@ -322,7 +332,7 @@ export class TreeField {
     const key = planted.map((t) => `${t.id}:${Math.round(t.growth * 20)}`).join(',');
     if (key === this.youngKey) return;
     this.youngKey = key;
-    for (const m of this.young) this.group.remove(m);
+    for (const m of this.young) { this.group.remove(m); if (m.userData.ghost) this.ghosts.remove(m.userData.ghost); }
     this.young = [];
     if (!planted.length) return;
     const all = planted.map((t) => fitted(grown(recipe(t, this.world), t.growth), this.obs));
@@ -340,6 +350,7 @@ export class TreeField {
       mesh.castShadow = mesh.receiveShadow = true;
       mesh.computeBoundingSphere();
       this.group.add(mesh);
+      this.ghosts.add(ghostTwin(mesh, this.opts[geo]));
       this.young.push(mesh);
     }
   }
@@ -384,6 +395,9 @@ export class TreeField {
     this.shaped = next;
     for (const mesh of touched) { mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); }
   }
+
+  /** See-through woods on or off: the ghost twins only draw while it's on. */
+  setGhosts(on: boolean) { this.ghosts.visible = on; }
 
   /** Debug: leaf clumps (before, after fitting) that still reach into a building. */
   overlaps(obs: Obstacle[] = this.obs): { before: number; after: number; trees: number } {

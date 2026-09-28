@@ -2340,3 +2340,19 @@ event log, and for a smaller log with a shorter running history.
   footer's and the place card's real sizes are measured (`--foot`, `--top`).
   The key hint line is hidden below 1500 px wide (each button's tooltip
   already has it), which was the main cause of the wrap.
+- **Revised after v23: ghosts, not cutaways.** The user disliked the rim
+  outlines ("not just cutaways") and asked for near-total transparency,
+  trees becoming ghostly. Now:
+  - The solid tree meshes discard ghosted instances entirely (`thin:
+    'solid'`), trunks included, and a custom shadow material
+    (`util.ts#thinDepth`) drops their shadows, so the ground beneath is lit.
+  - Each tree mesh has a *ghost twin* (`util.ts#ghostTwin`): the same
+    geometry and the same instance buffers (shared, not copied), an
+    alpha-blended material with no depth write, drawn only where the solid
+    one is cut. Colour: 60% toward a pale mint, scaled by the scene's own
+    light (faint at night); alpha 0.05 on faces toward the camera, up to
+    0.26 at the silhouette.
+  - The twins are hidden while the woods are solid (`TreeField.setGhosts`),
+    so they cost nothing then. The outline pass needs no special case: the
+    ghosts are not in the depth buffer.
+  - Button labels: *Woods: solid / Wild ghosted / all ghosted* (key O).

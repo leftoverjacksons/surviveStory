@@ -319,9 +319,10 @@ roofBtn.addEventListener('click', cycleRoofs);
 
 /** See-through woods (worldUniforms.uThin): the Folk's Wild thinned by default, so their works show. */
 const woodsBtn = document.getElementById('woods-btn')!;
-const WOODS = ['full', 'Wild thinned', 'all thinned'];
+const WOODS = ['solid', 'Wild ghosted', 'all ghosted'];
 function setWoods(mode: number) {
   worldUniforms.uThin.value = mode;
+  trees.setGhosts(mode !== 0);
   woodsBtn.textContent = `Woods: ${WOODS[mode]}`;
   woodsBtn.setAttribute('aria-pressed', String(mode !== 0));
   try { localStorage.setItem('woods', String(mode)); } catch { /* per-viewer nicety only */ }

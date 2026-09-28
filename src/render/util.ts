@@ -154,16 +154,69 @@ export interface EnhanceOptions {
    */
   surface?: 'auto' | 'soil' | 'paving' | 'leaf' | 'brick' | 'corrugated' | 'none';
   /**
-   * Tree canopies: stipple them away (ordered dither) where `uThin` asks, so
-   * what stands beneath them (the Folk's mound and works) can be seen.
+   * Trees that can turn to ghosts where `uThin` asks (the Folk's Wild, or
+   * everywhere). 'solid': the normal material, cut away where ghosted.
+   * 'ghost': the translucent twin, drawn only where ghosted (see ghostTwin).
    */
-  thin?: boolean;
+  thin?: 'solid' | 'ghost';
 }
 
 /** Wild's zone colour as the shader reads it from uZoneTex. */
 const WILD_RGB = '0.314, 0.784, 0.667';
-/** A thinned canopy keeps the surface whose facing (|n · view|) is below this: its rim. */
-const THIN_RIM = 0.4;
+/** Vertex-shader test: is this instance ghosted? One decision per instance, from where it stands. */
+const THIN_VERT = `
+  float thinAt(vec3 ip) {
+    vec4 zc = texture2D(uZoneTex, (ip.xz + uFogSize * 0.5) / uFogSize);
+    float wild = step(0.5, zc.a) * step(distance(zc.rgb, vec3(${WILD_RGB})), 0.03);
+    return uThin > 1.5 ? 1.0 : uThin > 0.5 ? wild : 0.0;
+  }`;
+/** Ghost look: a pale body, nearly clear, a little stronger at the rim. */
+const GHOST_TINT = '0.8, 0.93, 0.92';
+const GHOST_BODY = 0.05;
+const GHOST_RIM = 0.21;
+
+/**
+ * A ghost twin for an instanced tree mesh: same geometry and (shared)
+ * instance data, drawn alpha-blended only where the solid mesh is cut away.
+ * Keep `boundingSphere` in step when the instances move (see TreeField).
+ */
+export function ghostTwin(mesh: THREE.InstancedMesh, opts: EnhanceOptions): THREE.InstancedMesh {
+  const mat = enhance(new THREE.MeshLambertMaterial({ transparent: true, depthWrite: false, flatShading: !SOFT }), { ...opts, thin: 'ghost' });
+  const g = new THREE.InstancedMesh(mesh.geometry, mat, 0);
+  g.instanceMatrix = mesh.instanceMatrix;
+  g.instanceColor = mesh.instanceColor;
+  g.count = mesh.count;
+  g.boundingSphere = mesh.boundingSphere;
+  g.castShadow = false;
+  g.receiveShadow = false;
+  g.renderOrder = 2;
+  mesh.customDepthMaterial = thinDepth();
+  mesh.userData.ghost = g;
+  return g;
+}
+
+let thinDepthMat: THREE.MeshDepthMaterial | null = null;
+/** Shadow-map material for ghostable trees: ghosts cast no shadow. */
+function thinDepth(): THREE.MeshDepthMaterial {
+  if (thinDepthMat) return thinDepthMat;
+  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, { uZoneTex: worldUniforms.uZoneTex, uThin: worldUniforms.uThin, uFogSize: worldUniforms.uFogSize });
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+      uniform sampler2D uZoneTex; uniform float uThin; uniform float uFogSize; varying float vThin;
+      ${THIN_VERT}`).replace('#include <begin_vertex>', `#include <begin_vertex>
+      #ifdef USE_INSTANCING
+        vThin = thinAt(vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]));
+      #else
+        vThin = 0.0;
+      #endif`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+      varying float vThin;`).replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+      if (vThin > 0.5) discard;`);
+  };
+  m.customProgramCacheKey = () => 'thin-depth';
+  return (thinDepthMat = m);
+}
 
 const SURFACE_GLSL = `
   float sh21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -297,7 +350,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
   const season = opts.season ?? 'solid';
   const shade = opts.shade ?? 0;
   const upLit = opts.upLit ?? false;
-  const thin = opts.thin ?? false;
+  const thin = opts.thin ?? null;
   const surface = !PIXEL ? 'none' : opts.surface ?? (season === 'solid' ? 'auto' : season === 'ground' ? 'soil' : season === 'broadleaf' || season === 'conifer' ? 'leaf' : 'none');
   const surfaceKind = { none: 0, auto: 1, soil: 2, paving: 3, leaf: 4, brick: 5, corrugated: 6 }[surface];
   mat.onBeforeCompile = (shader) => {
@@ -308,7 +361,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       uniform float uTime; uniform float uWind; uniform float uBare; uniform float uFogSize;
       uniform sampler2D uWearTex;
       varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
-      ${thin ? 'uniform sampler2D uZoneTex; uniform float uThin; varying float vThin;' : ''}`,
+      ${thin ? `uniform sampler2D uZoneTex; uniform float uThin; varying float vThin; ${THIN_VERT}` : ''}`,
     );
     vs = vs.replace(
       '#include <begin_vertex>',
@@ -320,12 +373,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       #endif
       vHash = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))) * 43758.5453);
       vShade = clamp(position.y * ${shade.toFixed(3)} * 0.5 + 0.5, 0.0, 1.0);
-      ${thin ? `{
-        // One decision per clump (from where it stands), so a canopy never half-fades.
-        vec4 zc = texture2D(uZoneTex, (ip.xz + uFogSize * 0.5) / uFogSize);
-        float wild = step(0.5, zc.a) * step(distance(zc.rgb, vec3(${WILD_RGB})), 0.03);
-        vThin = uThin > 1.5 ? 1.0 : uThin > 0.5 ? wild : 0.0;
-      }` : ''}
+      ${thin ? 'vThin = thinAt(ip);' : ''}
       ${season === 'broadleaf' ? 'transformed *= mix(1.0, 0.42, uBare);' : ''}
       ${season === 'grass' ? `{
         float wr = texture2D(uWearTex, (ip.xz + uFogSize * 0.5) / uFogSize).r;
@@ -366,17 +414,22 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       ${thin ? 'varying float vThin;' : ''}
       ${surfaceKind ? SURFACE_GLSL : ''}`,
     );
-    if (thin) {
-      // A ghost of the canopy: only its rim, where the surface turns away from
-      // the camera, is kept; the faces looking at you are cut, so what stands
-      // beneath shows. Kept pixels mark alpha 0.5 so the outline pass leaves them uninked.
+    if (thin === 'solid') {
       fs = fs.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-        if (vThin > 0.5) {
+        if (vThin > 0.5) discard;`);
+    } else if (thin === 'ghost') {
+      // Drawn only where the solid tree is cut away: pale and nearly clear,
+      // a little denser where the surface turns from the camera.
+      fs = fs.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+        if (vThin < 0.5) discard;`);
+      fs = fs.replace('#include <opaque_fragment>', `#include <opaque_fragment>
+        {
           vec3 toCam = normalize(vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]));
-          if (abs(dot(normalize(vWN), toCam)) > ${THIN_RIM.toFixed(3)}) discard;
+          float rim = 1.0 - abs(dot(normalize(vWN), toCam));
+          float lum = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(${GHOST_TINT}) * (0.15 + lum * 1.3), 0.6);   // lit like the scene: faint at night
+          gl_FragColor.a = ${GHOST_BODY.toFixed(3)} + ${GHOST_RIM.toFixed(3)} * rim * rim;
         }`);
-      if (PIXEL) fs = fs.replace('#include <dithering_fragment>', `#include <dithering_fragment>
-        if (vThin > 0.5) gl_FragColor.a = 0.5;`);
     }
     if (surfaceKind) {
       fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
