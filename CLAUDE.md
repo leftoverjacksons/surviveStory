@@ -135,11 +135,11 @@ reference: Tiny Glade.
     Veil free on full moons/festivals, rebalance) DONE §21.9. Loop v2 complete.
     Then (§21.10): AUTOPILOT button/`?auto` (self-planning + council settles itself after
     10 s) and BACKYARD TRADES (tool bench/sewing room/smoke shed at the back of a household's
-    plot, `sim/backyard.ts`). Unpublished: §21.7–21.10.
+    plot, `sim/backyard.ts`). Unpublished: nothing (v20).
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.
-  - Published: version 19 (everything through §21.6: loop v2 steps 1–4).
+  - Published: version 20 (everything through §21.10: loop v2, autopilot, backyard trades).
   - NEW PLAN, under discussion: DESIGN §19. Haunted districts are cleared by a small
     turn-based team (Sight = fog of war, Nerve not HP, convert/lay to rest/banish),
     and the Folk are a second society (mounds, Folk paths, the Wild, Standing).
