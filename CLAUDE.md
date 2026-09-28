@@ -176,7 +176,11 @@ reference: Tiny Glade.
     uncleared zones). Backlog §23.2 (cleared districts fully usable like the start — user insists;
     mycelium network; solar/windmills; cars; timber handling). Order: overlay (DONE §23.3) → councils
     (C: request tray §23.4 `sim/requests.ts` `ui/tray.ts`; dilemmas + commitments §23.5
-    `sim/dilemmas.ts`; DONE) → staging (A) → B. All of §22.12 and §23.3–23.5 NOT published.
+    `sim/dilemmas.ts`; DONE) → staging (A) → B. Published in v28 (built on HEAD).
+  - PLAYTEST NOTES after v28 in DESIGN §23.6 (bench clipping, pixel shimmer, pathing through
+    gardens/fences + auto gates, desire paths, move/deconstruct, living festivals, relationships and
+    Folk romance/hybrids, blessing/curse, the mound as an underground Nunnehi townhouse). Next steps
+    being agreed with the user.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

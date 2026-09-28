@@ -2655,3 +2655,53 @@ From the pacing audit (§22.11, proposals D and E), which the user approved.
   a worked field's fence timber on the pile, and it counts in the wood
   target. Chosen half rations don't open the Folk's berries (only real
   hunger does), and aren't announced as a shortage.
+
+### 23.6 Playtest notes after version 28 (the user's; to do)
+Published v28 (§22.12, §23.3–23.5). Sorted by kind; nothing here is built.
+
+**Fixes and polish (little design needed)**
+- *Benches clip into doors and steps:* the yard bench in front of a house
+  overlaps the door and the entry stairs (two screenshots, day and night).
+  Yard placement must keep clear of the door, its swing and the steps.
+- *Pixel shimmer ("rooftops glitter"):* with the light changing
+  continuously, the 1/3-resolution image, the posterised grade and the
+  shadows re-sample differently every frame, so edges and roofs flicker
+  when nothing is moving. Known remedies in pixel-art 3D (t3ssel8r-style):
+  snap the camera to the pixel grid and apply the sub-pixel remainder when
+  upscaling; snap the shadow camera to shadow-map texels; move the sun in
+  small steps (or smooth its changes); optionally a softer upscale or a
+  "pixel strength" setting. Measure it: frame-to-frame difference of a
+  still scene (a flicker metric), before and after.
+- *People walk through gardens and fences:* yard features and field fences
+  don't block paths. Make them block, and where the wanted route clearly
+  crosses a fence, put a gate there (opens by itself); a place for a
+  decorative arch if the household likes.
+- *Desire paths:* easier to form; they persist through the seasons, are
+  kept clear of snow in winter, and are maintained by people who remember
+  where they ran.
+
+**Controls**
+- *Every structure can be moved or taken down* (right-click: Deconstruct /
+  Move). Deconstruct is a task that returns part of the materials; Move is
+  a deconstruct here and a rebuild there.
+
+**Life in the village**
+- *Festivals and dances actually happen:* people gather, dance, eat
+  together, visibly; generally more living in the town (not only working).
+- *Relationships, codified:* courtship, marriages and weddings (an event
+  people attend), children, a school.
+- *Crossing into the Folk:* a human and one of the Folk falling in love;
+  humans joining the Fey; Folk living with people for a time and returning
+  to the hill; hybrid children with greater gifts.
+
+**The Folk as equals (with B, §23.1)**
+- *Blessing or curse:* good relations with a mound are a blessing, bad ones
+  a curse (felt broadly: crops, luck, weather, health), and the mycelium
+  network (§23.2) is where it reaches.
+- *What a mound's growth means:* today a growth adds one of the Folk, raises
+  the land they want, lets them make more works and do more nightly chores
+  for the village, and asks for more rings and lanterns. Little of it is
+  visible. Wanted: the mound as a Nunnehi townhouse, mostly underground,
+  with an ethereal topside (ghostly buildings most humans can't see; seen
+  with Sight or the Veil view), growing chamber by chamber: a second town,
+  on equal terms with the village.
