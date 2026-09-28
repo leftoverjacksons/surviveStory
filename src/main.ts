@@ -45,6 +45,7 @@ import { Hud, type ZoneTool } from './ui/hud';
 import { canSave, makeSave, restore } from './sim/save';
 import { deleteSave, readSave, writeSave } from './ui/storage';
 import { ChronicleView } from './ui/chronicle';
+import { startMenu, type StartChoice } from './ui/startmenu';
 import type { Colony } from './sim/colony';
 
 // ---------- simulation ----------
@@ -52,15 +53,25 @@ const params = new URLSearchParams(location.search);
 // A saved game carries on (DESIGN §22.1) unless ?new, ?seed or ?site asks for a fresh one.
 const fresh = params.has('new') || params.has('seed') || params.has('site');
 const saved = fresh ? null : await readSave();
-let loaded: Colony | null = null;
+let loaded: Colony | null = null, unloadable: string | null = null;
 if (saved) {
   const r = restore(saved);
-  if (typeof r === 'string') console.warn(r); else loaded = r;
+  if (typeof r === 'string') { console.warn(r); unloadable = r; } else loaded = r;
 }
-const seed = loaded?.world.seed ?? (Number(params.get('seed')) || Date.now() % 100000);
+let lsAuto = false;
+try { lsAuto = localStorage.getItem('ss-autopilot') === '1'; } catch { /* storage may be unavailable */ }
 // ?site=chapel (station, chapel, motel, farm, glasshouse) picks the start; otherwise the seed does.
 const siteParam = params.get('site') as SiteKind | null;
-const world = loaded?.world ?? generateWorld(seed, undefined, siteParam && SITE_KINDS.includes(siteParam) ? siteParam : siteKindFor(seed));
+// The start menu (DESIGN §22.4): continue, or a new village. Links with ?new, ?seed or ?site go straight in.
+const choice: StartChoice = fresh
+  ? { kind: 'new', site: siteParam && SITE_KINDS.includes(siteParam) ? siteParam : null, seed: Number(params.get('seed')) || null, autopilot: params.has('auto') || lsAuto }
+  : await startMenu(loaded ? saved : null, unloadable ? `The saved village couldn't be opened: ${unloadable}` : null, params.has('auto') || lsAuto);
+if (choice.kind === 'new') {
+  if (loaded || unloadable) await deleteSave();
+  loaded = null;
+}
+const seed = loaded?.world.seed ?? ((choice.kind === 'new' && choice.seed) || Date.now() % 100000);
+const world = loaded?.world ?? generateWorld(seed, undefined, (choice.kind === 'new' && choice.site) || siteKindFor(seed));
 document.querySelector('#place h1')!.textContent = world.site.place;
 document.title = `Survive Story · ${world.site.place}`;
 const community = loaded?.community ?? createCommunity(seed);
@@ -70,10 +81,9 @@ if (loaded) log(community, `Carried on from day ${community.day}, saved ${new Da
 if (fresh) { const q = new URLSearchParams(location.search); for (const k of ['new', 'seed', 'site']) q.delete(k); history.replaceState(null, '', `${location.pathname}${q.size ? `?${q}` : ''}${location.hash}`); }
 // The player places buildings and draws plots (DESIGN §21); ?auto keeps the old self-planning village.
 // Autopilot (?auto, or the button): the village plans and places for itself, and the council settles itself after 10 s.
-let autopilot = new URLSearchParams(location.search).has('auto');
-try { if (localStorage.getItem('ss-autopilot') === '1') autopilot = true; } catch { /* storage may be unavailable */ }
-// A game saved on autopilot carries on on autopilot.
-if (loaded?.village.autoPlan) autopilot = true;
+// A game saved on autopilot carries on on autopilot; a new one takes the menu's choice.
+let autopilot = choice.kind === 'new' ? choice.autopilot : params.has('auto') || lsAuto || loaded?.village.autoPlan === true;
+try { localStorage.setItem('ss-autopilot', autopilot ? '1' : '0'); } catch { /* ignore */ }
 colony.village.autoPlan = autopilot;
 colony.village.autopilot = autopilot;
 
@@ -918,10 +928,12 @@ async function saveNow(why: 'day' | 'leave' | 'manual') {
 }
 addEventListener('pagehide', () => { void saveNow('leave'); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void saveNow('leave'); });
+// Back to the start menu: save first, so Continue is there.
 document.getElementById('game-btn')!.addEventListener('click', async () => {
-  if (!confirm('Start a new game? The current village will be lost.')) return;
-  await deleteSave();
-  location.search = '?new';
+  await saveNow('manual');
+  const q = new URLSearchParams(location.search);
+  for (const k of ['new', 'seed', 'site', 'auto']) q.delete(k);
+  location.search = q.toString();
 });
 
 function frame() {

@@ -2252,3 +2252,17 @@ order: save and resume, multi-year soak testing, a chronicle of the run.
   reached Settled. That is the balance item from §22.2, now visible at a
   glance.
 - **Tests:** `tests/chronicle.test.ts`.
+
+### 22.4 The start menu (built)
+- Shown before the world is built (`ui/startmenu.ts`, awaited in `main.ts`):
+  - **Continue**, with the saved village's place, year, season, day,
+    people and how long ago it was saved;
+  - **Start a new village**, choosing where they first shelter (anywhere,
+    or one of the five sites), an optional seed, and autopilot. It asks
+    before replacing a saved village.
+- If the save can't be opened (an older version), the menu says so and
+  offers a new village.
+- Links with `?new`, `?seed` or `?site` skip the menu and start fresh (for
+  sharing and scripts).
+- In game, Testing tools has **Start menu…**, which saves and goes back to
+  the menu.
