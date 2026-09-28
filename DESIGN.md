@@ -2527,3 +2527,60 @@ From the pacing audit (§22.11, proposals D and E), which the user approved.
   finite on every map, with no renewable source once the heaps are gone;
   a design question for the user (e.g. dismantling ruins in cleared
   districts for scrap). The slow days are still under investigation.
+
+## 23. Round 4: the user's direction after the pacing audit (after version 27)
+
+### 23.1 Decisions
+- **A. Staged options: agreed.** Buildings and systems appear when they
+  become relevant, not all in week 1.
+- **B. Goals past Thriving: agreed in principle; the user is thinking it
+  over.** Their aim, in their words: town growth and the *symbiotic* growth
+  of the Folk and the humans should feel symbiotic and fulfilling, and should
+  press against the uncleared zones, so there is motivation to clear them.
+- **C. Councils that matter: agreed.** Proposal (user asked for
+  suggestions; order of work: overlay → councils):
+  1. *A request tray for everyday asks:* home petitions (30% of proposals
+     today) and small personal asks ("a lantern by our door") go to a
+     non-pausing tray, answered whenever; answered asks lift morale and
+     bonds, ignored ones fade and are remembered. The steady trickle.
+  2. *The council convenes for real dilemmas only* (strangers at the gate,
+     the Folk asking for land the village wants, a found district, a winter
+     forecast that doesn't add up, a household quarrel), with a small hearth
+     talk if nothing has come up for ~6 days. No fixed 4-day cadence.
+  3. *Choices become visible commitments:* a HUD card with explicit effects
+     and a timer ("Gates open, 8 days: newcomers ×2, food −1/day each").
+     The passed-over remember, and may ask again.
+  4. *Many dilemmas set village against Folk*, feeding B.
+  5. *Measured with `scripts/choices.ts`:* success = policies move outcomes
+     clearly more than the run's own drift.
+- **Order agreed:** the plot keep-out overlay first, then councils (C), then
+  staging (A), then B.
+
+### 23.2 Backlog from the user (to do; sorted)
+- **Plot drawing (UX, next):** "Something is in the way" with nothing
+  visible. Show blocked tiles while drawing a plot (water, roads and
+  paving, fields, the Wild and Folk paths, buildings and rubble, the fire,
+  the stockpile, haunted ground, unexplored ground), and mark where a
+  refused plot failed.
+- **Cleared districts become fully usable, like the starting site (user
+  insists):** today a restored ruin becomes a bunkhouse, workshop, storehouse,
+  shrine or garden only; households never move into restored houses, and
+  restored places get no string lights. Wanted: restored houses as homes
+  with yards, households living there, the power network (lights, bunting)
+  running out to them, and cleared districts as places the village grows
+  into.
+- **The Folk's mycelium network (feeds B):** under each mound, scaled to
+  its size and health, a network spreading beyond its borders; toadstools
+  pop up along the veins; a faint, pulsing, wispy underground web can be
+  seen. The healthier the mound and the Wild, the healthier the network.
+  Crops and buildings on the network share its fortune, according to the
+  village's standing with that mound.
+- **Technology from know-how:** large solar arrays, homemade wooden and
+  electric windmills (solarpunk), feeding the power network: learned by
+  doing and built from salvage, not eras.
+- **Cars:** junk cars selectable for stripping and removal; later retrofit
+  (electric carts) or rework into wagons if horses turn up. Related: salvage
+  is finite (§22.12, seed 6 ran out by day ~40); dismantling cleared ruins
+  for scrap is one renewable source.
+- **Timber handling (Manor Lords):** felled trees lie as logs to be moved,
+  cut up and processed (a chopping block or saw pit) before they are wood.
