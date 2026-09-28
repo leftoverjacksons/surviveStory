@@ -2423,3 +2423,25 @@ roles, food by source, stocks, unmet needs).
   (all six villages meet every need at the end).
 - **Found on the way:** a house's door step could land on blocked ground.
   Plots now require the tile outside the door to be passable.
+
+### 22.10 Rendering cost of a grown village (built)
+- **Measured** with `scripts/shots/perf.mjs` (simulates N days on autopilot,
+  then reports draw calls and triangles per pass and per scene group, by
+  hiding each group in turn). Seed 1, farm, 96 days, 18 people, 39
+  buildings: 1,621 draw calls and 2.4 M triangles a frame, 892 of the calls
+  in the sun's shadow pass.
+- **Where the calls went:** field fences 429 (every post and rail its own
+  mesh), trees 251, the village 216, the Folk's works 164, people 160,
+  yards 102, the fairy ring 88.
+- **Fixes:**
+  - Field fences, the Folk's works and the fairy ring are merged into one
+    mesh per material (`merge.ts#mergeStatic`, with the real ground height
+    for the baked contact shade); the Folk's lit lanterns stay live.
+  - Ghost trees (§22.6) are drawn only for tree chunks with a tree on the
+    Wild (all chunks in "all ghosted"), rechecked when zones change.
+- **Result:** 986 draw calls (−39%): fields 429 → 7, the Folk 164 → 13,
+  trees 251 → 221 (1.15 M → 0.89 M triangles). Screens are unchanged.
+- **Left as is, for the user to decide:** the survivor figures have
+  8,300–9,800 triangles each (about 640 k a frame for 18 people across the
+  main, x-ray and shadow passes). They could be simplified (for example
+  with meshopt at ~40%), but the figures are still being iterated on.

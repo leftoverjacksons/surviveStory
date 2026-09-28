@@ -3,6 +3,7 @@ import { Crop, Zone, heightAt, type World } from '../sim/world';
 import { fieldOfTile, perimeter, pointInPolygon, type FieldPlot } from '../sim/fields';
 import { box, cyl, mat } from './kit';
 import { PIXEL, enhance, makeRand } from './util';
+import { mergeStatic } from './merge';
 
 function furrowTexture(): THREE.Texture {
   const size = 64;
@@ -98,6 +99,8 @@ export class FieldsView {
     this.crops.computeBoundingSphere();
     this.fences = new THREE.Group();
     for (const f of w.fields) if (f.fence > 0) this.fences.add(fieldFence(w, f));
+    // Posts and rails by the hundred: one draw per material, not one per piece.
+    mergeStatic(this.fences, undefined, false, (x, z) => heightAt(w, x, z));
     this.group.add(this.soil, this.crops, this.fences);
   }
 

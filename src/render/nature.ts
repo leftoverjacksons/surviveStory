@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeDirect } from './merge';
+import { mergeDirect, mergeStatic } from './merge';
 import type { Agent } from '../sim/colony';
 import { Ground, heightAt, idx, isExplored, passable, toTileX, toTileZ, type World } from '../sim/world';
 import { SOFT, enhance, lambert, makeRand, shadowed, soften } from './util';
@@ -335,5 +335,8 @@ export function buildFairyRing(world: World, glowMat: THREE.MeshBasicMaterial): 
     cap.position.set(x, y + 0.2, z);
     g.add(stem, cap);
   }
-  return shadowed(g, true, false);
+  shadowed(g, true, false);
+  // 44 little meshes → two draws (the glowing caps keep their own material).
+  mergeStatic(g, undefined, false, (x, z) => heightAt(world, x, z));
+  return g;
 }

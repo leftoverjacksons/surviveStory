@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { heightAt, type Tree, type World } from '../sim/world';
+import { Zone, heightAt, type Tree, type World } from '../sim/world';
 import { SOFT, enhance, ghostTwin, makeRand, soften, type EnhanceOptions } from './util';
 import { clumpOverlaps, fitClump, trunkBlocked, type Obstacle } from './clearance';
 
@@ -202,6 +202,9 @@ export class TreeField {
   private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), this.opts.cone);
   /** Translucent twins of every tree mesh, shown while see-through woods is on. */
   private ghosts = new THREE.Group();
+  /** Each chunk's ghost twins and the tiles its trees stand on (to show only chunks touching the Wild). */
+  private chunkGhosts: { ghosts: THREE.InstancedMesh[]; tiles: number[] }[] = [];
+  private ghostKey = '';
   private falling: { g: THREE.Group; t: number; axis: THREE.Vector3; pivot: THREE.Vector3 }[] = [];
   private stumps: THREE.InstancedMesh;
   private stumpCount = 0;
@@ -243,6 +246,8 @@ export class TreeField {
         cone: new THREE.InstancedMesh(this.geos.cone, this.pineMat, Math.max(1, count('cone'))),
       };
       const next = { trunk: 0, blob: 0, cone: 0 };
+      const chunk = { ghosts: [] as THREE.InstancedMesh[], tiles: trees.map((t) => t.tz * world.w + t.tx) };
+      this.chunkGhosts.push(chunk);
       for (const { t, parts } of recipes) {
         const slots: Slot[] = [];
         for (const p of parts) {
@@ -263,7 +268,9 @@ export class TreeField {
         mesh.receiveShadow = true;
         mesh.computeBoundingSphere();
         this.group.add(mesh);
-        this.ghosts.add(ghostTwin(mesh, this.opts[k as Part['geo']]));
+        const gh = ghostTwin(mesh, this.opts[k as Part['geo']]);
+        chunk.ghosts.push(gh);
+        this.ghosts.add(gh);
       }
     }
     this.group.add(this.ghosts);
@@ -396,8 +403,22 @@ export class TreeField {
     for (const mesh of touched) { mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere(); }
   }
 
-  /** See-through woods on or off: the ghost twins only draw while it's on. */
-  setGhosts(on: boolean) { this.ghosts.visible = on; }
+  /**
+   * See-through woods (0 solid, 1 the Wild ghosted, 2 all ghosted). Ghost
+   * twins draw only where they can show something: every chunk in mode 2,
+   * chunks with a tree on the Wild in mode 1 (rechecked when zones change).
+   */
+  setGhosts(mode: number) {
+    this.ghosts.visible = mode > 0;
+    const key = `${mode}:${mode === 1 ? this.world.zoneVersion : ''}`;
+    if (key === this.ghostKey) return;
+    this.ghostKey = key;
+    const z = this.world.zone;
+    for (const c of this.chunkGhosts) {
+      const on = mode === 2 || (mode === 1 && c.tiles.some((i) => z[i] === Zone.Wild));
+      for (const g of c.ghosts) g.visible = on;
+    }
+  }
 
   /** Debug: leaf clumps (before, after fitting) that still reach into a building. */
   overlaps(obs: Obstacle[] = this.obs): { before: number; after: number; trees: number } {

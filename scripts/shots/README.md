@@ -14,6 +14,7 @@ kills the shell); `pkill -f "vite preview"` on its own line is fine.
 | `compare.mjs <out> <tag>` | Before/after views at a fixed seed; run once per build with different tags. |
 | `layers.mjs <out> [x y w h]` | Hides each top-level scene child in turn to find which one causes an artefact. |
 | `smoke.mjs` | Single-file build: start menu shown, Begin works, no errors (exit code 1 otherwise). |
+| `perf.mjs <out> [days]` | Render cost of a grown village: draw calls and triangles per pass and per scene group. |
 | `pw.mjs` | Shared setup (`open`, `noHud`, `toHour`). |
 
 ## `shot.mjs` steps

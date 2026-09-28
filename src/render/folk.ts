@@ -5,6 +5,7 @@
  * or someone with a name), and only when they are out.
  */
 import * as THREE from 'three';
+import { mergeStatic } from './merge';
 import type { Colony } from '../sim/colony';
 import { alive } from '../sim/community';
 import { folkReading, standingWord, type Fae, type FolkWork } from '../sim/folk';
@@ -153,6 +154,8 @@ export class FolkView {
     this.lanterns = [];
     for (const k of f.works) this.works.add(k.built === undefined ? this.work(k) : this.order(k));
     shadowed(this.works, true, true);
+    // Toadstools, stones and flowers by the dozen: one draw per material (the lit lanterns stay live).
+    mergeStatic(this.works, new Set(this.lanterns), false, (x, z) => heightAt(this.col.world, x, z));
   }
 
   /** An order not yet built: a faint lavender outline, filling in night by night. */

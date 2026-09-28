@@ -159,7 +159,9 @@ reference: Tiny Glade.
     `soak.ts --detail` gives per-village diagnosis. NOT published.
   - SIM PERFORMANCE §22.9 DONE: search memo (`quiet`/`hush`, `Colony.memo`, saved), A* weight 0.95;
     ~160 ms sim/day at 24 people (was ~390). NOT published.
-  - NEXT: rendering performance at 24 people (unmeasured; people instancing if needed).
+  - RENDER COST §22.10 DONE: `scripts/shots/perf.mjs` (calls/triangles per group); fences, Folk works,
+    fairy ring merged; ghost chunks only near the Wild. 1,621 → 986 draw calls. NOT published.
+    Open: survivor figures ~9k triangles each (simplify? ask the user).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

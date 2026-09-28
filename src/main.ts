@@ -322,7 +322,7 @@ const woodsBtn = document.getElementById('woods-btn')!;
 const WOODS = ['solid', 'Wild ghosted', 'all ghosted'];
 function setWoods(mode: number) {
   worldUniforms.uThin.value = mode;
-  trees.setGhosts(mode !== 0);
+  trees.setGhosts(mode);
   woodsBtn.textContent = `Woods: ${WOODS[mode]}`;
   woodsBtn.setAttribute('aria-pressed', String(mode !== 0));
   try { localStorage.setItem('woods', String(mode)); } catch { /* per-viewer nicety only */ }
@@ -1050,6 +1050,7 @@ function frame() {
   wear.sync(t);
   fog.sync();
   zoneTex.sync();
+  trees.setGhosts(worldUniforms.uThin.value); // zones changed: which chunks touch the Wild
   worldUniforms.uTime.value = t;
   const pointScale = renderer.getPixelRatio() * iso.zoom;
   wisps.update(t, dt, sky.night, pointScale);
