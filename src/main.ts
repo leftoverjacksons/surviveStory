@@ -23,7 +23,8 @@ import { ClearingView } from './render/clearing';
 import { ClearingMenu, ClearingPanel, spiritLabel } from './ui/clearing';
 import { BuildPanel, type BuildTool } from './ui/build';
 import { PlacementView } from './render/placement';
-import { DEFS, canPlace, footAt, placeProject, type SiteKind as PlaceKind } from './sim/buildings';
+import { DEFS, canPlace, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
+import { FOLK_WORKS, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { claimPlot, outlinePlot } from './sim/homes';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
@@ -233,6 +234,7 @@ const hud = new Hud(colony, {
     else resumeAfterCouncil();
     hud.render();
   },
+  onFolkAsk() { hud.inspect(null); buildPanel.show(); document.querySelector('#build h3.folk')?.scrollIntoView({ block: 'start' }); },
   onAgreed(what) { setBuild(what === 'plot' ? { kind: 'plot' } : { kind: 'place', site: what, turn: 0 }); },
   onVeilView() { veilView = !veilView; hud.setVeilView(veilView); hud.render(); },
   onCalm() {
@@ -386,7 +388,8 @@ function setBuild(tool: BuildTool | null, why = '') {
   buildPanel.hint(!tool ? null
     : (why ? `${why} ` : '') + (tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
     : tool.kind === 'restore' ? 'Click a ruin in a cleared district to restore it. Esc to stop.'
-    : `Place the ${DEFS[tool.site].name[tool.site === 'lantern' ? 0 : colony.village.tier].toLowerCase()}: click to place, right-click or T to turn it. Esc to stop.`));
+    : tool.kind === 'folk' ? `Ask the Folk for a ${FOLK_WORKS[tool.work].name.toLowerCase()}: click a spot in the Wild. They build it at night. Esc to stop.`
+    : `Place the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: click to place, right-click or T to turn it. Esc to stop.`));
 }
 
 // ---------- the council waits for an answer (DESIGN §21.5) ----------
@@ -426,6 +429,13 @@ function placeHover(cx: number, cy: number) {
     buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (r ? (why ? `${r.name}: ${why}` : `${r.name}: becomes ${RESTORE[r.kind]!.name(r)}. Click to restore it.`) : 'Click a ruin in a cleared district to restore it. Esc to stop.'));
     return;
   }
+  if (build.kind === 'folk') {
+    const tx = toTileX(world, g.x), tz = toTileZ(world, g.z);
+    const why = whyNotFolkWork(colony, tileX(world, tx), tileZ(world, tz));
+    placement.showFoot({ tx, tz, w: 1, d: 1 }, 0, 0.5, !why);
+    buildPanel.hint(why ?? `Click to ask for a ${FOLK_WORKS[build.work].name.toLowerCase()} here. Esc to stop.`);
+    return;
+  }
   const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
   const fit = canPlace(world, colony.village, build.site, foot);
   placement.showFoot(foot, facing, build.site === 'lantern' ? 2.6 : 2.4, fit.ok);
@@ -440,6 +450,9 @@ function placeClick(cx: number, cy: number) {
     if (!r) return;
     const res = requestRestore(colony, r.id);
     if (typeof res === 'string') { buildPanel.hint(`${r.name}: ${res}`); return; }
+  } else if (build.kind === 'folk') {
+    const res = orderFolkWork(colony, build.work, tileX(world, toTileX(world, g.x)), tileZ(world, toTileZ(world, g.z)));
+    if (typeof res === 'string') { buildPanel.hint(res); return; }
   } else {
     const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
     const res = placeProject(world, colony.village, community, build.site, foot, facing);
@@ -1048,6 +1061,7 @@ const veilDebug = {
 };
 Object.assign(window, { __game: { ...veilDebug, stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
   place: (k: PlaceKind, x: number, z: number, turn = 0) => { const { foot, facing } = footAt(k, toTileX(world, x), toTileZ(world, z), turn); return placeProject(world, colony.village, community, k, foot, facing); },
+  folkOrder: (k: never, x: number, z: number) => orderFolkWork(colony, k, x, z), folkWhy: (x: number, z: number) => whyNotFolkWork(colony, x, z),
   fits: (k: PlaceKind, x: number, z: number, turn = 0) => canPlace(world, colony.village, k, footAt(k, toTileX(world, x), toTileZ(world, z), turn).foot).ok,
   screenOf: (x: number, z: number) => toScreen(x, heightAt(world, x, z), z),
   plotTry: (pts: { x: number; z: number }[]) => { const r = outlinePlot(world, colony.village, pts, new Rng(1)); return typeof r === 'string' ? r : 'ok'; } } });

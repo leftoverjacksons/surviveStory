@@ -129,8 +129,9 @@ reference: Tiny Glade.
     Step 4 (need tiers; tool bench, sewing room, smoke shed, tavern; maker role;
     goods tools/cloth/clothes/preserves; `sim/trades.ts`, `render/trades.ts`) DONE §21.6.
     Step 5 (glass/copper/steel stripped from ruins in cleared districts; glass dome;
-    `sim/rare.ts`) DONE §21.7. Next is step 6, the Folk's night building.
-    Unpublished: §21.7.
+    `sim/rare.ts`) DONE §21.7. Step 6 (Folk orders built at night from dew and song;
+    Folk needs gate the hill's growth) DONE §21.8. Next is step 7, seasons and rebalance.
+    Unpublished: §21.7–21.8.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

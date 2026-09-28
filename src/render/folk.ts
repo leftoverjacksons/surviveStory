@@ -28,6 +28,9 @@ const additive = (color: THREE.ColorRepresentation, opacity: number) =>
 
 interface Being { group: THREE.Group; reading: Reading; label?: HTMLDivElement; phase: number; mats: THREE.Material[] }
 
+const ORDER_MAT = new THREE.MeshBasicMaterial({ color: '#c9b8ff', transparent: true, opacity: 0.45, depthWrite: false });
+const ORDER_LIT = new THREE.MeshBasicMaterial({ color: new THREE.Color('#e6dcff').multiplyScalar(2), toneMapped: false });
+
 export class FolkView {
   group = new THREE.Group();
   private works = new THREE.Group();
@@ -143,13 +146,33 @@ export class FolkView {
   /** Rebuild the things the Folk have made, when they change. */
   sync() {
     const f = this.col.folk;
-    const key = f.works.map((k) => `${k.kind}${Math.round(k.grown * 4)}`).join(',');
+    const key = f.works.map((k) => `${k.kind}${Math.round(k.grown * 4)}${k.built === undefined ? '' : `b${Math.round(k.built * 3)}`}`).join(',');
     if (key === this.key) return;
     this.key = key;
     for (const c of [...this.works.children]) { this.works.remove(c); c.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); }
     this.lanterns = [];
-    for (const k of f.works) this.works.add(this.work(k));
+    for (const k of f.works) this.works.add(k.built === undefined ? this.work(k) : this.order(k));
     shadowed(this.works, true, true);
+  }
+
+  /** An order not yet built: a faint lavender outline, filling in night by night. */
+  private order(k: FolkWork): THREE.Group {
+    const g = new THREE.Group();
+    g.position.set(k.x, heightAt(this.col.world, k.x, k.z) + 0.04, k.z);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.62, 0.72, 20), ORDER_MAT);
+    ring.rotation.x = -Math.PI / 2;
+    g.add(ring);
+    const b = k.built ?? 0;
+    // Stakes of light around it, one more lit for each night's work.
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const lit = i / 6 < b + 0.01;
+      const m = new THREE.Mesh(new THREE.SphereGeometry(lit ? 0.07 : 0.045, 6, 4), lit ? ORDER_LIT : ORDER_MAT);
+      m.position.set(Math.cos(a) * 0.67, 0.1 + (lit ? 0.12 : 0), Math.sin(a) * 0.67);
+      g.add(m);
+    }
+    g.userData.noShadow = true;
+    return g;
   }
 
   private work(k: FolkWork): THREE.Group {

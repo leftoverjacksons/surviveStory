@@ -197,6 +197,9 @@
   #clearing .guide ol { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; }
   #build { left: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 86px); width: min(620px, calc(100% - 32px)); max-height: 70vh; overflow-y: auto; padding: 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; z-index: 6; background: rgba(12, 16, 14, 0.97); }
   #build h3 { grid-column: 1 / -1; }
+  #build h3.folk { margin-top: 6px; color: #c9b8ff; }
+  #build h3 small { font: 11.5px var(--f-body, inherit); color: var(--ink-dim); margin-left: 6px; }
+  #build button.folk { background: #1c1a28; border-color: rgba(201, 184, 255, 0.35); }
   @media (max-width: 640px) { #build { grid-template-columns: 1fr; } }
   #build[hidden] { display: none; }
   #build h3 { margin: 0 0 2px; font: 400 18px var(--f-display); }

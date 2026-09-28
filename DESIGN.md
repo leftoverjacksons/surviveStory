@@ -2007,3 +2007,49 @@ moon and festival rule) is folded into steps 5–7.
   mean is 1.5: self-planned villages never clear, so they don't get
   glasshouses or domes. That is the pressure intended.
 - **Tests:** `tests/rare.test.ts`.
+
+### 21.8 Step 6: the Folk build by night (built)
+- **Orders any time, built after dusk.**
+  - "Ask the Folk" in the Build menu, or "Ask them to build… (by night)"
+    on the Folk card, places an order in the Wild (`folk.ts#orderFolkWork`).
+  - An order must be in the Wild, off their paths, clear of trees, the
+    hill and other works (2.2), and the Folk must be met and not soured.
+  - It waits as a faint lavender ring with six stakes, one lit for each
+    third built (`render/folk.ts#order`).
+- **Night building:**
+  - Hobs, sprites and elders out between dusk and 04:30 go to an order
+    (70%) when its materials are in hand. On arrival they spend its dew
+    and song (once) and build a third (a half with focus "their hill").
+  - When done it grows in over the next days like their own works, and
+    the news says who finished it.
+- **Their materials, gathered each night** (`gather`, capped at 40; none
+  while soured; ×1.5 with focus "their hill"):
+  - dew: 1 per sprite, 1 per moon garden (up to 4), plus 0.5;
+  - song: 1 per piper, 0.5 per elder, 1 per ring (up to 4), plus 0.3.
+  - They start with 4 dew and 3 song.
+
+  | Work | Dew | Song | Does |
+  |---|---|---|---|
+  | Bower | 5 | 2 | beds for two (Rest) |
+  | Dancing ring | 2 | 6 | song each night (Dance) |
+  | Glow-lantern | 3 | 1 | light for their paths (Light) |
+  | Moon garden | 1 | 1 | dew each night |
+  | Boundary cairn | 2 | 2 | the Wild heals around it |
+
+- **Their needs** (`folkNeeds`, on the Folk card):
+  - Room: the land they want;
+  - Rest: bowers × 2 ≥ beings + 1;
+  - Dance: rings ≥ 1 + level / 3;
+  - Light: lanterns ≥ 1 + level / 2;
+  - Gifts: an offering within 3 days.
+
+  Growth speed scales with how many are met (×0.4 to ×1). Rest, Dance and
+  Light gate it: without them growth stops at 95%, and every 6 days the
+  news says what they need.
+- **Consolidation:** their own random building on focus "their hill" is
+  gone. That focus now means more dew and song and faster building. They
+  still add a work of their own when the hill grows.
+- **Self-planning:** in headless runs (`autoPlan` not false) the Folk order
+  what their needs call for (`selfOrder`), as the village plans for itself.
+- **Debug hooks:** `__game.folkOrder(kind, x, z)`, `__game.folkWhy(x, z)`.
+- **Tests:** `tests/folkbuild.test.ts`.

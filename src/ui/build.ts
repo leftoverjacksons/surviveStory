@@ -6,8 +6,9 @@
 import type { Colony } from '../sim/colony';
 import { DEFS, MATERIALS, PLACEABLE, RARE, costText, tierFor, type SiteKind } from '../sim/buildings';
 import { PLOT_MIN } from '../sim/homes';
+import { FOLK_WORKS, type FolkWorkKind } from '../sim/folk';
 
-export type BuildTool = { kind: 'plot' } | { kind: 'restore' } | { kind: 'place'; site: SiteKind; turn: number };
+export type BuildTool = { kind: 'plot' } | { kind: 'restore' } | { kind: 'place'; site: SiteKind; turn: number } | { kind: 'folk'; work: FolkWorkKind };
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
@@ -23,7 +24,8 @@ export class BuildPanel {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-build]');
       if (!b) return;
       const k = b.dataset.build!;
-      const tool: BuildTool = k === 'plot' ? { kind: 'plot' } : k === 'restore' ? { kind: 'restore' } : { kind: 'place', site: k as SiteKind, turn: 0 };
+      const tool: BuildTool = k === 'plot' ? { kind: 'plot' } : k === 'restore' ? { kind: 'restore' }
+        : k.startsWith('folk:') ? { kind: 'folk', work: k.slice(5) as FolkWorkKind } : { kind: 'place', site: k as SiteKind, turn: 0 };
       this.close();
       this.onPick(tool);
     });
@@ -46,7 +48,13 @@ export class BuildPanel {
     this.el.innerHTML = `<h3>Build</h3>
       <button type="button" data-build="plot"><b>Plot for a home</b><span>Click the corners of a plot (at least ${PLOT_MIN} squares). A household without a home builds on it: the house near the front, a yard behind.</span></button>
       ${rows}
-      <button type="button" data-build="restore"><b>Restore a ruin</b><span>Click a building of the old world in a cleared district to patch it up and use it again.</span></button>`;
+      <button type="button" data-build="restore"><b>Restore a ruin</b><span>Click a building of the old world in a cleared district to patch it up and use it again.</span></button>
+      <h3 class="folk">Ask the Folk <small>built at night, in the Wild, from their dew and song (${Math.floor(this.col.folk.dew)} · ${Math.floor(this.col.folk.song)})</small></h3>
+      ${(Object.keys(FOLK_WORKS) as FolkWorkKind[]).map((k) => {
+        const d = FOLK_WORKS[k], f = this.col.folk;
+        const short = d.dew > f.dew || d.song > f.song;
+        return `<button type="button" class="folk" data-build="folk:${k}" ${f.met ? '' : 'disabled title="Nobody has met the Folk yet"'}><b>${esc(d.name)}</b><span>${esc(d.blurb)}</span><i class="${short ? 'short' : ''}">${d.dew} dew · ${d.song} song${short ? ' (they\'ll gather it)' : ''}</i></button>`;
+      }).join('')}`;
     this.open = true;
     this.el.hidden = false;
     document.getElementById('build-btn')!.setAttribute('aria-pressed', 'true');

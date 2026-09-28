@@ -6,7 +6,7 @@ import {
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
-import { landWanted, standingWord, type FolkFocus } from '../sim/folk';
+import { FOLK_WORKS, folkNeeds, landWanted, standingWord, type FolkFocus } from '../sim/folk';
 import { FAE_UNIT, FOLK_SUITED, VEIL_COST, canAskFolk, canClear } from '../sim/haunt';
 import type { DistrictKind } from '../sim/oldworld';
 
@@ -64,6 +64,7 @@ export interface HudActions {
   onCouncil(id: number, dream: boolean, settle?: boolean): void;
   /** Place what the council agreed on: a building, or a plot for a household. */
   onAgreed(what: SiteKind | 'plot'): void;
+  onFolkAsk(): void;
   onVeilView(): void;
   onCalm(): void;
   onOmen(): void;
@@ -170,6 +171,9 @@ export class Hud {
       if (!b || b.disabled) return;
       const dream = $<HTMLInputElement>('dream')?.checked ?? false;
       act.onCouncil(Number(b.dataset.prop), dream);
+    });
+    $('inspect').addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('#folk-ask')) act.onFolkAsk();
     });
     $('projects').addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-agreed]');
@@ -556,16 +560,22 @@ export class Hud {
       ['The hill', f.level ? `Grown ${f.level} time${f.level > 1 ? 's' : ''} · next ${Math.round(f.growth * 100)}%` : `Next growth ${Math.round(f.growth * 100)}%`],
     ];
     if (f.rules.length) facts.push(['Their rules', f.rules.join(' ')]);
+    facts.push(['Dew · song', `${Math.floor(f.dew)} · ${Math.floor(f.song)} (sprites and moon gardens gather dew; pipers and rings make song)`]);
+    const orders = f.works.filter((k) => k.built !== undefined);
+    if (orders.length) facts.push(['Asked for', orders.map((k) => `${FOLK_WORKS[k.kind].name.toLowerCase()} ${Math.round((k.built ?? 0) * 100)}%`).join(' · ')]);
+    const fneeds = folkNeeds(col).map((x) => `<span class="need ${x.met ? 'met' : ''}" title="${esc(x.hint)}">${x.met ? '✓' : '·'} ${esc(x.label)}</span>`).join('');
     const FOCUS: [FolkFocus, string, string][] = [
       ['woods', 'The woods', 'They plant and knit the Wild: saplings, and the Veil runs thick around the hill.'],
       ['village', 'The village', 'Once friendly, they come down at night: hauling, weeding, an hour on a building.'],
-      ['home', 'Their hill', 'They build: toadstool rings, lanterns, bowers. The hill grows faster, if it has room.'],
+      ['home', 'Their hill', 'They see to their own: half again as much dew and song, and what you ask for goes up faster. The hill grows faster, if it has room.'],
     ];
     const focus = FOCUS.map(([k, label, tip]) => `<button type="button" data-focus="${k}" aria-pressed="${f.focus === k}" title="${esc(tip)}">${label}</button>`).join('');
     const news = f.news.slice(-3).reverse().map((n) => `<p><span class="d">D${n.day}</span>${esc(n.text)}</p>`).join('');
     return `<h3>${esc(cap(m.name))}<button type="button" id="inspect-close">Close</button></h3>
       <div class="what">A green hill with a door in it, and the Folk who live inside. They were here before the roads. They share the land if the village keeps its distance and their ways. Paint the Wild to give them room.</div>
       <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
+      <div class="vneeds" title="Rest, dance and light must all be met before the hill can grow again. Room and gifts make it grow faster."><div class="nt"><span>Their needs</span></div><div class="nl">${fneeds}</div></div>
+      <div class="row"><button type="button" id="folk-ask" ${f.met ? '' : 'disabled title="Meet them first"'}>Ask them to build… (by night)</button></div>
       <div class="h" style="margin-top:8px">What they give their nights to</div>
       <div class="row">${focus}</div>
       ${news ? `<div class="folk-news">${news}</div>` : ''}`;
