@@ -93,6 +93,19 @@ let speed = 1;
 
 // ---------- scene ----------
 const view = document.getElementById('view')!;
+// Side panels stay between the place card and the footer (which wraps to two rows on narrower screens).
+{
+  const foot = document.getElementById('controls')!;
+  const place = document.getElementById('place')!;
+  const measure = () => {
+    document.documentElement.style.setProperty('--foot', `${Math.ceil(window.innerHeight - foot.getBoundingClientRect().top)}px`);
+    document.documentElement.style.setProperty('--top', `${Math.ceil(place.getBoundingClientRect().bottom)}px`);
+  };
+  new ResizeObserver(measure).observe(foot);
+  new ResizeObserver(measure).observe(place);
+  window.addEventListener('resize', measure);
+  measure();
+}
 const renderer = createRenderer(view);
 const scene = new THREE.Scene();
 const iso = new IsoCamera(view.clientWidth / view.clientHeight);

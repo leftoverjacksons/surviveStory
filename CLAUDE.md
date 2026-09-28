@@ -149,6 +149,8 @@ reference: Tiny Glade.
     Smoke-testing the single-file build now needs `?new` (or click Begin), since the menu waits.
   - SEE-THROUGH WOODS §22.6: canopies on the Folk's Wild drawn as rim ghosts (`enhance` `thin`,
     `worldUniforms.uThin`), button/key O cycles Wild thinned → all thinned → full. Published in v23.
+  - HUD TIDY §22.7: village plans, Crew and Events collapse (`.fold-btn`, remembered); Events is a
+    short running log (5 in view, 30 back); left column sized by measured `--top`/`--foot`. NOT published.
   - NEXT (agreed): economy balance from soak data (§22.2 open findings: food surplus >1,500 by
     year 5, homes plateau ~8.5 for 24 people, some villages never build a sewing room so clothes
     hit 0, winter warmth dips; ~300 ms sim per day at 24 people), then performance at 24 people.

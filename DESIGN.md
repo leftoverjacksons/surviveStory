@@ -2322,3 +2322,21 @@ Wild is painted.
 - **Control:** a footer button and key O cycle *Wild thinned* (default) →
   *all thinned* → *full*; the choice is remembered per browser.
   `__game.setWoods(n)`.
+
+### 22.7 HUD tidy: collapsible panels, a shorter log (built)
+The user asked to be able to collapse the crew, the village plans and the
+event log, and for a smaller log with a shorter running history.
+- **Collapsible panels.** Village plans, the Crew and Events each have a
+  title button with a chevron; collapsed, only the title line shows (the
+  Crew shrinks to its name and count). The state is remembered per browser
+  (`localStorage` `fold-<id>`); on phones the Crew starts collapsed.
+- **Events** (was the unlabelled log): about five lines in view, scrolling
+  back through the last 30 (the chronicle keeps everything). Collapsed, the
+  newest line is shown beside the title. The remembered and the taken stay
+  at the foot of the list.
+- **Layout fixes.** The village plans and the log overlapped, and the log's
+  last line sat under the footer when the footer wrapped to two rows. Both
+  now live in one left column between the place card and the footer; the
+  footer's and the place card's real sizes are measured (`--foot`, `--top`).
+  The key hint line is hidden below 1500 px wide (each button's tooltip
+  already has it), which was the main cause of the wrap.

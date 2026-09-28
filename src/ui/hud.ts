@@ -113,10 +113,23 @@ export class Hud {
       act.onZoneTool(this.zoneMode);
     }));
     for (let i = 0; i < 4; i++) $(`spd-${i}`).addEventListener('click', () => act.onSpeed(i));
-    $('toggle-roster').addEventListener('click', () => {
-      const r = $('roster');
-      r.classList.toggle('collapsed');
-      $('toggle-roster').textContent = r.classList.contains('collapsed') ? 'Show' : 'Hide';
+    // Collapsible panels (village plans, crew, events), remembered per browser.
+    const narrow = matchMedia('(max-width: 760px)').matches;
+    document.querySelectorAll<HTMLButtonElement>('.fold-btn').forEach((b) => {
+      const panel = $(b.dataset.fold!);
+      const set = (collapsed: boolean) => {
+        panel.classList.toggle('collapsed', collapsed);
+        b.setAttribute('aria-expanded', String(!collapsed));
+        if (panel.id === 'log' && !collapsed) { const l = $('log-lines'); l.scrollTop = l.scrollHeight; }
+      };
+      let stored: string | null = null;
+      try { stored = localStorage.getItem(`fold-${panel.id}`); } catch { /* default */ }
+      set(stored ? stored === '1' : narrow && panel.id === 'roster');
+      b.addEventListener('click', () => {
+        const collapsed = !panel.classList.contains('collapsed');
+        set(collapsed);
+        try { localStorage.setItem(`fold-${panel.id}`, collapsed ? '1' : '0'); } catch { /* per-viewer nicety only */ }
+      });
     });
     const killBtn = $<HTMLButtonElement>('kill-btn');
     killBtn.addEventListener('click', () => {
@@ -325,12 +338,19 @@ export class Hud {
       this.lastLog = c.log.length;
       const fallen = c.survivors.filter((s) => !s.alive && !s.taken);
       const missing = c.survivors.filter((s) => s.taken);
-      const lines = c.log.slice(-8).map((l) => `<p class="${l.tone}"><span class="d">D${l.day}</span>${esc(l.text)}</p>`);
-      if (fallen.length) lines.unshift(`<p><span class="d">MEM</span>Remembered: ${fallen.map((f) => esc(f.name)).join(', ')}</p>`);
-      if (missing.length) lines.unshift(`<p class="strange"><span class="d">VEIL</span>Taken, and waited for: ${missing.map((f) => esc(f.name)).join(', ')}</p>`);
-      const log = $('log');
+      // A short running log: about five lines in view, scroll back for the last 30
+      // (the chronicle, key C, keeps everything). The remembered stay at the foot.
+      const lines = c.log.slice(-30).map((l) => `<p class="${l.tone}"><span class="d">D${l.day}</span>${esc(l.text)}</p>`);
+      if (missing.length) lines.push(`<p class="strange memo"><span class="d">VEIL</span>Taken, and waited for: ${missing.map((f) => esc(f.name)).join(', ')}</p>`);
+      if (fallen.length) lines.push(`<p class="memo"><span class="d">MEM</span>Remembered: ${fallen.map((f) => esc(f.name)).join(', ')}</p>`);
+      const log = $('log-lines');
       log.innerHTML = lines.join('');
       log.scrollTop = log.scrollHeight;
+      const last = c.log[c.log.length - 1];
+      const latest = $('log-latest');
+      latest.textContent = last ? last.text : '';
+      latest.className = last?.tone ?? '';
+      latest.title = last?.text ?? '';
     }
   }
 
