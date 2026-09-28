@@ -7,9 +7,10 @@ is in `DESIGN.md`, and §17 there is the live feedback backlog.
 ## Vision (one paragraph)
 A browser community sim set in the quiet *after* civilisational collapse:
 verdant, overgrown, solarpunk, spooky but hopeful. Survivors live
-autonomously (Banished / Manor Lords / RimWorld). The player is a presence
-the community half-senses: they draw zones, nudge councils and spend
-Influence, but never command. Home is safe (no raids); danger lives on
+autonomously (Banished / Manor Lords / RimWorld). The player shapes the land
+and the plans (a build menu, plots, placement, council decisions); the
+survivors live their own lives within them (who lives where, who works what,
+how they feel). Home is safe (no raids); danger lives on
 expeditions (Wildermyth / XCOM), with permadeath and grief. A spiritual layer,
 *the Veil*, runs through everything: Resonance (the land's health),
 Sight (perception), Glimmer, Influence, and UAP, orb and fairy lore. Art
@@ -25,6 +26,17 @@ reference: Tiny Glade.
 - Assets: buildings and terrain generated in code; characters and audio may
   later be CC0-sourced.
 - Tone: not combat-anxious. Hopeful and uncanny.
+- Gameplay loop v2 (DESIGN §21), agreed after version 18:
+  - a build menu with player placement (Manor Lords style); homes on
+    polyline plots with yards and sub-structures;
+  - every building procedural from salvaged materials;
+  - any ruin repurposeable, with a cutaway;
+  - the council pauses the game and asks; builds go straight to placement;
+  - need tiers drive expansion; district-only materials drive clearing
+    (Stardew's mines);
+  - the Folk are a second city builder by night (orders any time, built
+    after dusk);
+  - shorter seasons and a rebalance last.
 
 ## Where things are
 - `src/sim`: deterministic seeded simulation, no rendering imports.
@@ -110,6 +122,7 @@ reference: Tiny Glade.
   - The Folk together BUILT (§20.6): Folk companions in clearings (FAE_UNIT, name/play
     verbs), council emissaries (folk_festival/land/amends), rules broken in the Wild,
     led astray + searches (folk.led; Omen shows the place), borrowed for a dance. NOT published.
+  - CURRENT PLAN: DESIGN §21.2 (loop v2). Step 1 = cutaway for ruins.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

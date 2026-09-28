@@ -1700,3 +1700,70 @@ theirs brought home" and could not tell what to do.
     (+2 calm, at peace).
   - The menu's next step says so: "Search their house for something of
     theirs, then give it back to them."
+
+## 21. The gameplay loop, version 2 (agreed after version 18)
+The user's assessment: the city building "feels a lot less like a game when
+they make all their own choices about what to place and where". Manor
+Lords is the main reference for the city building, Stardew Valley's mines
+for the loop's rhythm, and Wildermyth for how the village expands into new
+places. Expansion so far has only meant more beds; it needs pressure
+behind it.
+
+### 21.1 Decisions
+- **A build menu with player placement.** The player places buildings
+  directly (a footprint preview, rotation), as in Manor Lords.
+  - Homes stand on **plots** the player draws with the polyline tool,
+    with a minimum area. The house is placed logically on the plot, its
+    door toward the nearest path. The rest of the plot is a yard the
+    household fills with sub-structures, some useful: vegetable beds, a
+    coop, a well, a smokehouse, a solar array, a workshop.
+  - Organic in-between detail still emerges on its own: paths, bunting,
+    string lights, clutter.
+- **Every building is procedural**, built from what the village actually
+  salvaged (the provenance logic houses already use).
+- **Any ruin on the map can be repurposed.** Ruins in haunted districts
+  are locked until the district is cleared. Ruins get a roof-and-wall
+  cutaway for viewing, in clearings and in normal play.
+- **The council pauses the game** and asks for a choice, so decisions
+  don't pass by. A chosen building goes straight into placement.
+- **Needs drive expansion**, as Manor Lords' burgage levels do:
+  - Tier 1: shelter, food, fuel.
+  - Tier 2: food variety, clothes, tools, a tavern.
+  - Tier 3: comfort, faith or the Veil, beauty.
+  Meeting a tier raises the house's level. Production chains come from
+  salvage and local materials: toolmaker, tailor, smokehouse or kitchen,
+  brewer with a tavern, and more (§20.2).
+- **Clearings as "the mines".** Some materials exist only in districts
+  (for example copper wire from the works, textiles from the retail park,
+  glass from the garden centre, books and lore from the old town). As
+  salvage near home runs out, higher tiers require clearing. Clearing
+  itself stays as it is for now, except for the cutaway.
+- **The Folk: a second city builder, by night.** The player can give them
+  orders at any time, and they act at night, as the villagers do by day.
+  - Plans wait in the Wild as faint placeholders by day, and are built
+    after dusk while the village sleeps.
+  - They have their own needs and tiers, and their own materials
+    (glimmer, dew, song, moonlight).
+  - This gives the night a purpose; nights may need to be longer.
+- **Seasons shortened and a full rebalance**, as the last step of this
+  phase. Measure real minutes per year at 1× first.
+- **Vision wording.** "The player never commands" becomes: the player
+  shapes the land and the plans; the survivors live their own lives
+  within them (who lives where, who works what, how they feel).
+- **Consolidation.** No new standalone systems in this phase; it deepens
+  and connects the existing ones around the player's choices.
+
+### 21.2 Order of work
+1. Cutaway for ruins, in clearings and in normal play.
+2. Build menu and placement: plots with houses and yards, public
+   buildings with a preview, restoring ruins from the same menu.
+3. The council pauses and asks; building choices go straight to
+   placement.
+4. Need tiers, house levels, first production chains (tools, clothes,
+   preserved food, a tavern) as procedural salvage buildings.
+5. District-only materials (the pressure to clear).
+6. The Folk's night building.
+7. Season length and the full rebalance.
+
+This supersedes §20.3; the rest of §20 (Folk-suited districts, the Veil's
+moon and festival rule) is folded into steps 5–7.
