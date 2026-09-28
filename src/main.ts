@@ -222,10 +222,18 @@ const hud = new Hud(colony, {
   onSelect(id) { select(id); },
   onFollow() { setFollow(!following); },
   onZoneTool(mode) { setOmen(false); setZoneTool(mode); },
-  onCouncil(id, dream) {
-    resolveCouncil(colony, id, dream);
+  onCouncil(id, dream, settle) {
+    const p = colony.council.active?.proposals.find((x) => x.id === id);
+    if (!p || !resolveCouncil(colony, id, dream, !!settle)) return;
+    councilHeld = false;
+    // Building choices go straight to placement (DESIGN §21); the day waits until it's placed.
+    const manual = colony.village.autoPlan === false;
+    if (manual && p.kind === 'build' && p.build) councilPlace(p.build);
+    else if (manual && p.kind === 'home' && !colony.village.plots.some((q) => !q.household)) councilPlace('plot');
+    else resumeAfterCouncil();
     hud.render();
   },
+  onAgreed(what) { setBuild(what === 'plot' ? { kind: 'plot' } : { kind: 'place', site: what, turn: 0 }); },
   onVeilView() { veilView = !veilView; hud.setVeilView(veilView); hud.render(); },
   onCalm() {
     if (people.selected) nudgeCalm(colony, people.selected);
@@ -359,22 +367,46 @@ function fieldClick(clientX: number, clientY: number) {
 
 // ---------- the build menu (DESIGN §21) ----------
 let build: BuildTool | null = null;
+/** Why this tool is open, when the council sent it (kept at the front of the hint). */
+let buildWhy = '';
 const lastPointer = { x: 0, y: 0 };
 const placement = new PlacementView(world);
 scene.add(placement.group);
 const buildPanel = new BuildPanel(colony, (tool) => setBuild(tool));
 /** Drawing an outline: a field, or a plot for a home. */
 function drafting() { return zoneTool === 'field' || build?.kind === 'plot'; }
-function setBuild(tool: BuildTool | null) {
+function setBuild(tool: BuildTool | null, why = '') {
   if (tool) { setZoneTool(null); setOmen(false); hud.inspect(null); }
+  else if (resumeAfterBuild) { resumeAfterBuild = false; resumeAfterCouncil(); }
   build = tool;
+  buildWhy = tool ? why : '';
   clearDraft();
   placement.hide();
   draftLine.material.color.set(tool?.kind === 'plot' ? '#f4ecd0' : '#f0a040');
   buildPanel.hint(!tool ? null
-    : tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
+    : (why ? `${why} ` : '') + (tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
     : tool.kind === 'restore' ? 'Click a ruin in a cleared district to restore it. Esc to stop.'
-    : `Place the ${DEFS[tool.site].name[tool.site === 'lantern' ? 0 : colony.village.tier].toLowerCase()}: click to place, right-click or T to turn it. Esc to stop.`);
+    : `Place the ${DEFS[tool.site].name[tool.site === 'lantern' ? 0 : colony.village.tier].toLowerCase()}: click to place, right-click or T to turn it. Esc to stop.`));
+}
+
+// ---------- the council waits for an answer (DESIGN §21.5) ----------
+let councilHeld = false, resumeSpeed = 1, resumeAfterBuild = false;
+function holdForCouncil() {
+  councilHeld = true;
+  resumeSpeed = speed;
+  if (speed > 0) lastSpeed = speed;
+  setSpeed(0);
+  buildPanel.close();
+  hud.render();
+}
+function resumeAfterCouncil() {
+  if (resumeSpeed > 0 && !colony.council.active) setSpeed(resumeSpeed);
+}
+function councilPlace(what: PlaceKind | 'plot') {
+  const why = what === 'plot' ? 'The council said yes to a house. Draw them a plot.'
+    : `The council agreed: ${DEFS[what].name[what === 'lantern' ? 0 : colony.village.tier].toLowerCase()}. Choose where it goes.`;
+  setBuild(what === 'plot' ? { kind: 'plot' } : { kind: 'place', site: what, turn: 0 }, why);
+  resumeAfterBuild = true;
 }
 /** The old-world building under a point, if any. */
 function ruinAtPoint(x: number, z: number) {
@@ -391,13 +423,13 @@ function placeHover(cx: number, cy: number) {
     const r = ruinAtPoint(g.x, g.z) ?? null;
     const why = r ? whyNotRestore(colony, r) : null;
     placement.showRuin(r, !why);
-    buildPanel.hint(r ? (why ? `${r.name}: ${why}` : `${r.name}: becomes ${RESTORE[r.kind]!.name(r)}. Click to restore it.`) : 'Click a ruin in a cleared district to restore it. Esc to stop.');
+    buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (r ? (why ? `${r.name}: ${why}` : `${r.name}: becomes ${RESTORE[r.kind]!.name(r)}. Click to restore it.`) : 'Click a ruin in a cleared district to restore it. Esc to stop.'));
     return;
   }
   const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
   const fit = canPlace(world, colony.village, build.site, foot);
   placement.showFoot(foot, facing, build.site === 'lantern' ? 2.6 : 2.4, fit.ok);
-  buildPanel.hint(fit.ok ? `Click to place. ${fit.trees.length ? `${fit.trees.length} tree${fit.trees.length > 1 ? 's' : ''} will come down.` : ''} Right-click or T to turn.` : `${fit.why ?? 'It won\'t fit there.'} Right-click or T to turn; Esc to stop.`);
+  buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (fit.ok ? `Click to place. ${fit.trees.length ? `${fit.trees.length} tree${fit.trees.length > 1 ? 's' : ''} will come down.` : ''} Right-click or T to turn.` : `${fit.why ?? 'It won\'t fit there.'} Right-click or T to turn; Esc to stop.`));
 }
 function placeClick(cx: number, cy: number) {
   if (!build || build.kind === 'plot') return;
@@ -427,6 +459,7 @@ function paintAt(clientX: number, clientY: number) {
 }
 
 function setSpeed(level: number) {
+  if (level > 0 && colony.council.active) level = 0; // the council is waiting for an answer
   speed = level;
   hud.setSpeed(level);
 }
@@ -790,6 +823,7 @@ function frame() {
   renderer.info.reset();
   const tSim = performance.now();
   if (speed > 0) tick(colony, dt * SPEEDS[speed]);
+  if (colony.council.active && !councilHeld) holdForCouncil();
   perf.sim += (performance.now() - tSim - perf.sim) * 0.05;
   for (const ev of colony.events) {
     if (ev.type === 'felled') trees.fell(ev.tree, ev.dirX, ev.dirZ);

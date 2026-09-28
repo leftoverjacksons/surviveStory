@@ -235,6 +235,10 @@
   .prop .who { font-size: 12px; color: var(--ink-dim); }
   .prop .who em { font-style: normal; color: var(--ink); }
   .prop button { justify-self: start; margin-top: 4px; }
+  #council .held { font: 11px var(--f-mono); color: var(--glimmer); letter-spacing: 0.04em; }
+  #council:not([hidden]) { box-shadow: 0 0 0 100vmax rgba(6, 4, 14, 0.38); z-index: 7; }
+  .agreed { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0 6px; padding: 5px 8px; border: 1px dashed rgba(201, 184, 255, 0.5); border-radius: 5px; font-size: 12px; color: #e6dcff; }
+  .agreed button { padding: 3px 9px; font-size: 12px; white-space: nowrap; }
   #council .top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
   #council .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--ink-dim); }
   #council label { display: inline-flex; gap: 6px; align-items: center; color: var(--glimmer); }

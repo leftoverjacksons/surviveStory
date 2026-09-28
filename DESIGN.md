@@ -1840,3 +1840,34 @@ moon and festival rule) is folded into steps 5–7.
   plot getting the only home, no self-placed buildings with `autoPlan`
   false, placement and refusal (and completion), and restoring only after
   clearing.
+
+### 21.5 Step 3: the council waits for an answer (built)
+- **The day stops.** When the council convenes, the game pauses and the
+  council panel opens by itself, over a dimmed view ("The day waits while
+  they talk"). The speed buttons, Space and 1–3 can't restart the clock
+  until it is answered (`main.ts#holdForCouncil`, a guard in `setSpeed`).
+  The "Later" button is gone: the choice is forced.
+- **Three ways to answer:**
+  - back one voice (the others feel passed over);
+  - back one and send a dream (15 Influence, nobody is hurt);
+  - "Let them decide", which carries the most-backed affordable proposal
+    (`council.ts#councilFavourite`). It is the same rule the council uses
+    when left alone in headless runs; losers still feel it.
+- **Building choices go straight to placement.**
+  - Backing a building (`build`) opens the placement ghost for it, with
+    "The council agreed: …" kept at the front of the hint.
+  - Backing a home petition (`home`), when no empty plot exists, opens the
+    plot tool ("The council said yes to a house. Draw them a plot.").
+    The household is queued, so it takes the plot you draw.
+  - The clock resumes at its previous speed once the thing is placed, or on
+    Esc. If the game was paused before the council met, it stays paused.
+- **Agreements that wait.** If placement is cancelled, the agreement stays
+  (`Village.priority`, or the household in `homeQueue`). The plans panel
+  shows "Agreed at council: … [Place it]" or "[Draw a plot]"
+  (`hud.ts#agreedLine`). The council does not propose the same building
+  again while it waits. Placing that kind of building clears it.
+- Proposal cards for buildings and homes say what backing them means ("If
+  backed, you choose where it goes", with the materials).
+- Headless runs are unchanged: an unanswered council settles itself at the
+  first morning after its day is up.
+- **Tests:** `tests/council.test.ts`.

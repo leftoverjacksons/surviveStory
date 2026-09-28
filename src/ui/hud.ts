@@ -18,12 +18,12 @@ const DISTRICT_BLURB: Record<DistrictKind, string> = {
   oldtown: 'An old high street and a chapel, ivy to the gutters.',
   garden: 'A garden centre, its glasshouses run wild.',
 };
-import { bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project } from '../sim/buildings';
+import { DEFS, bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project, type SiteKind } from '../sim/buildings';
 import { LORE, communitySight, growthFactor, healFactor, homeResonance } from '../sim/veil';
 import { ASPIRATIONS, SKILLED, knowers, skill } from '../sim/purpose';
 import { YARD, homeComfort, householdName, householdOf, waitingHouseholds } from '../sim/homes';
 import { fisheryOf } from '../sim/fishing';
-import { CALM_COST, DREAM_COST, OMEN_COST, resolvable } from '../sim/council';
+import { CALM_COST, DREAM_COST, OMEN_COST, councilFavourite, resolvable } from '../sim/council';
 
 /** What each kind of building is for, in plain words. */
 const BUILDING_INFO: Record<string, string> = {
@@ -54,7 +54,9 @@ export interface HudActions {
   onSelect(id: number): void;
   onFollow(): void;
   onZoneTool(mode: ZoneTool | null): void;
-  onCouncil(id: number, dream: boolean): void;
+  onCouncil(id: number, dream: boolean, settle?: boolean): void;
+  /** Place what the council agreed on: a building, or a plot for a household. */
+  onAgreed(what: SiteKind | 'plot'): void;
   onVeilView(): void;
   onCalm(): void;
   onOmen(): void;
@@ -81,6 +83,8 @@ export class Hud {
   private omenMode = false;
   private councilKey = '';
   private councilOpen = false;
+  /** The council that last opened by itself (each new one opens, and the game waits). */
+  private councilSeen = -1;
   private loreOpen = false;
   private inspecting: { building?: number; project?: number; folk?: boolean; district?: number } | null = null;
   /** The team being chosen for a clearing. */
@@ -150,11 +154,19 @@ export class Hud {
     });
     $('council-open').addEventListener('click', () => { this.councilOpen = true; this.councilKey = ''; this.renderCouncil(); });
     $('council').addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('#council-later')) { this.councilOpen = false; this.councilKey = ''; this.renderCouncil(); return; }
+      if ((e.target as HTMLElement).closest('#council-settle')) {
+        const fav = councilFavourite(this.col);
+        if (fav) act.onCouncil(fav.id, false, true);
+        return;
+      }
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-prop]');
       if (!b || b.disabled) return;
       const dream = $<HTMLInputElement>('dream')?.checked ?? false;
       act.onCouncil(Number(b.dataset.prop), dream);
+    });
+    $('projects').addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-agreed]');
+      if (b) act.onAgreed(b.dataset.agreed as SiteKind | 'plot');
     });
     const crew = $('crew');
     crew.addEventListener('change', (e) => {
@@ -322,7 +334,8 @@ export class Hud {
         return `<div class="proj"><div class="n">${esc(p.name)}</div><div class="st">${esc(this.status(p))}</div>
           <div class="bar"><i style="width:${pct.toFixed(0)}%"></i></div></div>`;
       }).join('')
-      : `<div class="empty">Nothing planned. They'll think of something when the village needs it.</div>`)
+      : `<div class="empty">${v.autoPlan === false ? 'Nothing planned. Open Build (B) to place something, or wait for the council.' : 'Nothing planned. They\'ll think of something when the village needs it.'}</div>`)
+      + this.agreedLine()
       + this.waitingLine()
       + `<div class="st" style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink-dim)">${tier}<span>${built} built</span></div>`;
     if ($('projects').innerHTML !== html) $('projects').innerHTML = html;
@@ -330,6 +343,22 @@ export class Hud {
     this.renderInspect();
     this.renderVeil();
     this.renderCouncil();
+  }
+
+  /** Council decisions still waiting for the player to place them. */
+  private agreedLine(): string {
+    const v = this.col.village, c = this.col.community;
+    if (v.autoPlan !== false) return '';
+    const out: string[] = [];
+    if (v.priority && !v.projects.some((p) => !p.done && p.kind === v.priority)) {
+      const tier = v.priority === 'lantern' ? 0 : v.tier;
+      out.push(`<div class="agreed"><span>Agreed at council: ${esc(DEFS[v.priority].name[tier].toLowerCase())}</span><button type="button" data-agreed="${v.priority}">Place it</button></div>`);
+    }
+    const queued = v.homeQueue.map((id) => v.households.find((h) => h.id === id)).filter((h) => h && !h.home && !v.projects.some((p) => !p.done && p.household === h.id));
+    if (queued.length && !v.plots.some((p) => !p.household)) {
+      out.push(`<div class="agreed"><span>Agreed at council: a home for ${esc(householdName(c, queued[0]!))}</span><button type="button" data-agreed="plot">Draw a plot</button></div>`);
+    }
+    return out.join('');
   }
 
   private waitingLine(): string {
@@ -548,6 +577,9 @@ export class Hud {
       this.councilOpen = false;
       return;
     }
+    // A new council opens by itself; the game waits for an answer.
+    const id = active.proposals[0].id;
+    if (id !== this.councilSeen) { this.councilSeen = id; this.councilOpen = true; this.councilKey = ''; }
     if (!this.councilOpen) {
       el.hidden = true;
       if (bar.hidden) {
@@ -568,17 +600,28 @@ export class Hud {
     ].filter(Boolean).join(' · ');
     const dreamOk = col.veil.influence >= DREAM_COST;
     const wasChecked = ($('dream') as HTMLInputElement | null)?.checked ?? false;
-    el.innerHTML = `<div class="top"><h2>The council meets</h2><button type="button" id="council-later">Later</button></div>
+    const fav = councilFavourite(col);
+    const place = (p: typeof active.proposals[number]) => {
+      if (p.kind === 'build' && p.build) {
+        const tier = p.build === 'lantern' ? 0 : col.village.tier, c0 = DEFS[p.build].cost[tier];
+        const mats = [c0.wood ? `${c0.wood} wood` : '', c0.scrap ? `${c0.scrap} scrap` : '', c0.glimmer ? `${c0.glimmer} glimmer` : ''].filter(Boolean).join(' · ');
+        return `<div class="who">If backed, you choose where it goes (${esc(mats || 'no materials')}, gathered as it's built).</div>`;
+      }
+      if (p.kind === 'home') return '<div class="who">If backed, you draw them a plot.</div>';
+      return '';
+    };
+    el.innerHTML = `<div class="top"><h2>The council meets</h2><span class="held">The day waits while they talk</span></div>
       <div class="sub">Each of them wants something. Back one; the others will feel passed over.</div>
       ${active.proposals.map((p) => `<div class="prop">
         <div class="t"><b>${esc(p.title)}</b><span class="cost">${esc(cost(p))}</span></div>
         <div><q>${esc(p.pitch)}</q> <span class="who">${esc(name(p.proposer))}</span></div>
         <div class="who">Backed by <em>${p.support.length} of ${living}</em>: ${esc(p.support.map(name).join(', '))}</div>
+        ${place(p)}
         <button type="button" class="primary" data-prop="${p.id}" ${resolvable(col, p) ? '' : 'disabled title="Not enough in the stores"'}>Back ${esc(name(p.proposer))}</button>
       </div>`).join('')}
       <div class="foot">
         <label><input id="dream" type="checkbox" ${dreamOk ? '' : 'disabled'} ${wasChecked && dreamOk ? 'checked' : ''}> Send a dream so nobody feels passed over (${DREAM_COST} Influence)</label>
-        <span>Stay silent and they'll settle it themselves by tomorrow.</span>
+        ${fav ? `<button type="button" id="council-settle" title="The most-backed proposal carries; nobody is soothed.">Let them decide (${esc(name(fav.proposer))}, ${fav.support.length} backing)</button>` : ''}
       </div>`;
     el.hidden = false;
   }

@@ -125,7 +125,8 @@ reference: Tiny Glade.
   - CURRENT PLAN: DESIGN §21.2 (loop v2). Step 1 (cutaway for ruins) DONE §21.3;
     step 2 (build menu, placement, drawn plots, restore from the menu) DONE §21.4:
     the game runs with `village.autoPlan = false` (`?auto` for the old self-planning).
-    Next is step 3, the council pausing and asking. Unpublished: §20.6–20.7, §21.3–21.4.
+    Step 3 (the council pauses and asks; builds go straight to placement) DONE §21.5.
+    Next is step 4, need tiers and production. Unpublished: §20.6–20.7, §21.3–21.5.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

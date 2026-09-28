@@ -89,7 +89,7 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
   const season = seasonOf(day);
   const out: Candidate[] = [];
   const buildCand = (kind: SiteKind, score: number, title: string, pitch: string, fit: (s: Survivor) => number) => {
-    if (col.village.projects.some((p) => !p.done && p.kind === kind)) return;
+    if (col.village.projects.some((p) => !p.done && p.kind === kind) || col.village.priority === kind) return;
     out.push({ score, make: () => ({ kind: 'build', build: kind, title, pitch, proposer: voice(living, fit, rng, taken).id, cost: {} }) });
   };
 
@@ -444,13 +444,20 @@ function applyProposal(col: Colony, p: Proposal) {
 export function councilDaily(col: Colony) {
   const council = col.council;
   if (council.active && col.minute >= council.active.deadline) {
-    const affordable = council.active.proposals.filter((p) => resolvable(col, p));
-    const top = (affordable.length ? affordable : council.active.proposals).sort((a, b) => b.support.length - a.support.length)[0];
+    const top = councilFavourite(col)!;
     if (!resolveCouncil(col, top.id, false, true)) { council.active = null; council.nextDay = col.community.day + 4; }
   }
   if (council.gates !== 'normal' && col.community.day >= council.gatesUntil) council.gates = 'normal';
   // Stale requests fade.
   if (col.veil.requests.length > 3) col.veil.requests.splice(0, col.veil.requests.length - 3);
+}
+
+/** What the council would settle on by itself: the best-backed proposal it can afford. */
+export function councilFavourite(col: Colony): Proposal | null {
+  const a = col.council.active;
+  if (!a) return null;
+  const ok = a.proposals.filter((p) => resolvable(col, p));
+  return [...(ok.length ? ok : a.proposals)].sort((x, y) => y.support.length - x.support.length)[0] ?? null;
 }
 
 export function resolvable(col: Colony, p: Proposal): boolean {
