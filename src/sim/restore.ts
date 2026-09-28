@@ -24,7 +24,7 @@ export interface RestoreDef {
   capacity?: number;
 }
 
-const c = (wood: number, scrap: number, glimmer = 0): Cost => ({ wood, scrap, glimmer });
+const c = (wood: number, scrap: number, glimmer = 0): Cost => ({ wood, scrap, glimmer, glass: 0, copper: 0, steel: 0 });
 
 export const RESTORE: Partial<Record<RuinKind, RestoreDef>> = {
   house: { as: 'hut', name: (r) => `${r.name}, lived in again`, cost: c(8, 3), work: 700, beds: 3 },
@@ -131,7 +131,7 @@ export function requestRestore(col: Colony, ruinId: number): Project | string {
   const door = ruinDoor(w, r);
   const p: Project = {
     id: v.nextId++, kind: 'restore', tier: 0, name: cap(def.name(r)), foot: { tx: toTileX(w, door.x), tz: toTileZ(w, door.z), w: 1, d: 1 }, facing: 0,
-    cost: { ...def.cost }, delivered: { wood: 0, scrap: 0, glimmer: 0 }, incoming: { wood: 0, scrap: 0, glimmer: 0 },
+    cost: { ...def.cost }, delivered: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 }, incoming: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 },
     work: 0, workNeeded: def.work, target: 0, clearTrees: [], done: false, ruin: r.id, door, inside: { x: r.x, z: r.z },
   };
   v.projects.push(p);

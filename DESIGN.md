@@ -1947,3 +1947,63 @@ moon and festival rule) is folded into steps 5–7.
   - no deaths or departures, morale 69;
   - homes 3.8 (4.4 before: builders now also raise the trades).
 - **Tests:** `tests/trades.test.ts`.
+
+### 21.7 Step 5: district-only materials (built)
+- **Glass, copper and steel** are new cost materials (`Cost`, `Resources`,
+  `MATERIALS`/`RARE` in buildings.ts). Heaps never give them. They are
+  *in the old buildings*, and nobody strips a building while something
+  lives in it, so they come only from districts that are cleared and the
+  village's (`rare.ts#strippable`). Scrap and cloth from heaps are
+  unchanged, so the early game is untouched.
+- **Yields by ruin kind** (`rareTotal`: w × d / 7 × a per-kind factor ×
+  (1 − decay / 2), clamped to 2–12):
+
+  | Material | From | What |
+  |---|---|---|
+  | Copper | house, terrace | pipe and wire |
+  | Glass | shop, farmhouse, chapel, glasshouse | plate glass, windows, leaded glass, greenhouse glass |
+  | Steel | garage, bigbox, warehouse, silo | beams and car lifts, roof trusses, girders, plate |
+
+  Suburbs and old towns give copper; retail parks glass and steel; works
+  steel; garden centres glass.
+- **Strip or restore:** a ruin that is restored (or being restored) can't
+  be stripped; what's left in it stays. A district given to the Folk can't
+  be stripped either.
+- **Stripping** (`colony.ts#pickStrip`, task `strip`):
+  - builders (after salvage) and makers go when a material is wanted:
+    outstanding on a site, or below a stock of 6;
+  - they take the nearest ruin with the most-wanted material, at most two
+    people at once, not after 15:00;
+  - 50 minutes of work takes up to 3, carried home;
+  - the first haul of each material from each district is news: "…You
+    can't get that from a junk heap."
+- **What needs them:**
+  - The glass dome (new, `dome`, 4×4): a geodesic greenhouse, 12 wood,
+    6 scrap, 12 glass, 4 steel. Tended like a garden, it gives 3 food a
+    day in every season (×0.8 in winter). It also satisfies Beauty.
+  - Glasshouses on homes (level 2): now 6 glass and 2 copper as well.
+  - The timber versions of the trades: toolmaker's shop 3 steel, tailor's
+    shop 2 glass, smokehouse 1 steel, tavern 3 glass and 1 copper.
+    `tierFor` builds the salvage version when they're lacking, so placing
+    a trade never stalls on rare salvage.
+  - The self-planner raises a dome only when it has the glass and steel,
+    and plans glasshouses only with the rare materials in store. The
+    council proposes a dome when 10+ glass and 3+ steel are in.
+- **Pointing at the districts:**
+  - When a site waits on a material that nothing cleared can supply, the
+    log says where it is, every 6 days (`rareDaily`/`whereToFind`): "…
+    There's plenty in Alder Close, if anyone dared go in (clear it first:
+    click it on the map)."
+  - The district card lists "In the walls: copper 24 · steel 6 (only once
+    it is cleared)".
+  - The Build menu marks rare costs: "glass, copper and steel come from
+    cleared districts".
+- **HUD:**
+  - A Glass·Cu·Steel cell appears in the resource bar once any district is
+    cleared (or any is held).
+  - "Explored" moved from the bar to the clock line to make room.
+  - Costs are shown with `costText` everywhere.
+- **Probe:** unchanged in essentials (no deaths, morale 68). The need tier
+  mean is 1.5: self-planned villages never clear, so they don't get
+  glasshouses or domes. That is the pressure intended.
+- **Tests:** `tests/rare.test.ts`.

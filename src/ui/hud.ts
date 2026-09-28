@@ -18,13 +18,14 @@ const DISTRICT_BLURB: Record<DistrictKind, string> = {
   oldtown: 'An old high street and a chapel, ivy to the gutters.',
   garden: 'A garden centre, its glasshouses run wild.',
 };
-import { DEFS, bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project, type SiteKind } from '../sim/buildings';
+import { DEFS, MATERIALS, costText, tierFor, bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project, type SiteKind } from '../sim/buildings';
 import { LORE, communitySight, growthFactor, healFactor, homeResonance } from '../sim/veil';
 import { ASPIRATIONS, SKILLED, knowers, skill } from '../sim/purpose';
 import { YARD, homeComfort, householdName, householdOf, waitingHouseholds } from '../sim/homes';
 import { fisheryOf } from '../sim/fishing';
 import { CALM_COST, DREAM_COST, OMEN_COST, councilFavourite, resolvable } from '../sim/council';
 import { TIER_NAMES, needRows, needTier } from '../sim/trades';
+import { districtYield } from '../sim/rare';
 
 /** What each kind of building is for, in plain words. */
 const BUILDING_INFO: Record<string, string> = {
@@ -45,6 +46,7 @@ const BUILDING_INFO: Record<string, string> = {
   tailor: 'The sewing room. A maker sews 2 cloth into clothes. Cloth comes back with salvage: curtains, seat covers, sheets. Clothes wear out; people without them feel the winter.',
   smokehouse: 'The smoke shed. A maker puts up food with a little wood: preserves never spoil and aren\'t limited by storage. They are opened when the stores run low.',
   tavern: 'The tavern. Most evenings, people without a home to go to (and some with) spend them here: company, a fiddle, a little food and drink. Lifts everyone\'s mood.',
+  dome: 'A geodesic greenhouse: salvaged glass on a steel frame. Tended daily, it gives food in every season, even in the snow.',
   boat: 'A rowing boat. Out in the middle is where the big ones are: a third more catch, except in winter.',
 };
 
@@ -218,7 +220,7 @@ export class Hud {
     const h = hourOf(this.col);
     const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
     const dir = COMPASS[Math.round(heading / 45) % 8];
-    const txt = `Day ${dayOf(this.col)} · ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · facing ${dir}`;
+    const txt = `Day ${dayOf(this.col)} · ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · facing ${dir} · ${(exploredFraction(this.col.world) * 100).toFixed(0)}% explored`;
     const el = $('clock');
     if (el.textContent !== txt) el.textContent = txt;
     const cp = $('compass');
@@ -265,13 +267,15 @@ export class Hud {
       ['Scrap', Math.floor(r.scrap).toString(), ''],
       ['Tools', Math.floor(r.tools).toString(), ''],
       ['Clothes', Math.floor(r.clothes).toString(), ''],
+      ...(r.glass + r.copper + r.steel >= 1 || this.col.haunts.some((h) => h.state === 'cleared')
+        ? [['Glass·Cu·Steel', `${Math.floor(r.glass)}·${Math.floor(r.copper)}·${Math.floor(r.steel)}`, 'rare'] as [string, string, string]] : []),
       ['Glimmer', r.glimmer.toFixed(1), 'glimmer'],
       ['Morale', morale.toFixed(0), morale < 40 ? 'morale low' : 'morale'],
       ['Influence', Math.floor(this.col.veil.influence).toString(), 'influence'],
-      ['Explored', `${(exploredFraction(this.col.world) * 100).toFixed(1)}%`, ''],
     ];
     const tips: Record<string, string> = {
       Food: 'Food in store, plus preserves (which never spoil and are opened when stores run low).',
+      'Glass·Cu·Steel': 'Glass, copper and steel: stripped from the old buildings in districts you have cleared. Needed for glass domes, glasshouses on homes and the timber trades.',
       Tools: 'Made at the tool bench. Up to a quarter faster at every job; they wear out.',
       Clothes: `Made in the sewing room from cloth (${Math.floor(r.cloth)} in store, from salvage). Keep out the winter cold; they wear out.`,
     };
@@ -496,6 +500,9 @@ export class Hud {
       facts.push(['Effect', 'Nothing can be zoned here; salvage near them is left alone.']);
     }
     facts.push(['Suits', suits]);
+    const y = districtYield(col, id);
+    const ys = (Object.entries(y) as [string, number][]).filter(([, n]) => n > 0).map(([m, n]) => `${m} ${n}`).join(' · ');
+    if (ys) facts.push(['In the walls', `${ys}${h.state === 'cleared' ? (h.owner === 'folk' ? ' (the Folk\'s now)' : '') : ' (only once it is cleared)'}`]);
     let body = '';
     if (h.state === 'cleared' && !h.owner) {
       body = `<div class="h" style="margin-top:8px">Who should have it</div><div class="row">
@@ -628,8 +635,8 @@ export class Hud {
     const fav = councilFavourite(col);
     const place = (p: typeof active.proposals[number]) => {
       if (p.kind === 'build' && p.build) {
-        const tier = p.build === 'lantern' ? 0 : col.village.tier, c0 = DEFS[p.build].cost[tier];
-        const mats = [c0.wood ? `${c0.wood} wood` : '', c0.scrap ? `${c0.scrap} scrap` : '', c0.glimmer ? `${c0.glimmer} glimmer` : ''].filter(Boolean).join(' · ');
+        const c0 = DEFS[p.build].cost[tierFor(col.village, col.community, p.build)];
+        const mats = costText(c0);
         return `<div class="who">If backed, you choose where it goes (${esc(mats || 'no materials')}, gathered as it's built).</div>`;
       }
       if (p.kind === 'home') return '<div class="who">If backed, you draw them a plot.</div>';
@@ -675,7 +682,7 @@ export class Hud {
   private status(p: Project): string {
     const trees = p.clearTrees.filter((id) => !this.col.world.trees[id].felled).length;
     if (trees) return `Clearing ${trees} tree${trees > 1 ? 's' : ''} from the site`;
-    const missing = (['wood', 'scrap', 'glimmer'] as const)
+    const missing = MATERIALS
       .filter((m) => p.delivered[m] < p.cost[m])
       .map((m) => `${m} ${p.delivered[m]}/${p.cost[m]}${outstanding(p, m) > 0 && this.col.community.resources[m] < 1 ? ' (none in store)' : ''}`);
     if (missing.length) return `Gathering materials: ${missing.join(' · ')}`;

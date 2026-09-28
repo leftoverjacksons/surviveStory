@@ -181,3 +181,43 @@ export function shrineMesh(_W: number, D: number, tier: number, p: number, seed:
   }
   return g;
 }
+
+const DOME_GLASS = new THREE.MeshLambertMaterial({ color: '#cfeee8', transparent: true, opacity: 0.32, depthWrite: false, flatShading: true });
+const DOME_STEEL = new THREE.LineBasicMaterial({ color: '#5a6266' });
+
+/** A geodesic greenhouse: faceted glass on a steel frame, green inside. */
+export function domeMesh(W: number, D: number, p: number, growth: number, seed: number): THREE.Group {
+  const g = new THREE.Group();
+  const rand = makeRand(seed * 17 + 3);
+  const R = Math.min(W, D) / 2;
+  g.add(cyl(R + 0.05, 0.22, mat('#8f877a'), 0, 0.11, 0, 16)); // footing ring
+  const k = smooth(0.1, 0.8, p);
+  if (k <= 0) return g;
+  const geo = new THREE.SphereGeometry(R, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+  // The frame goes up first, the glass last.
+  const frame = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 1), DOME_STEEL);
+  frame.scale.set(1, k, 1);
+  frame.position.y = 0.2;
+  g.add(frame);
+  if (p > 0.75) {
+    const glass = new THREE.Mesh(geo, DOME_GLASS);
+    glass.position.y = 0.2;
+    glass.renderOrder = 2;
+    g.add(glass);
+    // A door frame on the front.
+    g.add(box(0.9, 1.5, 0.08, mat('#5a6266'), 0, 0.95, R - 0.12));
+  }
+  if (p >= 1) {
+    // Beds of green inside, fuller as it grows.
+    const leaf = [mat('#5f8a3a'), mat('#7aa04a'), mat('#4a7a3a')];
+    for (let i = 0; i < 9; i++) {
+      const a = rand() * Math.PI * 2, r = rand() * (R - 0.6);
+      const h = 0.2 + growth * (0.3 + rand() * 0.5);
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.22 + rand() * 0.12, h, 5), leaf[i % 3]);
+      c.position.set(Math.cos(a) * r, 0.22 + h / 2, Math.sin(a) * r);
+      g.add(c);
+    }
+    g.add(box(R * 1.3, 0.16, 0.5, mat('#4a3a2a'), 0, 0.28, -0.2));
+  }
+  return g;
+}

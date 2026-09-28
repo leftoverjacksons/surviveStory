@@ -17,12 +17,16 @@ import {
 export type FisheryKind = 'jetty' | 'fishhut' | 'netshed' | 'boat';
 export type TradeKind = 'toolshop' | 'tailor' | 'smokehouse' | 'tavern';
 export const TRADE_KINDS: TradeKind[] = ['toolshop', 'tailor', 'smokehouse', 'tavern'];
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | FisheryKind;
-export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | 'upgrade' | FisheryKind;
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | FisheryKind;
+export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | 'upgrade' | FisheryKind;
 export const FISHERY_KINDS: FisheryKind[] = ['jetty', 'fishhut', 'netshed', 'boat'];
 export type Tier = 0 | 1;
 
-export interface Cost { wood: number; scrap: number; glimmer: number }
+export interface Cost {
+  wood: number; scrap: number; glimmer: number;
+  /** Rare salvage, stripped only from ruins in cleared districts (DESIGN §21.7). */
+  glass: number; copper: number; steel: number;
+}
 export type Material = keyof Cost;
 
 /** Tile-aligned footprint. */
@@ -128,10 +132,12 @@ export interface Village {
 }
 
 interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]; work: [number, number]; beds?: [number, number] }
-const c = (wood: number, scrap: number, glimmer = 0): Cost => ({ wood, scrap, glimmer });
+const c = (wood: number, scrap: number, glimmer = 0, rare: Partial<Pick<Cost, 'glass' | 'copper' | 'steel'>> = {}): Cost => ({ wood, scrap, glimmer, glass: 0, copper: 0, steel: 0, ...rare });
+export const cost = c;
 
 /** Materials to improve a home from `level`. */
-export const HOME_UPGRADE_COST = (level: number): Cost => (level === 0 ? { wood: 16, scrap: 10, glimmer: 0 } : { wood: 12, scrap: 16, glimmer: 0 });
+// The glasshouse and panels (level 2) need glass and copper from the old world.
+export const HOME_UPGRADE_COST = (level: number): Cost => (level === 0 ? { wood: 16, scrap: 10, glimmer: 0, glass: 0, copper: 0, steel: 0 } : { wood: 12, scrap: 16, glimmer: 0, glass: 6, copper: 2, steel: 0 });
 
 export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_store' | 'patch_roof' | 'home' | FisheryKind>, Def> = {
   annex:    { name: ['Lean-to', 'Lean-to'], w: 3, d: 5, cost: [c(18, 6), c(18, 6)], work: [600, 600], beds: [2, 2] },
@@ -143,10 +149,13 @@ export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_st
   shrine:   { name: ['Wayside shrine', 'Stone shrine'], w: 2, d: 2, cost: [c(8, 2, 8), c(14, 0, 8)], work: [300, 360] },
   lantern:  { name: ['Solar lantern', 'Solar lantern'], w: 1, d: 1, cost: [c(2, 2, 6), c(2, 2, 6)], work: [120, 120] },
   // The trades (DESIGN §21.6): small salvage buildings, each with its own yard of work.
-  toolshop:   { name: ['Tool bench', 'Toolmaker\'s shop'], w: 4, d: 3, cost: [c(14, 10), c(28, 8)], work: [480, 660] },
-  tailor:     { name: ['Sewing room', 'Tailor\'s shop'], w: 3, d: 3, cost: [c(12, 6), c(26, 4)], work: [420, 600] },
-  smokehouse: { name: ['Smoke shed', 'Smokehouse'], w: 3, d: 3, cost: [c(16, 4), c(26, 2)], work: [420, 560] },
-  tavern:     { name: ['Tap room', 'Tavern'], w: 5, d: 4, cost: [c(24, 12), c(40, 8)], work: [900, 1200] },
+  // Timber versions want a little of what only the old world has (DESIGN §21.7); without it, they're built in salvage.
+  toolshop:   { name: ['Tool bench', 'Toolmaker\'s shop'], w: 4, d: 3, cost: [c(14, 10), c(28, 8, 0, { steel: 3 })], work: [480, 660] },
+  tailor:     { name: ['Sewing room', 'Tailor\'s shop'], w: 3, d: 3, cost: [c(12, 6), c(26, 4, 0, { glass: 2 })], work: [420, 600] },
+  smokehouse: { name: ['Smoke shed', 'Smokehouse'], w: 3, d: 3, cost: [c(16, 4), c(26, 2, 0, { steel: 1 })], work: [420, 560] },
+  tavern:     { name: ['Tap room', 'Tavern'], w: 5, d: 4, cost: [c(24, 12), c(40, 8, 0, { glass: 3, copper: 1 })], work: [900, 1200] },
+  // A geodesic greenhouse of salvaged glass on a steel frame: food all year, even in the snow.
+  dome:       { name: ['Glass dome', 'Glass dome'], w: 4, d: 4, cost: [c(12, 6, 0, { glass: 12, steel: 4 }), c(12, 6, 0, { glass: 12, steel: 4 })], work: [700, 700] },
 };
 
 export const GARDEN_YIELD: [number, number] = [2, 3]; // food per tended day: kitchen plots, not staples
@@ -295,7 +304,7 @@ export function storageCapacity(v: Village): number {
     + v.buildings.filter((b) => b.kind === 'fishhut').length * 50;
 }
 
-export type SiteKind = 'hut' | 'garden' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | TradeKind;
+export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | TradeKind;
 
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
@@ -423,7 +432,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
     const s = findSite(w, v, kind, rng);
     if (!s) return null;
     const def = DEFS[kind];
-    const tier = kind === 'lantern' ? 0 : v.tier;
+    const tier = tierFor(v, com, kind);
     const p = newProject(v, {
       kind, tier, name: def.name[tier], foot: s.foot, facing: s.facing,
       cost: { ...def.cost[tier] }, workNeeded: def.work[tier], target: 0, clearTrees: s.trees,
@@ -484,7 +493,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
       .sort((a, b) => a.level - b.level)[0];
     const cost = home ? HOME_UPGRADE_COST(home.level) : null;
     // Wood must be on hand; scrap is fetched for it (salvage follows demand).
-    if (home && cost && com.resources.wood >= cost.wood + 12) {
+    if (home && cost && com.resources.wood >= cost.wood + 12 && RARE.every((m) => com.resources[m] >= cost[m])) {
       wants.push(() => {
         log(com, home.level === 0
           ? `${lead} says ${home.name} has stood long enough as a shack; they'll patch it up properly.`
@@ -512,6 +521,9 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   trade('smokehouse', pop >= 5 && (seasonIdx === 1 || seasonIdx === 2));
   trade('tailor', pop >= 6 && com.day >= 14);
   trade('tavern', pop >= 8 && v.buildings.filter((b) => b.kind === 'home').length >= 3);
+  // A glass dome, once there's glass and steel from the old world to build it.
+  if (!has('dome') && v.buildings.filter((b) => b.kind === 'dome').length < 2
+    && RARE.every((m) => com.resources[m] >= DEFS.dome.cost[0][m])) wants.push(() => site('dome'));
 
   // The council's wish goes first.
   if (v.priority && !has(v.priority)) {
@@ -529,6 +541,16 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   return null;
 }
 
+/**
+ * Which version gets built: timber once they know joinery, unless it needs
+ * rare salvage the village doesn't have (then the salvage version).
+ */
+export function tierFor(v: Village, com: Community, kind: SiteKind): Tier {
+  if (kind === 'lantern' || v.tier === 0) return 0;
+  const need = DEFS[kind].cost[1];
+  return RARE.every((m) => com.resources[m] >= need[m]) ? 1 : 0;
+}
+
 /** What the build menu can place, with a word on each. */
 export const PLACEABLE: { kind: SiteKind; blurb: string }[] = [
   { kind: 'hut', blurb: 'Shared beds for people without a home of their own.' },
@@ -541,6 +563,7 @@ export const PLACEABLE: { kind: SiteKind; blurb: string }[] = [
   { kind: 'tailor', blurb: 'A maker sews salvaged cloth into clothes. Winter is kinder to the well dressed.' },
   { kind: 'smokehouse', blurb: 'A maker puts up food in smoke and jars. Preserves never spoil.' },
   { kind: 'tavern', blurb: 'Somewhere to go of an evening: company, a fiddle, something to drink.' },
+  { kind: 'dome', blurb: 'A geodesic greenhouse: food all year, even in winter. Glass and steel from a cleared district.' },
 ];
 
 /** The footprint of a building placed at a tile, turned (0–3). */
@@ -561,7 +584,7 @@ export function placeProject(w: World, v: Village, com: Community, kind: SiteKin
   const free = canPlace(w, v, kind, foot);
   if (!free.ok) return free.why ?? 'It won\'t fit there.';
   const def = DEFS[kind];
-  const tier = kind === 'lantern' ? 0 : v.tier;
+  const tier = tierFor(v, com, kind);
   const p = newProject(v, {
     kind, tier, name: def.name[tier], foot, facing, cost: { ...def.cost[tier] }, workNeeded: def.work[tier], target: 0, clearTrees: free.trees,
   });
@@ -683,7 +706,7 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
         inside: cen, beds: def.beds ? def.beds[p.tier] : 0, level: 0, tended: 0, growth: 0.1, name: def.name[p.tier], clad: p.clad,
       };
       v.buildings.push(b);
-      if (kind !== 'kitchen' && kind !== 'garden') block(p.foot);
+      if (kind !== 'kitchen' && kind !== 'garden' && kind !== 'dome') block(p.foot); // gardens and domes are walked into
       log(com, `${def.name[p.tier]} finished.`, 'good');
     }
   }
@@ -723,4 +746,7 @@ export function assignBeds(v: Village, ids: number[]): Map<number, number> {
   return out;
 }
 
-export const MATERIALS: Material[] = ['wood', 'scrap', 'glimmer'];
+export const MATERIALS: Material[] = ['wood', 'scrap', 'glimmer', 'glass', 'copper', 'steel'];
+export const RARE: Material[] = ['glass', 'copper', 'steel'];
+/** "10 wood · 4 scrap · 2 glass" */
+export const costText = (c: Cost) => MATERIALS.filter((m) => c[m] > 0).map((m) => `${c[m]} ${m}`).join(' · ');

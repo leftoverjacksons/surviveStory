@@ -343,15 +343,15 @@ const traitsOf = (c: Community, h: Household) =>
 // ---------- yards ----------
 
 export const YARD: Record<YardKind, { name: string; work: number; cost: Cost }> = {
-  beds:     { name: 'vegetable beds', work: 240, cost: { wood: 3, scrap: 0, glimmer: 0 } },
-  woodpile: { name: 'a woodpile', work: 120, cost: { wood: 0, scrap: 0, glimmer: 0 } },
-  bench:    { name: 'a bench by the door', work: 120, cost: { wood: 2, scrap: 0, glimmer: 0 } },
-  fence:    { name: 'a wattle fence', work: 600, cost: { wood: 6, scrap: 0, glimmer: 0 } },
-  fruit:    { name: 'a fruit tree', work: 90, cost: { wood: 0, scrap: 0, glimmer: 0 } },
-  flowers:  { name: 'a flower border', work: 120, cost: { wood: 0, scrap: 0, glimmer: 0 } },
-  washing:  { name: 'a washing line', work: 60, cost: { wood: 1, scrap: 1, glimmer: 0 } },
-  coop:     { name: 'a hen coop', work: 450, cost: { wood: 6, scrap: 3, glimmer: 0 } },
-  shed:     { name: 'a garden shed', work: 600, cost: { wood: 8, scrap: 5, glimmer: 0 } },
+  beds:     { name: 'vegetable beds', work: 240, cost: { wood: 3, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 } },
+  woodpile: { name: 'a woodpile', work: 120, cost: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 } },
+  bench:    { name: 'a bench by the door', work: 120, cost: { wood: 2, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 } },
+  fence:    { name: 'a wattle fence', work: 600, cost: { wood: 6, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 } },
+  fruit:    { name: 'a fruit tree', work: 90, cost: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 } },
+  flowers:  { name: 'a flower border', work: 120, cost: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 } },
+  washing:  { name: 'a washing line', work: 60, cost: { wood: 1, scrap: 1, glimmer: 0, glass: 0, copper: 0, steel: 0 } },
+  coop:     { name: 'a hen coop', work: 450, cost: { wood: 6, scrap: 3, glimmer: 0, glass: 0, copper: 0, steel: 0 } },
+  shed:     { name: 'a garden shed', work: 600, cost: { wood: 8, scrap: 5, glimmer: 0, glass: 0, copper: 0, steel: 0 } },
 };
 
 /** Where yard features go on a plot, and in what order the household wants them. */
@@ -639,8 +639,8 @@ export function findPlot(w: World, v: Village, beds: number, rng: Rng): PlotPlan
 // ---------- building homes ----------
 
 export const HOME_COST = (tier: Tier, beds: number): Cost => (tier === 0
-  ? { wood: 14 + beds * 4, scrap: 8 + beds * 2, glimmer: 0 }
-  : { wood: 28 + beds * 6, scrap: 3, glimmer: 0 });
+  ? { wood: 14 + beds * 4, scrap: 8 + beds * 2, glimmer: 0, glass: 0, copper: 0, steel: 0 }
+  : { wood: 28 + beds * 6, scrap: 3, glimmer: 0, glass: 0, copper: 0, steel: 0 });
 export const HOME_WORK = (tier: Tier, beds: number) => (tier === 0 ? 1900 + beds * 400 : 2500 + beds * 500);
 /** People who can usefully work on one site at once (the household can always help). */
 export const SITE_CREW = 3;
@@ -707,8 +707,8 @@ export function planHome(col: Colony, rng: Rng, lead: string, urgent: boolean): 
   const door = { x: plot.hc.x + Z.x * (plot.house.D / 2 + 0.7), z: plot.hc.z + Z.z * (plot.house.D / 2 + 0.7) };
   const proj: Project = {
     id: v.nextId++, kind: 'home', tier, name: `${h.members.length > 1 ? `${name}'s house` : `${name}'s cottage`}`,
-    foot: footOfTiles(w, plan.houseTiles), facing: 0, cost: HOME_COST(tier, beds), delivered: { wood: 0, scrap: 0, glimmer: 0 },
-    incoming: { wood: 0, scrap: 0, glimmer: 0 }, work: 0, workNeeded: HOME_WORK(tier, beds), target: 0, clearTrees: plan.trees, done: false,
+    foot: footOfTiles(w, plan.houseTiles), facing: 0, cost: HOME_COST(tier, beds), delivered: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 },
+    incoming: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 }, work: 0, workNeeded: HOME_WORK(tier, beds), target: 0, clearTrees: plan.trees, done: false,
     plot: plot.id, household: h.id, blockTiles: plan.houseTiles, door, inside: { ...plot.hc }, yaw: plot.yaw,
   };
   v.projects.push(proj);
@@ -868,8 +868,8 @@ function startHomeOn(col: Colony, h: Household, plot: Plot, houseTiles: number[]
   const name = householdName(c, h);
   const proj: Project = {
     id: v.nextId++, kind: 'home', tier, name: `${h.members.length > 1 ? `${name}'s house` : `${name}'s cottage`}`,
-    foot: footOfTiles(col.world, houseTiles), facing: 0, cost: HOME_COST(tier, beds), delivered: { wood: 0, scrap: 0, glimmer: 0 },
-    incoming: { wood: 0, scrap: 0, glimmer: 0 }, work: 0, workNeeded: HOME_WORK(tier, beds), target: 0, clearTrees: trees, done: false,
+    foot: footOfTiles(col.world, houseTiles), facing: 0, cost: HOME_COST(tier, beds), delivered: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 },
+    incoming: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 }, work: 0, workNeeded: HOME_WORK(tier, beds), target: 0, clearTrees: trees, done: false,
     plot: plot.id, household: h.id, blockTiles: houseTiles, door, inside: { ...plot.hc }, yaw: plot.yaw,
   };
   v.projects.push(proj);

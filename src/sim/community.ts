@@ -67,6 +67,10 @@ export interface Resources {
   tools: number;
   clothes: number;
   preserves: number;
+  /** Rare salvage from cleared districts (DESIGN §21.7). */
+  glass: number;
+  copper: number;
+  steel: number;
 }
 
 export interface LogEntry { day: number; text: string; tone: 'info' | 'good' | 'bad' | 'strange' }
@@ -213,7 +217,7 @@ export function createCommunity(seed: number, size = 5): Community {
     nextId: 1,
     survivors: [],
     bonds: [],
-    resources: { food: 40, wood: 16, scrap: 4, medicine: 2, glimmer: 0, cloth: 2, tools: 2, clothes: 3, preserves: 0 },
+    resources: { food: 40, wood: 16, scrap: 4, medicine: 2, glimmer: 0, cloth: 2, tools: 2, clothes: 3, preserves: 0, glass: 0, copper: 0, steel: 0 },
     log: [],
   };
   for (let i = 0; i < size; i++) c.survivors.push(createSurvivor(c, rng));

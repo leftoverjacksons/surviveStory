@@ -135,8 +135,8 @@ export function planFishery(col: Colony, rng: Rng, lead: string): Project | null
     const tier = kind === 'boat' ? 1 : v.tier;
     const c = COSTS[kind];
     const p: Project = {
-      id: v.nextId++, kind, tier: tier as 0 | 1, name: NAMES[kind][tier], foot, facing, cost: { wood: c.wood, scrap: c.scrap, glimmer: 0 },
-      delivered: { wood: 0, scrap: 0, glimmer: 0 }, incoming: { wood: 0, scrap: 0, glimmer: 0 }, work: 0, workNeeded: c.work,
+      id: v.nextId++, kind, tier: tier as 0 | 1, name: NAMES[kind][tier], foot, facing, cost: { wood: c.wood, scrap: c.scrap, glimmer: 0, glass: 0, copper: 0, steel: 0 },
+      delivered: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 }, incoming: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 }, work: 0, workNeeded: c.work,
       target: 0, clearTrees: trees, done: false, fishery: fishery.id,
     };
     v.projects.push(p);

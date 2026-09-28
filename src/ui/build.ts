@@ -4,7 +4,7 @@
  * (right-click or T turns it); ruins are clicked to restore them.
  */
 import type { Colony } from '../sim/colony';
-import { DEFS, PLACEABLE, type SiteKind } from '../sim/buildings';
+import { DEFS, MATERIALS, PLACEABLE, RARE, costText, tierFor, type SiteKind } from '../sim/buildings';
 import { PLOT_MIN } from '../sim/homes';
 
 export type BuildTool = { kind: 'plot' } | { kind: 'restore' } | { kind: 'place'; site: SiteKind; turn: number };
@@ -34,13 +34,14 @@ export class BuildPanel {
 
   show() {
     const v = this.col.village, r = this.col.community.resources;
-    const cost = (c: { wood: number; scrap: number; glimmer: number }) => [c.wood ? `${c.wood} wood` : '', c.scrap ? `${c.scrap} scrap` : '', c.glimmer ? `${c.glimmer} glimmer` : ''].filter(Boolean).join(' · ');
     const rows = PLACEABLE.map(({ kind, blurb }) => {
-      const tier = kind === 'lantern' ? 0 : v.tier;
+      const tier = tierFor(v, this.col.community, kind);
       const def = DEFS[kind];
       const c = def.cost[tier];
-      const short = c.wood > r.wood || c.scrap > r.scrap || c.glimmer > r.glimmer;
-      return `<button type="button" data-build="${kind}"><b>${esc(def.name[tier])}</b><span>${esc(blurb)}</span><i class="${short ? 'short' : ''}">${esc(cost(c))}${short ? ' (they\'ll gather it)' : ''}</i></button>`;
+      const short = MATERIALS.some((m) => c[m] > r[m]);
+      // Rare salvage can't just be gathered: it has to come out of a cleared district.
+      const rare = RARE.some((m) => c[m] > r[m]);
+      return `<button type="button" data-build="${kind}"><b>${esc(def.name[tier])}</b><span>${esc(blurb)}</span><i class="${short ? 'short' : ''}">${esc(costText(c))}${rare ? ' (glass, copper and steel come from cleared districts)' : short ? ' (they\'ll gather it)' : ''}</i></button>`;
     }).join('');
     this.el.innerHTML = `<h3>Build</h3>
       <button type="button" data-build="plot"><b>Plot for a home</b><span>Click the corners of a plot (at least ${PLOT_MIN} squares). A household without a home builds on it: the house near the front, a yard behind.</span></button>

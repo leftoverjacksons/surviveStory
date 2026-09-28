@@ -167,6 +167,10 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
     buildCand('tavern', avgMoraleOf(living) < 60 ? 1.8 : 1.2, 'Open a tavern', 'Somewhere to go of an evening that isn\'t the fire or our own four walls. A fiddle. Something to drink.',
       (s) => (has(s, 'storyteller') ? 2 : 0) + (s.background.includes('cook') ? 2 : 0) + s.stats.empathy / 8);
   }
+  if (r.glass >= 10 && r.steel >= 3 && v.buildings.filter((b) => b.kind === 'dome').length < 2) {
+    buildCand('dome', 1.7, 'Raise a glass dome', 'We have the glass now. A dome of it, and we\'d have greens in the snow.',
+      (s) => (s.role === 'farmer' ? 1.5 : 0) + (has(s, 'green_thumb') ? 2 : 0));
+  }
   if (!hasBuilt(v, 'workshop')) {
     buildCand('workshop', 1.2, 'Set up a workbench', 'Give me a bench and a vice and I\'ll build you anything.',
       (s) => (has(s, 'tinkerer') ? 2 : 0) + (s.role === 'builder' ? 0.5 : 0));

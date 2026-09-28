@@ -9,7 +9,7 @@ import { WATER_Y, heightAt, tileX, tileZ, type Heap, type World } from '../sim/w
 import type { StoreParts } from './station';
 import { homeLayout, houseFloor, housePoint } from '../sim/homes';
 import { buildHouse, foundationUnder } from './house';
-import { cellarMesh, shrineMesh, tradeMesh } from './trades';
+import { cellarMesh, domeMesh, shrineMesh, tradeMesh } from './trades';
 import type { HouseSpec } from '../sim/homes';
 import { mergeStatic } from './merge';
 import type { RoofControl } from './roofs';
@@ -690,6 +690,7 @@ export class VillageView {
       case 'workshop': g = workshop(W, D, tier, p); break;
       case 'lantern': g = lantern(p); break;
       case 'cellar': g = cellarMesh(W + 0.2, D + 0.2, tier, p); break;
+      case 'dome': g = domeMesh(W + 0.2, D + 0.2, p, growth, (f.tx * 7349 + f.tz * 131) >>> 0); break;
       case 'shrine': g = shrineMesh(W, D, tier, p, seed, glow); break;
       case 'toolshop': case 'tailor': case 'smokehouse': case 'tavern': g = tradeMesh(kind, W, D, tier, p, (f.tx * 7349 + f.tz * 131) >>> 0, clad, glow); break; // same look as a site and when finished
       case 'annex': g = leanTo(W + 0.3, D + 0.3, p, glow); break;

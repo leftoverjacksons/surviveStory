@@ -317,7 +317,7 @@ export class People {
     r.rod.visible = a.anim === 'fish';
     r.log.visible = a.carry?.kind === 'wood';
     r.basket.visible = a.carry?.kind === 'food' || a.carry?.kind === 'glimmer' || a.anim === 'forage';
-    r.sheet.visible = a.carry?.kind === 'scrap';
+    r.sheet.visible = a.carry?.kind === 'scrap' || a.carry?.kind === 'glass' || a.carry?.kind === 'copper' || a.carry?.kind === 'steel';
 
     const moving = a.pathI < a.path.length;
     switch (a.anim) {
@@ -408,7 +408,7 @@ export class People {
     r.rod.visible = a.anim === 'fish';
     r.log.visible = a.carry?.kind === 'wood';
     r.basket.visible = a.carry?.kind === 'food' || a.carry?.kind === 'glimmer' || a.anim === 'forage';
-    r.sheet.visible = a.carry?.kind === 'scrap';
+    r.sheet.visible = a.carry?.kind === 'scrap' || a.carry?.kind === 'glass' || a.carry?.kind === 'copper' || a.carry?.kind === 'steel';
     const moving = a.pathI < a.path.length;
     const seated = a.anim === 'sit' || a.anim === 'eat' || a.anim === 'fish';
     let clip = 'Idle';

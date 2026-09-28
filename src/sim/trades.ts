@@ -187,7 +187,7 @@ export function needRows(col: Colony): NeedRow[] {
     { id: 'stores', tier: 2, label: 'Stores that keep', met: hasBuilt(v, 'cellar') || r.preserves >= n * 2, hint: 'A root cellar, or preserves from the smoke shed.' },
     { id: 'homes', tier: 2, label: 'Homes', met: homed >= 0.5, hint: 'Half the households in homes of their own.' },
     { id: 'tavern', tier: 3, label: 'Somewhere to go', met: hasBuilt(v, 'tavern'), hint: 'A tavern for the evenings.' },
-    { id: 'beauty', tier: 3, label: 'Beauty', met: hasBuilt(v, 'shrine') && lanterns >= 2, hint: 'A shrine, and lanterns between the houses.' },
+    { id: 'beauty', tier: 3, label: 'Beauty', met: (hasBuilt(v, 'shrine') && lanterns >= 2) || hasBuilt(v, 'dome'), hint: 'A shrine and lanterns between the houses, or a glass dome.' },
     { id: 'festival', tier: 3, label: 'Festivals', met: col.council.festivalUntil > 0 && sinceFestival < 24, hint: 'A festival within the last two seasons.' },
   ];
 }

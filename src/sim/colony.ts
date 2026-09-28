@@ -28,7 +28,8 @@ import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pond
 import { highwayZ } from './worldgen';
 import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence } from './fields';
 import { breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, maybeLeadAway, type FolkSociety } from './folk';
-import { planRestore } from './restore';
+import { planRestore, ruinDoor } from './restore';
+import { rareDaily, ruinToStrip, strip } from './rare';
 import { TRADES, clothFrom, clothed, finishBatch, needComfort, needRows, needTier, pickTrade, toolFactor, tradeDemand, tradesDaily } from './trades';
 import { createHaunts, hauntDaily, heapHaunted, senseDistrict, type Clearing, type Haunt, type TakenRecord } from './haunt';
 import {
@@ -48,7 +49,7 @@ export const FIRE_WOOD_PER_DAY = 2;  // the fire; more in winter (see fireWood)
 export const START_MINUTE = 7 * 60; // day 1, 07:00
 
 export type Anim = 'idle' | 'walk' | 'chop' | 'build' | 'carry' | 'forage' | 'sleep' | 'sit' | 'eat' | 'look' | 'fish';
-export type ItemKind = 'wood' | 'food' | 'scrap' | 'glimmer';
+export type ItemKind = 'wood' | 'food' | 'scrap' | 'glimmer' | 'glass' | 'copper' | 'steel';
 export const MAX_POP = 14;
 
 export interface Needs { food: number; rest: number; social: number } // 0..100, 100 = satisfied
@@ -61,6 +62,7 @@ export type Task =
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern'; building: number }
   | { kind: 'craft'; building: number; stage: 'go' | 'work'; t: number }
+  | { kind: 'strip'; ruin: number; stage: 'go' | 'work' | 'deliver'; t: number }
   | { kind: 'yard'; plot: number; item: number; stage: 'go' | 'work'; t: number }
   | { kind: 'fence'; field: number; stage: 'go' | 'work'; t: number }
   | { kind: 'practice'; building: number; stage: 'go' | 'work'; t: number }
@@ -603,6 +605,19 @@ function pickSalvage(col: Colony, a: Agent): Task | null {
   return { kind: 'salvage', heap: best.id, stage: 'go', t: 0 };
 }
 
+/** Stripping a ruin in a cleared district for glass, copper or steel (two at a time at most). */
+function pickStrip(col: Colony, a: Agent): Task | null {
+  const h = hourOf(col);
+  if (h >= 15) return null; // too far to go out this late
+  const others = col.agents.filter((o) => o !== a && o.task?.kind === 'strip');
+  if (others.length >= 2) return null;
+  const r = ruinToStrip(col, a, new Set(others.map((o) => (o.task as { ruin: number }).ruin)));
+  if (!r) return null;
+  const d = ruinDoor(col.world, r);
+  if (!setDest(col, a, d.x, d.z)) return null;
+  return { kind: 'strip', ruin: r.id, stage: 'go', t: 0 };
+}
+
 /** A maker goes to whichever bench the village is shortest from. */
 function pickCraft(col: Colony, a: Agent): Task | null {
   if (hourOf(col) >= 18) return null;
@@ -615,7 +630,7 @@ function pickCraft(col: Colony, a: Agent): Task | null {
 }
 
 function pickGarden(col: Colony, a: Agent): Task | null {
-  const g = col.village.buildings.find((b) => b.kind === 'garden' && b.tended < 90
+  const g = col.village.buildings.find((b) => (b.kind === 'garden' || b.kind === 'dome') && b.tended < 90
     && !col.agents.some((o) => o !== a && o.task?.kind === 'garden' && o.task.building === b.id));
   if (!g) return null;
   const c = footCenter(col.world, g.foot);
@@ -1015,7 +1030,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     case 'builder':
       t = pickHaul(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
         ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickBuild(col, a)
-        ?? pickSalvage(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
+        ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
     case 'farmer':
       t = pickFarm(col, a) ?? pickGarden(col, a) ?? pickFence(col, a) ?? pickForage(col, a) ?? pickHaul(col, a);
@@ -1030,7 +1045,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
       break;
     case 'scout': t = pickScout(col, a); break;
     case 'maker':
-      t = pickCraft(col, a) ?? pickSalvage(col, a) ?? pickHaul(col, a) ?? pickSupply(col, a) ?? pickBuild(col, a);
+      t = pickCraft(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickHaul(col, a) ?? pickSupply(col, a) ?? pickBuild(col, a);
       break;
     case 'fisher':
       // In heavy rain, mend nets in the shed; otherwise out on the water.
@@ -1353,6 +1368,35 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         if (a.carry) gainFood(col, 'fishing', a.carry.amount);
         a.carry = null;
         t.catch = 0;
+        endTask(col, a);
+      }
+      return;
+    }
+    case 'strip': {
+      const r = w.ruins[t.ruin];
+      if (!r) return endTask(col, a);
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = `Walking out to strip ${r.name}`;
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      if (t.stage === 'work') {
+        face(a, r);
+        a.anim = 'build'; a.activity = `Stripping ${r.name}`;
+        t.t += dt * workRate(s, 'builder', col);
+        if (t.t >= 50) {
+          const got = strip(col, r, 3, first(s));
+          if (!got) return endTask(col, a);
+          a.carry = { kind: got.mat, amount: got.amount };
+          if (!deliver(col, a)) { res[got.mat] += got.amount; a.carry = null; return endTask(col, a); }
+          t.stage = 'deliver';
+        }
+        return;
+      }
+      a.anim = 'carry'; a.activity = `Carrying ${a.carry?.kind ?? 'salvage'} home`;
+      if (walk(col, a, dt)) {
+        if (a.carry) res[a.carry.kind as 'glass'] += a.carry.amount;
+        a.carry = null;
         endTask(col, a);
       }
       return;
@@ -1949,6 +1993,13 @@ function daily(col: Colony) {
   for (const s of alive(c)) if (s.hp <= 0) killSurvivor(c, s.id, 'the cold');
   // Gardens that were tended yesterday yield food (not in winter).
   for (const g of col.village.buildings) {
+    // A glass dome bears in every season, snow or not.
+    if (g.kind === 'dome') {
+      if (g.tended >= 60) { gainFood(col, 'domes', 3 * (lastSeason === 'winter' ? 0.8 : 1)); g.growth = Math.min(1, g.growth + 0.15); }
+      else g.growth = Math.max(0.2, g.growth - 0.1);
+      g.tended = 0;
+      continue;
+    }
     if (g.kind !== 'garden') continue;
     if (g.tended >= 60 && (lastSeason === 'summer' || lastSeason === 'autumn')) {
       gainFood(col, 'gardens', GARDEN_YIELD[g.tier]);
@@ -1984,6 +2035,7 @@ function daily(col: Colony) {
   fishingDaily(col, (x, z, amt) => disturb(col, x, z, amt, 2));
   councilDaily(col);
   tradesDaily(col);
+  rareDaily(col);
   col.village.needTier = needTier(col);
   departures(col);
   dailyRollover(c);
