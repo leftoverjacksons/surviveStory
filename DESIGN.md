@@ -2145,3 +2145,82 @@ Two requests from the user after version 19:
     finished houses, one per household. Revisit if the Settled tier comes
     too late in play.
 - **Tests:** `tests/backyard.test.ts`.
+
+## 22. Unattended runs (after version 20)
+The user wants to leave the game running for hours and then look at how the
+systems behaved, with the least dependence on their feedback. The work, in
+order: save and resume, multi-year soak testing, a chronicle of the run.
+
+### 22.1 Save and resume (built)
+- The colony is plain data (objects, arrays, Maps, Sets, typed arrays; the
+  random stream is a number on the community). A save is therefore the
+  colony itself, stored by structured clone in IndexedDB (`ui/storage.ts`,
+  about 4 MB), which keeps shared references (`village.site ===
+  world.site`).
+- `sim/save.ts`: `makeSave`, `restore` (checks `SAVE_VERSION`, refuses a
+  mismatch), `migrate` (defaults for fields added since saves began).
+- **When it saves:** every morning, and when the page is hidden or closed;
+  never mid-clearing. The camera comes back with it. A game saved on
+  autopilot resumes on autopilot.
+- **Loading:** the page carries on the saved game unless `?new`, `?seed` or
+  `?site` asks for a fresh one; those parameters are then removed from the
+  address so reloads carry on. "New game" is in Testing tools. Republishing
+  no longer loses a run, since the artifact's origin keeps its IndexedDB.
+- The build target is ES2022, for the top-level await in `main.ts`.
+- **Tested:** a colony saved mid-task on day 10 and restored is identical to
+  the original after six more days, on two seeds (`tests/save.test.ts`).
+  Also tested in the browser: reload, same day, buildings, people, felled
+  trees and random-stream state.
+
+### 22.2 Multi-year soak, and what it found (built)
+- **`scripts/soak.ts`** (`npx vite-node scripts/soak.ts -- [colonies] [years]`)
+  runs villages on autopilot. It reports means by season (people, morale,
+  stores, homes, need tier, goods, the Folk, districts cleared, rare
+  salvage, reachable and total scrap, active sites, ms per simulated day),
+  a tally of unmet needs, and flags: errors, sites stalled for two
+  seasons, collapse.
+- **What autopilot now does in full** (`sim/autopilot.ts`, with
+  `village.autopilot`):
+  - lays out fields (about 8 tiles a head, in spring) and woodlots;
+  - paints more Home ground when households find no room;
+  - about once a season, with the village well and Influence to spare,
+    sends a team into the nearest haunted district, played by the test bot
+    while time at home stands still. A cleared district goes to the Folk if
+    it suits them and they are friendly, otherwise to the village.
+- **Findings, and fixes:**
+  1. *Population capped at 14 by year 3.* `MAX_POP` is now 24. Time per
+     simulated day is about 300 ms at 24 people (under 0.5% of a CPU at
+     8×).
+  2. *Salvage in explored, unhaunted ground runs out in year 2*, and sites
+     stalled for seasons over 2–3 scrap.
+     - With nothing known left, salvagers go to unexplored heaps within 45
+       tiles (walking there explores it). 70 was too far: people went
+       hungry carrying scrap home.
+     - Autopilot clearings open the districts.
+  3. *Starved sites held the only two build slots.* A site waiting on a
+     material nobody has (not wood) no longer counts, up to four active.
+  4. *Unreachable restorations* (a ruin's door beyond water or walls) sat
+     forever. Ruins must be reachable to be restored (`reachableRuin`,
+     cached). As a safety net, a site with no progress for two seasons
+     while its materials are in store is given up, with the materials
+     returned (`colony.ts#abandonStalled`).
+  5. *Too many farmers, too few builders:* 8 of 14 farmed while the rest
+     played cards at noon. Newcomers now build while builders are fewer
+     than a quarter of the village.
+  6. *Winter wood:* a tavern and upgrades started just before winter left
+     the village with no firewood. In autumn the costly extras (trades,
+     tavern, dome, timber rebuilds, glasshouses) wait until wood exceeds
+     their cost plus the winter reserve (`winterReserve`), council-backed
+     or not.
+     - The Folk test now checks that a cut in the Wild never goes
+       unnoticed. A village out of firewood in the cold may still cut
+       there, by design (§20.6).
+- **Soak after the fixes** (8 villages × 5 years):
+  - no deaths or departures, morale about 80;
+  - 24 people by year 4, need tier about 2 (Settled) from year 2;
+  - 6–7 districts cleared, rare salvage about 18 in store;
+  - one stall, which the safety net gives up.
+- **Open, for balance:** food piles up past 1,500 by year 5 (nothing uses
+  surplus), and homes plateau at about 8.5 for 24 people.
+- **One-year probe (plain self-planning):** unchanged in essentials. No
+  deaths or hunger; morale 66.

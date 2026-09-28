@@ -12,6 +12,7 @@ import { alive, log } from './community';
 import { bedsTotal, storageCapacity, type BuildingKind, type Cost, type Project } from './buildings';
 import type { Ruin, RuinKind } from './oldworld';
 import { inBounds, passable, toTileX, toTileZ, type Point, type World } from './world';
+import { findPath } from './path';
 
 export interface RestoreDef {
   as: Extract<BuildingKind, 'hut' | 'workshop' | 'cellar' | 'shrine' | 'garden'>;
@@ -45,7 +46,19 @@ export function restorable(col: Colony): Ruin[] {
   const w = col.world, v = col.village;
   const planned = new Set(v.projects.filter((p) => !p.done && p.kind === 'restore').map((p) => p.ruin));
   const ours = new Set(col.haunts.filter((h) => h.state === 'cleared' && h.owner === 'village').map((h) => h.district));
-  return w.ruins.filter((r) => ours.has(r.district) && !r.restored && !planned.has(r.id) && RESTORE[r.kind]);
+  return w.ruins.filter((r) => ours.has(r.district) && !r.restored && !planned.has(r.id) && RESTORE[r.kind] && reachableRuin(w, r));
+}
+
+/** Can people get from the fire to the ruin's door at all? (Some stand beyond water or walls.) */
+const reach = new WeakMap<Ruin, boolean>();
+export function reachableRuin(w: World, r: Ruin): boolean {
+  let ok = reach.get(r);
+  if (ok === undefined) {
+    const d = ruinDoor(w, r);
+    ok = !!findPath(w, toTileX(w, w.campfire.x), toTileZ(w, w.campfire.z), toTileX(w, d.x), toTileZ(w, d.z), 120000);
+    reach.set(r, ok);
+  }
+  return ok;
 }
 
 /** Where builders work and people go in: just in front of the ruin, on open ground. */
@@ -115,6 +128,7 @@ export function whyNotRestore(col: Colony, r: Ruin): string | null {
   const h = col.haunts.find((x) => x.district === r.district);
   if (h && h.state !== 'cleared') return 'Something still lives there. Clear the district first.';
   if (h?.owner === 'folk') return 'That district was given to the Folk.';
+  if (!reachableRuin(col.world, r)) return 'Nobody can find a way to its door.';
   return null;
 }
 

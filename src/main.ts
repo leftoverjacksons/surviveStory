@@ -74,6 +74,7 @@ try { if (localStorage.getItem('ss-autopilot') === '1') autopilot = true; } catc
 // A game saved on autopilot carries on on autopilot.
 if (loaded?.village.autoPlan) autopilot = true;
 colony.village.autoPlan = autopilot;
+colony.village.autopilot = autopilot;
 
 /** Game minutes per real second at each speed setting. */
 const SPEEDS = [0, 2, 6, 16]; // labelled 1×, 3×, 8×
@@ -426,6 +427,7 @@ const COUNCIL_AUTO_MS = 10000;
 function setAutopilot(on: boolean) {
   autopilot = on;
   colony.village.autoPlan = on;
+  colony.village.autopilot = on;
   try { localStorage.setItem('ss-autopilot', on ? '1' : '0'); } catch { /* ignore */ }
   document.getElementById('autopilot-btn')!.setAttribute('aria-pressed', String(on));
   if (on) { setBuild(null); councilAutoAt = performance.now() + COUNCIL_AUTO_MS; replan(colony); }

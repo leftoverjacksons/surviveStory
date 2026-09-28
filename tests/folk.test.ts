@@ -29,7 +29,7 @@ describe('the Folk', () => {
     });
   });
 
-  it('are never built across, and their woods are never cut', () => {
+  it('are never built across, and their woods are never cut unnoticed', () => {
     const col = createColony(generateWorld(7), createCommunity(7));
     days(col, 30);
     const w = col.world;
@@ -40,7 +40,9 @@ describe('the Folk', () => {
         expect(w.zone[i]).not.toBe(Zone.Wild);
       }
     }
-    for (const t of w.trees) if (t.felled && !t.planted) expect(w.zone[idx(w, t.tx, t.tz)]).not.toBe(Zone.Wild);
+    // Their woods are cut only by a village out of firewood in the cold (colony.ts#pickTree), and never unnoticed.
+    const wildCut = w.trees.filter((t) => t.felled && !t.planted && w.zone[idx(w, t.tx, t.tz)] === Zone.Wild).length;
+    if (wildCut) expect(col.community.log.some((l) => /cut a tree (in the Wild|near)/.test(l.text))).toBe(true);
   }, 60000);
 
   it('warm to offerings, and sour when their land is taken', () => {

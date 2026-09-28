@@ -135,7 +135,11 @@ reference: Tiny Glade.
     Veil free on full moons/festivals, rebalance) DONE §21.9. Loop v2 complete.
     Then (§21.10): AUTOPILOT button/`?auto` (self-planning + council settles itself after
     10 s) and BACKYARD TRADES (tool bench/sewing room/smoke shed at the back of a household's
-    plot, `sim/backyard.ts`). Unpublished: nothing (v20).
+    plot, `sim/backyard.ts`).
+  - UNATTENDED RUNS (DESIGN §22): save/resume DONE (§22.1, `sim/save.ts`, IndexedDB,
+    autosave each morning); soak + fixes DONE (§22.2, `scripts/soak.ts`, `sim/autopilot.ts`:
+    fields/woodlots/clearings, MAX_POP 24, abandonStalled, winter wood reserve). Next: the
+    chronicle panel (§22.3). Unpublished: §22.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

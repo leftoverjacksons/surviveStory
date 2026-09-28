@@ -20,6 +20,7 @@ import {
 export type FisheryKind = 'jetty' | 'fishhut' | 'netshed' | 'boat';
 export type TradeKind = 'toolshop' | 'tailor' | 'smokehouse' | 'tavern';
 export const TRADE_KINDS: TradeKind[] = ['toolshop', 'tailor', 'smokehouse', 'tavern'];
+const isTradeKind = (k: string): k is TradeKind => (TRADE_KINDS as string[]).includes(k);
 export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | FisheryKind;
 export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | 'upgrade' | FisheryKind;
 export const FISHERY_KINDS: FisheryKind[] = ['jetty', 'fishhut', 'netshed', 'boat'];
@@ -94,6 +95,9 @@ export interface Project {
   yaw?: number;
   /** The trades: what it's built from (salvage the village has brought home). */
   clad?: HouseSpec['clad'];
+  /** Last day it made any progress, and what that progress was (work plus materials in). */
+  progressDay?: number;
+  progressKey?: number;
 }
 
 export interface Village {
@@ -130,6 +134,12 @@ export interface Village {
   lastRestore?: number;
   /** Highest tier of needs met (see trades.ts), updated daily. */
   needTier?: number;
+  /** Autopilot (DESIGN §22.2): also lays out fields, woodlots and Home ground, as an absent player would. */
+  autopilot?: boolean;
+  /** Firewood set aside for winter (colony.ts#winterReserve), refreshed when planning. */
+  woodReserve?: number;
+  /** Day autopilot last sent a team into the Veil. */
+  autoClearDay?: number;
   /** The village plans and places its own buildings (tests, probes). Off in the game: the player places them. */
   autoPlan?: boolean;
 }
@@ -393,8 +403,12 @@ const activeProjects = (v: Village) => v.projects.filter((p) => !p.done);
  */
 export function plan(w: World, v: Village, com: Community, rng: Rng, lead: string, seasonIdx = 0, col?: Colony): Project | null {
   const active = activeProjects(v);
-  if (active.length >= MAX_ACTIVE) return null;
+  // A site starved of a material nobody has doesn't hold up the others (up to two more).
+  // (Not wood: when wood is short, starting more only makes it shorter.)
+  const starved = (p: Project) => p.work <= 0 && MATERIALS.some((m) => m !== 'wood' && outstanding(p, m) > 0 && com.resources[m] < 1 && p.incoming[m] <= 0);
+  if (active.filter((p) => !starved(p)).length >= MAX_ACTIVE || active.length >= MAX_ACTIVE + 2) return null;
   const pop = alive(com).length;
+  const autumn = seasonIdx === 2;
   const beds = bedsTotal(v) + active.reduce((n, p) => n + projectBeds(p, v), 0);
   const st = store(v);
   const has = (k: ProjectKind) => active.some((p) => p.kind === k);
@@ -433,6 +447,8 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   const site = (kind: SiteKind): Project | null => {
     // In the game the player places buildings; the village only plans its own in tests and probes.
     if (v.autoPlan === false) return null;
+    // In autumn the costly extras (trades, tavern, dome) don't eat into the wood set aside for winter, even if the council asked: they wait.
+    if (autumn && (isTradeKind(kind) || kind === 'dome') && com.resources.wood < DEFS[kind].cost[tierFor(v, com, kind)].wood + (v.woodReserve ?? 0)) return null;
     // The small trades go at the back of a household's yard (backyard.ts).
     if (isBackyard(kind)) return col ? autoBackyard(col, kind) : null;
     const s = findSite(w, v, kind, rng);
@@ -479,6 +495,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
     wants.push(() => {
       const old = v.buildings.find((b) => b.tier === 0 && b.ruin === undefined && (b.kind === 'garden' || b.kind === 'workshop' || b.kind === 'cellar' || b.kind === 'shrine'));
       if (!old) return null;
+      if (autumn && com.resources.wood < DEFS[old.kind as 'garden'].cost[1].wood + (v.woodReserve ?? 0)) return null;
       const def = DEFS[old.kind as 'hut' | 'garden' | 'workshop' | 'cellar' | 'shrine'];
       log(com, `${lead} wants to rebuild ${old.name.toLowerCase()} properly, in timber.`, 'good');
       return newProject(v, {
@@ -499,7 +516,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
       .sort((a, b) => a.level - b.level)[0];
     const cost = home ? HOME_UPGRADE_COST(home.level) : null;
     // Wood must be on hand; scrap is fetched for it (salvage follows demand).
-    if (home && cost && com.resources.wood >= cost.wood + 12 && RARE.every((m) => com.resources[m] >= cost[m])) {
+    if (home && cost && com.resources.wood >= cost.wood + 12 + (autumn ? v.woodReserve ?? 0 : 0) && RARE.every((m) => com.resources[m] >= cost[m])) {
       wants.push(() => {
         log(com, home.level === 0
           ? `${lead} says ${home.name} has stood long enough as a shack; they'll patch it up properly.`
@@ -521,7 +538,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   // The trades, as the village grows into them (DESIGN §21.6).
   // Only from a surplus: a trade is never worth a cold night.
   const trade = (k: TradeKind, when: boolean) => {
-    if (when && !hasBuilt(v, k) && !has(k) && com.resources.wood >= DEFS[k].cost[v.tier].wood + 20) wants.push(() => site(k));
+    if (when && !hasBuilt(v, k) && !has(k) && com.resources.wood >= DEFS[k].cost[v.tier].wood + 20 + (autumn ? v.woodReserve ?? 0 : 0)) wants.push(() => site(k));
   };
   trade('toolshop', hasBuilt(v, 'workshop') && pop >= 5);
   trade('smokehouse', pop >= 5 && (seasonIdx === 1 || seasonIdx === 2));
@@ -529,7 +546,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   trade('tavern', pop >= 8 && v.buildings.filter((b) => b.kind === 'home').length >= 3);
   // A glass dome, once there's glass and steel from the old world to build it.
   if (!has('dome') && v.buildings.filter((b) => b.kind === 'dome').length < 2
-    && RARE.every((m) => com.resources[m] >= DEFS.dome.cost[0][m])) wants.push(() => site('dome'));
+    && RARE.every((m) => com.resources[m] >= DEFS.dome.cost[0][m]) && com.resources.wood >= DEFS.dome.cost[0].wood + (autumn ? v.woodReserve ?? 0 : 0)) wants.push(() => site('dome'));
 
   // The council's wish goes first.
   if (v.priority && !has(v.priority)) {

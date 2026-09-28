@@ -30,6 +30,7 @@ import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence }
 import { breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, maybeLeadAway, type FolkSociety } from './folk';
 import { planRestore, ruinDoor } from './restore';
 import { rareDaily, ruinToStrip, strip } from './rare';
+import { autopilotDaily } from './autopilot';
 import { TRADES, clothFrom, clothed, finishBatch, needComfort, needRows, needTier, pickTrade, toolFactor, tradeDemand, tradesDaily } from './trades';
 import { createHaunts, hauntDaily, heapHaunted, senseDistrict, type Clearing, type Haunt, type TakenRecord } from './haunt';
 import {
@@ -50,7 +51,7 @@ export const START_MINUTE = 7 * 60; // day 1, 07:00
 
 export type Anim = 'idle' | 'walk' | 'chop' | 'build' | 'carry' | 'forage' | 'sleep' | 'sit' | 'eat' | 'look' | 'fish';
 export type ItemKind = 'wood' | 'food' | 'scrap' | 'glimmer' | 'glass' | 'copper' | 'steel';
-export const MAX_POP = 14;
+export const MAX_POP = 24;
 
 export interface Needs { food: number; rest: number; social: number } // 0..100, 100 = satisfied
 
@@ -229,6 +230,7 @@ function leadName(col: Colony): string {
 export function replan(col: Colony) {
   const pop = alive(col.community).length;
   if (!pop) return;
+  col.village.woodReserve = winterReserve(col);
   withRng(col.community, (rng) => {
     const v = col.village;
     const urgent = () => {
@@ -388,11 +390,15 @@ export function fireWood(col: Colony, season: Season = seasonNow(col)): number {
 /** Wood worth keeping on hand: projects, spare, and (from late summer) enough for winter. */
 export function woodWanted(col: Colony): number {
   const need = activeProjects(col).reduce((n, p) => n + outstanding(p, 'wood'), 0);
+  return WOOD_TARGET + need + winterReserve(col);
+}
+
+/** From late summer: the firewood the rest of winter will burn. Optional building doesn't touch it. */
+export function winterReserve(col: Colony): number {
   const day = dayOf(col);
   const toWinter = daysUntilWinter(day);
   const winterLeft = toWinter === 0 ? DAYS_PER_SEASON - ((day - 1) % DAYS_PER_SEASON) : DAYS_PER_SEASON;
-  const prepare = toWinter <= DAYS_PER_SEASON + 6 ? fireWood(col, 'winter') * winterLeft : 0;
-  return WOOD_TARGET + need + prepare;
+  return toWinter <= DAYS_PER_SEASON + 6 ? fireWood(col, 'winter') * winterLeft : 0;
 }
 
 function hasWoodlot(col: Colony): boolean {
@@ -598,6 +604,15 @@ function pickSalvage(col: Colony, a: Agent): Task | null {
     if (heapHaunted(col, h.tx, h.tz)) continue; // nobody will go that close to what lives there
     const d = Math.hypot(tileX(w, h.tx) - a.x, tileZ(w, h.tz) - a.z);
     if (d < bestD && d < 95) { best = h; bestD = d; }
+  }
+  // Nothing left where they've been: go looking along the roads nearby (walking there explores it).
+  if (!best) {
+    const c = w.campfire;
+    for (const h of w.heaps) {
+      if (h.scrap <= 0 || h.reserved || isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
+      const d = Math.hypot(tileX(w, h.tx) - c.x, tileZ(w, h.tz) - c.z);
+      if (d < bestD && d < 45) { best = h; bestD = d; }
+    }
   }
   if (!best) return null;
   if (!setDest(col, a, tileX(w, best.tx), tileZ(w, best.tz), true)) { col.unreachable.add(`h${best.id}`); return null; }
@@ -2034,6 +2049,8 @@ function daily(col: Colony) {
   hauntDaily(col);
   fishingDaily(col, (x, z, amt) => disturb(col, x, z, amt, 2));
   councilDaily(col);
+  abandonStalled(col);
+  autopilotDaily(col);
   tradesDaily(col);
   rareDaily(col);
   col.village.needTier = needTier(col);
@@ -2074,6 +2091,31 @@ function dailyFields(col: Colony, lastSeason: Season, season: Season) {
   if (lost > 0) log(col.community, `Frost took ${lost} rows of crops that were never brought in.`, 'bad');
   col.tended.clear();
   w.cropVersion++;
+}
+
+/**
+ * A site that has made no progress for two seasons although its materials
+ * are in the stores is one nobody can get to or finish: it's given up, and
+ * what was delivered goes back to the stores. (A site waiting on something
+ * nobody has, like glass, waits: it no longer holds up the others.)
+ */
+function abandonStalled(col: Colony) {
+  const day = col.community.day, v = col.village, r = col.community.resources;
+  for (const p of [...v.projects]) {
+    if (p.done) continue;
+    const key = p.work + MATERIALS.reduce((n, m) => n + p.delivered[m], 0) + p.clearTrees.filter((id) => col.world.trees[id].felled).length;
+    if (p.progressKey !== key || p.progressDay === undefined) { p.progressKey = key; p.progressDay = day; continue; }
+    if (day - p.progressDay < DAYS_PER_SEASON * 2) continue;
+    if (MATERIALS.some((m) => outstanding(p, m) > 0 && r[m] < 1)) continue;
+    for (const m of MATERIALS) r[m] += p.delivered[m];
+    v.projects = v.projects.filter((x) => x !== p);
+    if (p.kind === 'home') {
+      const plot = v.plots.find((x) => x.id === p.plot);
+      if (plot) plot.household = 0;
+    }
+    if (v.priority === p.kind) v.priority = undefined;
+    log(col.community, `${p.name} was given up: two seasons without progress. What was brought for it went back to the stores.`, 'bad');
+  }
 }
 
 /** Yards: vegetable beds, fruit trees and hens feed the village a little. */
@@ -2159,7 +2201,8 @@ function neededRole(col: Colony): RoleId {
   // Standalone benches (from before backyard trades) want makers; a household's trade is staffed by its household.
   const benches = col.village.buildings.filter((b) => b.kind in TRADES && !b.household).length;
   if (benches > 0 && count('maker') < Math.min(3, Math.ceil(benches / 2))) return 'maker';
-  if (count('builder') < 2) return 'builder';
+  // About one in four builds, so a growing village can keep building.
+  if (count('builder') < Math.max(2, Math.round(alive(col.community).length / 4))) return 'builder';
   if (count('forager') < 1) return 'forager';
   if (count('farmer') < 1) return 'farmer';
   if (count('scout') < 1) return 'scout';
