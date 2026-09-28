@@ -122,7 +122,8 @@ reference: Tiny Glade.
   - The Folk together BUILT (§20.6): Folk companions in clearings (FAE_UNIT, name/play
     verbs), council emissaries (folk_festival/land/amends), rules broken in the Wild,
     led astray + searches (folk.led; Omen shows the place), borrowed for a dance. NOT published.
-  - CURRENT PLAN: DESIGN §21.2 (loop v2). Step 1 = cutaway for ruins.
+  - CURRENT PLAN: DESIGN §21.2 (loop v2). Step 1 (cutaway for ruins) DONE §21.3;
+    next is step 2, the build menu and placement. Unpublished: §20.6–20.7, §21.3.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

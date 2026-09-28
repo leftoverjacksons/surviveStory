@@ -106,6 +106,10 @@ function shell(g: THREE.Group, W: number, D: number, h: number, o: Opts, rand: (
 
 /** A gable roof over W×D (ridge along x), in strips; decay pulls strips away and bares the rafters. */
 function gable(g: THREE.Group, W: number, D: number, h: number, pitch: number, cover: THREE.Material, rand: () => number, decay: number) {
+  // Roof pieces in their own group, so the cutaway can lift them off.
+  const rg = new THREE.Group();
+  rg.userData.roofGroup = true;
+  g.add(rg);
   const rise = (D / 2) * Math.tan(pitch), slope = (D / 2 + 0.3) / Math.cos(pitch);
   const rafter = mat('#5a4632');
   const strips = Math.max(3, Math.round(W / 1.1));
@@ -118,7 +122,7 @@ function gable(g: THREE.Group, W: number, D: number, h: number, pitch: number, c
         ? box(0.08, 0.1, slope, rafter, x, h + rise / 2, s * D / 4)
         : box((W + 0.4) / strips + 0.01, 0.1, slope, cover, x, h + rise / 2, s * D / 4);
       slab.rotation.x = s * pitch;
-      g.add(slab);
+      rg.add(slab);
     }
   }
   // Gable ends.
@@ -128,18 +132,22 @@ function gable(g: THREE.Group, W: number, D: number, h: number, pitch: number, c
     m.rotation.y = Math.PI / 2;
     m.position.set(e * W / 2 - 0.1, h, 0);
     m.castShadow = m.receiveShadow = true;
-    g.add(m);
+    rg.add(m);
   }
 }
 
 /** A flat roof in panels, with a parapet; decay opens holes. */
 function flat(g: THREE.Group, W: number, D: number, h: number, cover: THREE.Material, rand: () => number, decay: number) {
+  // Roof pieces in their own group, so the cutaway can lift them off.
+  const rg = new THREE.Group();
+  rg.userData.roofGroup = true;
+  g.add(rg);
   const nx = Math.max(1, Math.round(W / 1.6)), nz = Math.max(1, Math.round(D / 1.6));
   const hx = rand() * W - W / 2, hz = rand() * D - D / 2, hr = decay * Math.min(W, D) * 0.55;
   for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
     const x = -W / 2 + (W * (i + 0.5)) / nx, z = -D / 2 + (D * (j + 0.5)) / nz;
     if (Math.hypot(x - hx, z - hz) < hr || rand() < decay * 0.12) continue;
-    g.add(box(W / nx + 0.01, 0.14, D / nz + 0.01, cover, x, h + 0.07, z));
+    rg.add(box(W / nx + 0.01, 0.14, D / nz + 0.01, cover, x, h + 0.07, z));
   }
   // Rooftop plant: air-handling units, vents, a skylight or two, moss in the corners.
   const units = Math.floor((W * D) / 30);
@@ -148,21 +156,21 @@ function flat(g: THREE.Group, W: number, D: number, h: number, cover: THREE.Mate
     if (Math.hypot(x - hx, z - hz) < hr + 0.8) continue;
     const r = rand();
     if (r < 0.4) {
-      g.add(box(1.2, 0.7, 0.9, mat('#9a9c98'), x, h + 0.5, z));
-      g.add(cyl(0.28, 0.08, mat('#3a3c3a'), x, h + 0.88, z, 10));
+      rg.add(box(1.2, 0.7, 0.9, mat('#9a9c98'), x, h + 0.5, z));
+      rg.add(cyl(0.28, 0.08, mat('#3a3c3a'), x, h + 0.88, z, 10));
     } else if (r < 0.7) {
-      g.add(box(1.6, 0.12, 1.1, mat('#6a8a90'), x, h + 0.2, z));
-      g.add(box(1.7, 0.18, 0.08, mat('#8a8a86'), x, h + 0.2, z + 0.58));
-    } else g.add(cyl(0.14, 0.6, mat('#7a7c78'), x, h + 0.44, z, 6));
+      rg.add(box(1.6, 0.12, 1.1, mat('#6a8a90'), x, h + 0.2, z));
+      rg.add(box(1.7, 0.18, 0.08, mat('#8a8a86'), x, h + 0.2, z + 0.58));
+    } else rg.add(cyl(0.14, 0.6, mat('#7a7c78'), x, h + 0.44, z, 6));
   }
   for (let k = 0; k < Math.round(W / 3); k++) {
     const x = (rand() - 0.5) * W * 0.9, z = (rand() < 0.5 ? -1 : 1) * (D / 2 - 0.5);
-    g.add(box(0.8 + rand(), 0.06, 0.6 + rand() * 0.5, mat(IVY[Math.floor(rand() * 3)]), x, h + 0.16, z));
+    rg.add(box(0.8 + rand(), 0.06, 0.6 + rand() * 0.5, mat(IVY[Math.floor(rand() * 3)]), x, h + 0.16, z));
   }
   // Parapet.
   for (const s of [-1, 1]) {
-    g.add(box(W + 0.2, 0.4, 0.18, cover, 0, h + 0.2, s * (D / 2)));
-    g.add(box(0.18, 0.4, D + 0.2, cover, s * (W / 2), h + 0.2, 0));
+    rg.add(box(W + 0.2, 0.4, 0.18, cover, 0, h + 0.2, s * (D / 2)));
+    rg.add(box(0.18, 0.4, D + 0.2, cover, s * (W / 2), h + 0.2, 0));
   }
 }
 
@@ -363,8 +371,17 @@ function buildDistrict(world: World, id: number): THREE.Group {
     g.position.set(r.x, heightAt(world, r.x, r.z), r.z);
     d.add(g);
   }
-  mergeStatic(d, new Set(), false, (x, z) => heightAt(world, x, z));
+  mergeStatic(d, new Set(), true, (x, z) => heightAt(world, x, z));
   return d;
+}
+
+/** Register a ruins group's roofs and cut walls with the cutaway control. */
+export function registerCutaway(root: THREE.Object3D, roofs: { addRoof(o: THREE.Object3D): void; addCutMaterial(m: THREE.Material): void }) {
+  root.traverse((o) => {
+    if (o.userData.roofGroup) roofs.addRoof(o);
+    const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+    if (o.userData.merged && m?.userData.cutShared) roofs.addCutMaterial(m);
+  });
 }
 
 /** All ruins, one merged group per district. */
@@ -379,10 +396,10 @@ export function buildRuins(world: World): THREE.Group {
 const restoreKey = (world: World) => world.ruins.map((r) => (r.restored ? 1 : 0)).join('');
 
 /** Rebuild the districts whose ruins have been restored since last time. */
-export function syncRuins(world: World, root: THREE.Group) {
+export function syncRuins(world: World, root: THREE.Group): boolean {
   const key = restoreKey(world);
   const old: string = root.userData.restoreKey ?? '';
-  if (key === old) return;
+  if (key === old) return false;
   root.userData.restoreKey = key;
   const changed = new Set(world.ruins.filter((_r, i) => key[i] !== old[i]).map((r) => r.district));
   for (const g of [...root.children]) {
@@ -391,4 +408,5 @@ export function syncRuins(world: World, root: THREE.Group) {
     g.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
     root.add(buildDistrict(world, g.userData.district));
   }
+  return true;
 }

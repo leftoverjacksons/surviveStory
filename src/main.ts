@@ -13,7 +13,7 @@ import { buildVines } from './render/station';
 import { buildSite } from './render/sites';
 import { mergeStatic } from './render/merge';
 import { TreeField } from './render/trees';
-import { RESTORED_GLOW, buildRuins as buildOldWorld, syncRuins } from './render/ruins';
+import { RESTORED_GLOW, buildRuins as buildOldWorld, registerCutaway, syncRuins } from './render/ruins';
 import { loadAnimals, loadCharacters } from './render/characters';
 import { obstacleKey, obstaclesFor } from './render/clearance';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
@@ -28,7 +28,7 @@ import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { PlotsView } from './render/plots';
 import { seasonIndex } from './sim/calendar';
-import { RoofControl } from './render/roofs';
+import { RoofControl, type RoofMode } from './render/roofs';
 import { PhenomenaView, ResonanceTexture } from './render/veil';
 import { nudgeCalm, nudgeOmen, resolveCouncil } from './sim/council';
 import { PIXEL, worldUniforms } from './render/util';
@@ -99,6 +99,7 @@ scene.add(ruinsGroup);
 const oldWorld = buildOldWorld(world);
 oldWorld.name = 'oldworld';
 scene.add(oldWorld);
+registerCutaway(oldWorld, roofs);
 
 const mushroomGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color('#b9fff0'), toneMapped: false });
 scene.add(buildFairyRing(world, mushroomGlow));
@@ -144,6 +145,9 @@ const folkView = new FolkView(colony, document.getElementById('labels')!);
 scene.add(folkView.group);
 const clearingView = new ClearingView(colony, document.getElementById('labels')!);
 scene.add(clearingView.group);
+// Inside the Veil the world has its own dim light, enough to see into the houses.
+const veilLight = new THREE.HemisphereLight('#c9b8ff', '#4a3a6a', 0);
+scene.add(veilLight);
 let veilView = false;
 let omenMode = false;
 const people = new People(world);
@@ -230,6 +234,13 @@ const hud = new Hud(colony, {
 });
 
 const roofBtn = document.getElementById('roof-btn')!;
+/** Set the roof view (the Veil opens buildings up for the team; it puts things back after). */
+function setRoofs(mode: RoofMode) {
+  roofs.set(mode);
+  villageView.sync();
+  roofBtn.textContent = `Roofs: ${mode === 'cutaway' ? 'cut away' : mode}`;
+  roofBtn.setAttribute('aria-pressed', String(mode !== 'shown'));
+}
 function cycleRoofs() {
   const m = roofs.next();
   villageView.sync();
@@ -346,7 +357,7 @@ function setFollow(on: boolean) {
 hud.render();
 
 // ---------- the Veil: clearing a haunted district ----------
-interface VeilMode { follow: boolean; cl: Clearing; sel: number; saved: Map<number, { x: number; z: number }>; hover: { tx: number; tz: number } | null; camera: { x: number; z: number; zoom: number } }
+interface VeilMode { roofMode: RoofMode; follow: boolean; cl: Clearing; sel: number; saved: Map<number, { x: number; z: number }>; hover: { tx: number; tz: number } | null; camera: { x: number; z: number; zoom: number } }
 let veil: VeilMode | null = null;
 const veilPanel = new ClearingPanel(colony, {
   onSelect(id) { if (veil) { veil.sel = id; veil.follow = true; renderVeil(); } },
@@ -377,7 +388,9 @@ function enterVeil(cl: Clearing) {
     if (a) { saved.set(u.id, { x: a.x, z: a.z }); a.x = tileX(world, u.tx); a.z = tileZ(world, u.tz); }
   }
   const d = world.districts[colony.haunts[cl.haunt].district];
-  veil = { follow: true, cl, sel: cl.units[0]?.id ?? 0, saved, hover: null, camera: { x: iso.target.x, z: iso.target.z, zoom: iso.zoomGoal } };
+  const roofMode = roofs.mode;
+  setRoofs('cutaway');
+  veil = { roofMode, follow: true, cl, sel: cl.units[0]?.id ?? 0, saved, hover: null, camera: { x: iso.target.x, z: iso.target.z, zoom: iso.zoomGoal } };
   iso.target.x = d.x - (d.x / Math.hypot(d.x, d.z)) * 6; iso.target.z = d.z - (d.z / Math.hypot(d.x, d.z)) * 6;
   iso.zoomGoal = 1.9;
   renderVeil();
@@ -388,6 +401,7 @@ function exitVeil() {
   for (const [id, p] of veil.saved) { const a = colony.agents.find((x) => x.id === id); if (a) { a.x = p.x; a.z = p.z; } }
   iso.target.x = veil.camera.x; iso.target.z = veil.camera.z; iso.zoomGoal = veil.camera.zoom;
   const cl = veil.cl;
+  setRoofs(veil.roofMode);
   veil = null;
   veilPanel.hide();
   syncAgents(colony, true);
@@ -714,7 +728,7 @@ function frame() {
   worldUniforms.uBlossom.value = look.blossom;
   const gloom = weather === 'rain' ? 1 : weather === 'snow' ? 0.7 : weather === 'overcast' ? 0.6 : weather === 'fog' ? 0.4 : 0;
   sky.follow(iso.target);
-  sky.setHour(veil ? 23.4 : hour, daylightHours(dayFrac), veil ? 0 : gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, look.snow);
+  sky.setHour(veil ? 20.75 : hour, daylightHours(dayFrac), veil ? 0 : gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, look.snow);
   precip.update(dt, t, iso.target, weather === 'rain' ? 'rain' : weather === 'snow' ? 'snow' : null);
   // Seeing through their eyes: a selected survivor's Sight tints the world and reveals the Veil.
   const viewer = people.selected ? community.survivors.find((s) => s.id === people.selected) : undefined;
@@ -749,6 +763,7 @@ function frame() {
     }
   }
   clearingView.updateAmbient(t, veil ? 0 : sky.night, people.selected, iso.camera, view.clientWidth, view.clientHeight);
+  veilLight.intensity += ((veil ? 1.6 : 0) - veilLight.intensity) * Math.min(1, dt * 2);
   clearingView.updateArena(t, veil?.cl ?? null, veil?.sel ?? 0, veil?.hover ?? null, iso.camera, view.clientWidth, view.clientHeight);
   wear.sync(t);
   fog.sync();
@@ -794,7 +809,7 @@ function frame() {
     heaps.sync();
     fields.sync(t);
     folkView.sync();
-    syncRuins(world, oldWorld);
+    if (syncRuins(world, oldWorld)) registerCutaway(oldWorld, roofs);
     syncClearance();
     trees.syncPlanted();
     lightPeopleLayer(scene);

@@ -1767,3 +1767,16 @@ behind it.
 
 This supersedes §20.3; the rest of §20 (Folk-suited districts, the Veil's
 moon and festival rule) is folded into steps 5–7.
+
+### 21.3 Step 1: cutaway for ruins (built)
+- **Ruins open up like the village.** Their roofs are built into tagged roof
+  groups, and districts are merged with cut materials
+  (`render/ruins.ts#registerCutaway`). So the Roofs button (R) lifts ruin
+  roofs off and cuts their walls at knee height, as it does for village
+  buildings.
+- **In the Veil.** Entering a clearing switches the view to the cutaway;
+  leaving restores the player's setting.
+  - The forced hour moved from 23:24 to 20:45.
+  - A lavender hemisphere light (intensity 1.6, faded in over about half a
+    second) lights the district while a team is inside, so floors, walls
+    and what grows in the houses read clearly.
