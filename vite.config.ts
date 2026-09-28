@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: mode === 'single' ? 'dist-single' : 'dist',
     chunkSizeWarningLimit: 2000,
+    // main.ts loads a saved game with top-level await.
+    target: 'es2022',
   },
   test: {
     include: ['tests/**/*.test.ts'],

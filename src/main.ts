@@ -42,20 +42,37 @@ import { councilFavourite, nudgeCalm, nudgeOmen, resolveCouncil } from './sim/co
 import { PIXEL, worldUniforms } from './render/util';
 import { Hud, type ZoneTool } from './ui/hud';
 
+import { canSave, makeSave, restore } from './sim/save';
+import { deleteSave, readSave, writeSave } from './ui/storage';
+import type { Colony } from './sim/colony';
+
 // ---------- simulation ----------
 const params = new URLSearchParams(location.search);
-const seed = Number(params.get('seed')) || Date.now() % 100000;
+// A saved game carries on (DESIGN §22.1) unless ?new, ?seed or ?site asks for a fresh one.
+const fresh = params.has('new') || params.has('seed') || params.has('site');
+const saved = fresh ? null : await readSave();
+let loaded: Colony | null = null;
+if (saved) {
+  const r = restore(saved);
+  if (typeof r === 'string') console.warn(r); else loaded = r;
+}
+const seed = loaded?.world.seed ?? (Number(params.get('seed')) || Date.now() % 100000);
 // ?site=chapel (station, chapel, motel, farm, glasshouse) picks the start; otherwise the seed does.
 const siteParam = params.get('site') as SiteKind | null;
-const world = generateWorld(seed, undefined, siteParam && SITE_KINDS.includes(siteParam) ? siteParam : siteKindFor(seed));
+const world = loaded?.world ?? generateWorld(seed, undefined, siteParam && SITE_KINDS.includes(siteParam) ? siteParam : siteKindFor(seed));
 document.querySelector('#place h1')!.textContent = world.site.place;
 document.title = `Survive Story · ${world.site.place}`;
-const community = createCommunity(seed);
-const colony = createColony(world, community);
+const community = loaded?.community ?? createCommunity(seed);
+const colony = loaded ?? createColony(world, community);
+if (loaded) log(community, `Carried on from day ${community.day}, saved ${new Date(saved!.savedAt).toLocaleString()}.`, 'info');
+// Later reloads carry on this game, not start another.
+if (fresh) { const q = new URLSearchParams(location.search); for (const k of ['new', 'seed', 'site']) q.delete(k); history.replaceState(null, '', `${location.pathname}${q.size ? `?${q}` : ''}${location.hash}`); }
 // The player places buildings and draws plots (DESIGN §21); ?auto keeps the old self-planning village.
 // Autopilot (?auto, or the button): the village plans and places for itself, and the council settles itself after 10 s.
 let autopilot = new URLSearchParams(location.search).has('auto');
 try { if (localStorage.getItem('ss-autopilot') === '1') autopilot = true; } catch { /* storage may be unavailable */ }
+// A game saved on autopilot carries on on autopilot.
+if (loaded?.village.autoPlan) autopilot = true;
 colony.village.autoPlan = autopilot;
 
 /** Game minutes per real second at each speed setting. */
@@ -68,6 +85,7 @@ const renderer = createRenderer(view);
 const scene = new THREE.Scene();
 const iso = new IsoCamera(view.clientWidth / view.clientHeight);
 iso.bounds = world.w / 2 - 8;
+if (saved?.camera && loaded) { iso.target.x = saved.camera.x; iso.target.z = saved.camera.z; iso.zoom = iso.zoomGoal = saved.camera.zoom; iso.yaw = iso.yawGoal = saved.camera.yaw; }
 const sky = new Sky(scene);
 const { composer, bloom, grade, syncXray } = createComposer(renderer, scene, iso.camera, view.clientWidth, view.clientHeight);
 renderer.localClippingEnabled = true;
@@ -879,6 +897,27 @@ function adaptQuality(dt: number) {
   console.info(`Quality lowered (step ${perfStep}) at ${fps.toFixed(0)} fps`);
 }
 
+// ---------- saving (DESIGN §22.1) ----------
+let savedDay = community.day, saving = false;
+async function saveNow(why: 'day' | 'leave' | 'manual') {
+  if (saving || !canSave(colony)) return;
+  saving = true;
+  const file = makeSave(colony, { x: iso.target.x, z: iso.target.z, zoom: iso.zoomGoal, yaw: iso.yawGoal });
+  const ok = await writeSave(file);
+  saving = false;
+  savedDay = community.day;
+  const btn = document.getElementById('game-btn');
+  if (btn && ok !== null) btn.title = `Saved day ${community.day} at ${new Date().toLocaleTimeString()}. Saves itself every morning. Click for a new game.`;
+  if (why === 'manual' && ok === null) log(community, 'Could not save: this browser is blocking storage.', 'bad');
+}
+addEventListener('pagehide', () => { void saveNow('leave'); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void saveNow('leave'); });
+document.getElementById('game-btn')!.addEventListener('click', async () => {
+  if (!confirm('Start a new game? The current village will be lost.')) return;
+  await deleteSave();
+  location.search = '?new';
+});
+
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.1);
   t += dt;
@@ -889,6 +928,8 @@ function frame() {
   const tSim = performance.now();
   if (speed > 0) tick(colony, dt * SPEEDS[speed]);
   if (colony.council.active && !councilHeld) holdForCouncil();
+  // Save every morning.
+  if (community.day !== savedDay && !colony.clearing) void saveNow('day');
   councilAutopilot();
   perf.sim += (performance.now() - tSim - perf.sim) * 0.05;
   for (const ev of colony.events) {
@@ -1115,6 +1156,7 @@ const veilDebug = {
 Object.assign(window, { __game: { ...veilDebug, stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
   place: (k: PlaceKind, x: number, z: number, turn = 0) => { const { foot, facing } = footAt(k, toTileX(world, x), toTileZ(world, z), turn); return placeProject(world, colony.village, community, k, foot, facing); },
   folkOrder: (k: never, x: number, z: number) => orderFolkWork(colony, k, x, z), folkWhy: (x: number, z: number) => whyNotFolkWork(colony, x, z),
+  save: () => saveNow('manual'),
   fits: (k: PlaceKind, x: number, z: number, turn = 0) => canPlace(world, colony.village, k, footAt(k, toTileX(world, x), toTileZ(world, z), turn).foot).ok,
   screenOf: (x: number, z: number) => toScreen(x, heightAt(world, x, z), z),
   plotTry: (pts: { x: number; z: number }[]) => { const r = outlinePlot(world, colony.village, pts, new Rng(1)); return typeof r === 'string' ? r : 'ok'; } } });
