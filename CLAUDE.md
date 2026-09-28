@@ -144,12 +144,12 @@ reference: Tiny Glade.
     Smoke-testing the single-file build now needs `?new` (or click Begin), since the menu waits.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
-    (spanning tree + poles, `plots.ts#planLights`). Unpublished.
+    (spanning tree + poles, `plots.ts#planLights`). Published in v22.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.
-  - Published: version 21 (everything through §22.4: loop v2, autopilot, backyard trades,
-    save/resume, soak fixes, chronicle, start menu).
+  - Published: version 22 (everything through §22.5: loop v2, autopilot, backyard trades,
+    save/resume, soak fixes, chronicle, start menu, grain fix, light network).
   - NEW PLAN, under discussion: DESIGN §19. Haunted districts are cleared by a small
     turn-based team (Sight = fog of war, Nerve not HP, convert/lay to rest/banish),
     and the Folk are a second society (mounds, Folk paths, the Wild, Standing).
