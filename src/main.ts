@@ -28,6 +28,7 @@ import { FOLK_WORKS, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
 import { claimPlot, outlinePlot, plotFailAt } from './sim/homes';
 import { KeepOut } from './render/keepout';
+import { Tray } from './ui/tray';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
 import { playTurn } from './sim/clearbot';
@@ -455,6 +456,13 @@ const lastPointer = { x: 0, y: 0 };
 const placement = new PlacementView(world);
 scene.add(placement.group);
 const buildPanel = new BuildPanel(colony, (tool) => setBuild(tool));
+/** The request tray: everyday asks, answered whenever (DESIGN §23.4). */
+const tray = new Tray(colony, {
+  drawPlot: (q) => setBuild({ kind: 'plot' }, q.text),
+  place: (q) => { iso.target.x = q.x; iso.target.z = q.z; setBuild({ kind: 'place', site: q.kind as PlaceKind, turn: 0 }, q.text); },
+  show: (q) => { select(q.by); const a = colony.agents.find((x) => x.id === q.by); if (a) { iso.target.x = a.x; iso.target.z = a.z; } },
+  changed: () => hud.render(),
+});
 /** Drawing an outline: a field, or a plot for a home. */
 function drafting() { return zoneTool === 'field' || build?.kind === 'plot'; }
 function setBuild(tool: BuildTool | null, why = '') {
@@ -1115,6 +1123,7 @@ function frame() {
     trees.syncPlanted();
     lightPeopleLayer(scene);
     hud.render();
+    tray.render();
     chronicle.render();
   }
   hud.updateClock(iso.headingDeg);

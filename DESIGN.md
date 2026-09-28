@@ -2595,3 +2595,23 @@ From the pacing audit (§22.11, proposals D and E), which the user approved.
   for four seconds, and the hint names the reason.
 - One rule set for both: the per-tile test moved out of `outlinePlot` into
   `homes.ts#plotTileWhy` (and `plotObstacles`), used by the overlay too.
+
+### 23.4 Councils, step 1: the request tray (built)
+- **`sim/requests.ts`, `ui/tray.ts`:** a tray in the left column ("Asks")
+  that never pauses the game.
+  - *Home asks:* each household waiting for a home has a standing ask:
+    "Draw a plot" opens the plot tool; "First in line" puts them first for
+    the next plot. Home petitions no longer come to the council.
+  - *Personal asks near someone's house:* a lantern (the skittish, the low,
+    the seeing), a kitchen garden (green thumbs, farmers), a shrine (high
+    Sight). "Place a …" opens the build tool at their house; any such
+    building within 7, 9 or 12 tiles fulfils it.
+  - *Work asks:* someone whose aspiration points at other work asks to
+    change ("Let them"). Not within 8 days of the player setting their work.
+  - At most three personal asks open; about one new ask every two days;
+    they fade after 6 days. Fulfilled: +6 morale and a memory. Declined:
+    −2; faded: −3, and remembered.
+  - Asks use their own dice (seeded by world and day), so they don't shift
+    the rest of the simulation. Self-planning villages (tests, autopilot)
+    queue a waiting household after 3 days, about the council's old pace;
+    autopilot answers personal and work asks too.

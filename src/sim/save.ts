@@ -52,4 +52,5 @@ function migrate(col: Colony) {
   col.folk.dew ??= 0;
   col.folk.song ??= 0;
   col.community.logCount ??= col.community.log.length;
+  col.requests ??= [];
 }

@@ -8,7 +8,8 @@ import type { Colony } from './colony';
 import { log } from './community';
 import { seasonOf } from './calendar';
 import { roundField } from './fields';
-import { STORE_PER_HEAD } from './buildings';
+import { STORE_PER_HEAD, canPlace, footAt, placeProject } from './buildings';
+import { NEAR, fulfilled, grantWork, requestsOf } from './requests';
 import { Zone, idx, paintZone, toTileX, toTileZ, zoneAllowed, type World } from './world';
 import { DAYS_PER_SEASON } from './calendar';
 import { alive, communityMorale } from './community';
@@ -66,6 +67,7 @@ export function autopilotDaily(col: Colony) {
   }
   autopilotClear(col);
   autopilotFolk(col);
+  autopilotRequests(col);
   // More Home ground when households find no room.
   if ((col.village.noPlotDay ?? -9) >= c.day - 1) {
     // Next to the village, not out in the woods: plots are found anywhere on Home ground now.
@@ -126,6 +128,30 @@ function autopilotFolk(col: Colony) {
       const k = orderFolkWork(col, want[need.id], x, z);
       if (typeof k !== 'string') log(col.community, `Autopilot asked the Folk for a ${want[need.id]}.`, 'info');
       return;
+    }
+  }
+}
+
+/**
+ * Answer the request tray as an attentive player would (DESIGN §23.4): place
+ * what was asked for near the asker's house, and let people change their
+ * work. Home asks need nothing: self-planning villages draw their own plots.
+ */
+function autopilotRequests(col: Colony) {
+  const w = col.world, v = col.village, c = col.community;
+  for (const q of [...requestsOf(col)]) {
+    if (q.kind === 'work') { grantWork(col, q.id); continue; }
+    if (q.kind === 'plot' || fulfilled(col, q)) continue;
+    const kind = q.kind;
+    const tx0 = toTileX(w, q.x), tz0 = toTileZ(w, q.z);
+    let done = false;
+    for (let r = 2; r < NEAR[kind] - 1 && !done; r++) {
+      for (let a = 0; a < 16 && !done; a++) {
+        const tx = Math.round(tx0 + Math.cos((a / 16) * Math.PI * 2) * r), tz = Math.round(tz0 + Math.sin((a / 16) * Math.PI * 2) * r);
+        const { foot, facing } = footAt(kind, tx, tz, a % 4);
+        if (!canPlace(w, v, kind, foot).ok) continue;
+        done = typeof placeProject(w, v, c, kind, foot, facing) !== 'string';
+      }
     }
   }
 }

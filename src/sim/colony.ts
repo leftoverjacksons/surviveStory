@@ -31,6 +31,7 @@ import { breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, mayb
 import { planRestore, ruinDoor } from './restore';
 import { rareDaily, ruinToStrip, strip } from './rare';
 import { autopilotDaily } from './autopilot';
+import { requestsDaily, type Request } from './requests';
 import { chronicleDaily, type Chronicle } from './chronicle';
 import { TRADES, clothFrom, clothed, finishBatch, needComfort, needRows, needTier, pickTrade, toolFactor, tradeDemand, tradesDaily } from './trades';
 import { createHaunts, hauntDaily, heapHaunted, senseDistrict, type Clearing, type Haunt, type TakenRecord } from './haunt';
@@ -162,6 +163,8 @@ export interface Colony {
   chronicle?: Chronicle;
   /** Searches that found nothing, and the minute until which they aren't repeated (saved, so runs stay deterministic). */
   memo?: Record<string, number>;
+  /** Asks waiting in the request tray (requests.ts). */
+  requests?: Request[];
 }
 
 /** Has this search come up empty recently? (See `hush`.) */
@@ -2092,6 +2095,7 @@ function daily(col: Colony) {
   syncAgents(col, true);
   knowhowDaily(col);
   aspirationsDaily(col);
+  requestsDaily(col);
   col.unreachable.clear();
   arrivals(col);
   rebalanceWork(col);

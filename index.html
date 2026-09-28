@@ -95,6 +95,18 @@
   #log-latest { display: none; flex: 1; min-width: 0; font: 12px var(--f-body); color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0; }
   #log.collapsed #log-latest { display: block; }
   #log p { margin: 0; }
+  /* the request tray */
+  #asks { flex: none; padding: 6px 10px 8px; display: grid; gap: 4px; font-size: 12.5px; line-height: 1.35; }
+  #asks h2 { margin: 0; display: flex; gap: 8px; align-items: baseline; font: 400 14px var(--f-display); letter-spacing: 0.03em; }
+  #asks-count { font: 11px var(--f-mono); color: var(--ink-dim); }
+  #asks-list { display: grid; gap: 6px; max-height: calc(3 * 4.6em); overflow-y: auto; }
+  .ask p { margin: 0; cursor: pointer; }
+  .ask p:hover { color: var(--wisp); }
+  .ask .age { font: 10px var(--f-mono); color: var(--ink-faint); margin-left: 4px; }
+  .ask .age em { color: #e0a070; font-style: normal; }
+  .ask .row { display: flex; gap: 6px; margin-top: 3px; align-items: center; }
+  .ask .row button { padding: 2px 8px; font-size: 11.5px; }
+  .ask .first { font: 10px var(--f-mono); color: var(--good); }
   #log p.memo:first-of-type, #log p:not(.memo) + p.memo { border-top: 1px solid var(--line); padding-top: 3px; }
   /* collapsible panels: a title button with a chevron; collapsed shows the title line only */
   .fold-btn { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font: inherit; color: inherit; white-space: nowrap; }
@@ -364,6 +376,10 @@
     <div id="winter"></div>
     <div id="veil"></div>
   </div>
+</section>
+<section id="asks" class="panel fold" aria-label="Asks" hidden>
+  <h2><button type="button" class="fold-btn" data-fold="asks" aria-expanded="true" title="Things people have asked for. Nothing waits on these: answer when you like.">Asks</button> <span id="asks-count"></span></h2>
+  <div class="body" id="asks-list"></div>
 </section>
 <section id="log" class="panel fold" aria-label="Events">
   <h2><button type="button" class="fold-btn" data-fold="log" aria-expanded="true" title="Collapse to the latest line, or expand">Events</button> <span id="log-latest"></span></h2>

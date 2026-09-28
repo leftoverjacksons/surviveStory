@@ -10,7 +10,7 @@ import type { Colony } from './colony';
 import { adjustBond, alive, bondValue, log, type Survivor } from './community';
 import { DAYS_PER_SEASON, dayOfSeason, seasonOf } from './calendar';
 import { bedsTotal, hasBuilt, sharedBeds, storageCapacity, storageWanted, store, type SiteKind } from './buildings';
-import { householdName, householdOf, waitingHouseholds } from './homes';
+import { householdOf, waitingHouseholds } from './homes';
 import type { Rng } from './rng';
 import { communitySight, homeResonance, lanternGift, nurture, type EntityRequest } from './veil';
 import { Zone, idx, paintZone, reveal, toTileX, toTileZ, type Point } from './world';
@@ -109,26 +109,7 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
     buildCand('hut', 1.8, 'Raise a bunkhouse', 'People are sleeping close enough to kick each other.',
       (s) => (s.role === 'builder' ? 1 : 0) + (col.beds.has(s.id) ? 0 : 1));
   }
-  // Households without a home petition for one (not those already approved).
-  if (store(v).level >= 1) {
-    for (const h of waiting) {
-      if (v.homeQueue.includes(h.id) || day - h.since < 1) continue;
-      const speaker = living.filter((s) => h.members.includes(s.id) && !taken.has(s.id))
-        .sort((a, b) => b.stats.empathy - a.stats.empathy)[0];
-      if (!speaker) continue;
-      const others = h.members.filter((m) => m !== speaker.id).map((m) => first(living.find((s) => s.id === m)!));
-      const waited = day - h.since;
-      const pitch = others.length
-        ? `${others.join(' and ')} and I would like a place of our own. A house, a bit of ground behind it. We'll do most of the work.`
-        : 'I\'d like a small place of my own. I don\'t need much. A door I can close.';
-      out.push({
-        score: 1.5 + Math.min(1.2, waited * 0.12) + h.members.length * 0.15,
-        make: () => ({
-          kind: 'home', household: h.id, title: `A home for ${householdName(c, h)}`, pitch, proposer: speaker.id, cost: {},
-        }),
-      });
-    }
-  }
+  // Households wanting a home ask through the request tray now, not the council (requests.ts).
   // Once most people have homes, the old shelter can become something shared.
   const st = store(v);
   const housed = living.filter((s) => householdOf(v, s.id)?.home).length;
