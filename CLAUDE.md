@@ -50,11 +50,16 @@ reference: Tiny Glade.
 
 ## Conventions
 - Check: `npx tsc --noEmit && npx vitest run && npx vite build`.
-- Screenshots: `vite preview` on port 4173, plus Playwright with
-  `/opt/pw-browsers` Chromium and swiftshader (about 1 fps; pause via
-  `__game.setSpeed(0)` and advance with `__game.tick(minutes)`).
-- Published build: the single-file build (`dist-single`) goes to the claude.ai
-  artifact https://claude.ai/artifact/5PAyD8AiMBG9fQDNbCCMPc.
+- Screenshots: `scripts/shots/` (README there): `vite preview` on port 4173,
+  Playwright with swiftshader (about 1 fps). `shot.mjs` takes JSON steps;
+  `compare.mjs` does before/after; `layers.mjs` finds which layer causes an
+  artefact.
+- Balance: `npx vite-node scripts/soak.ts -- [colonies] [years]` (multi-year,
+  autopilot), `npm run balance`, `npm run sim -- <days>`; in game, the
+  chronicle (key C).
+- Published build: `npx vite build --mode single && node scripts/single.mjs
+  <out.html>`, smoke-test with `scripts/shots/smoke.mjs`, then publish to the
+  claude.ai artifact https://claude.ai/artifact/5PAyD8AiMBG9fQDNbCCMPc.
   **Ask before republishing** if the user may be mid-game, because a
   republish reloads their page.
 - Branch: `claude/peaceful-planck-ons669`. No PRs unless asked.
@@ -142,6 +147,11 @@ reference: Tiny Glade.
     panel DONE (§22.3, `sim/chronicle.ts`, `ui/chronicle.ts`, key C); start menu DONE
     (§22.4, `ui/startmenu.ts`: Continue / new village by site, seed, autopilot). Published in v21.
     Smoke-testing the single-file build now needs `?new` (or click Begin), since the menu waits.
+  - SEE-THROUGH WOODS §22.6: canopies on the Folk's Wild drawn as rim ghosts (`enhance` `thin`,
+    `worldUniforms.uThin`), button/key O cycles Wild thinned → all thinned → full. NOT published.
+  - NEXT (agreed): economy balance from soak data (§22.2 open findings: food surplus >1,500 by
+    year 5, homes plateau ~8.5 for 24 people, some villages never build a sewing room so clothes
+    hit 0, winter warmth dips; ~300 ms sim per day at 24 people), then performance at 24 people.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

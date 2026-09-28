@@ -2301,3 +2301,24 @@ zoomed in. Their reference: pixelated but soft and warm, not jagged.
     crossbar), stepped aside onto open ground;
   - extra strings between neighbours under 10 units apart, up to three a
     house, keep the web.
+
+### 22.6 Seeing through the woods (built)
+The user found the Folk's mound and works nearly impossible to see, since
+the Wild is woodland. They suggested near-transparent trees wherever the
+Wild is painted.
+- **Tried: a stipple** (4×4 ordered dither, 30% of canopy pixels kept).
+  It works, but at the pixel look's scale it reads as a grainy net, the
+  artefact §22.5 removed.
+- **Built: rim ghosts.** A thinned canopy keeps only the surface turned
+  away from the camera (|n · view| < 0.4), so each leaf clump becomes a
+  thin outline bubble. Trunks, limbs and the canopy's shadow stay, so the
+  place still reads as woodland, and whatever stands beneath is plain.
+  - The decision is per clump, from the zone at its position (a
+    vertex-shader lookup in `uZoneTex`), so a canopy never half-fades at a
+    zone edge.
+  - Kept pixels mark alpha 0.5; the outline pass leaves them uninked
+    (otherwise every rim pixel would be inked dark).
+  - Shadows use Three's own depth material, so they are unaffected.
+- **Control:** a footer button and key O cycle *Wild thinned* (default) →
+  *all thinned* → *full*; the choice is remembered per browser.
+  `__game.setWoods(n)`.

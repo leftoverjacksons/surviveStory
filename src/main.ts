@@ -304,6 +304,20 @@ function cycleRoofs() {
 }
 roofBtn.addEventListener('click', cycleRoofs);
 
+/** See-through woods (worldUniforms.uThin): the Folk's Wild thinned by default, so their works show. */
+const woodsBtn = document.getElementById('woods-btn')!;
+const WOODS = ['full', 'Wild thinned', 'all thinned'];
+function setWoods(mode: number) {
+  worldUniforms.uThin.value = mode;
+  woodsBtn.textContent = `Woods: ${WOODS[mode]}`;
+  woodsBtn.setAttribute('aria-pressed', String(mode !== 0));
+  try { localStorage.setItem('woods', String(mode)); } catch { /* per-viewer nicety only */ }
+}
+let savedWoods = 1;
+try { const v = Number(localStorage.getItem('woods') ?? 1); if (v === 0 || v === 1 || v === 2) savedWoods = v; } catch { /* default */ }
+setWoods(savedWoods);
+woodsBtn.addEventListener('click', () => setWoods((worldUniforms.uThin.value + 1) % 3));
+
 /**
  * Where someone indoors is drawn: sleepers in their bed (their rank among the
  * building's sleepers), everyone else at a seat by the table.
@@ -860,6 +874,7 @@ window.addEventListener('keydown', (e) => {
     if (speed === 0) setSpeed(lastSpeed); else { lastSpeed = speed; setSpeed(0); }
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
   else if (k === 'r') cycleRoofs();
+  else if (k === 'o') setWoods((worldUniforms.uThin.value + 1) % 3);
   else if (k === 'b' && !veil) buildPanel.toggle();
   else if (k === 't' && build?.kind === 'place') { build.turn = (build.turn + 1) % 4; placeHover(lastPointer.x, lastPointer.y); }
   else if (k === 'escape' && build && !draft.length) setBuild(null);
@@ -1172,7 +1187,7 @@ const veilDebug = {
     return toScreen(x, heightAt(world, x, z) + 1.1, z);
   },
 };
-Object.assign(window, { __game: { ...veilDebug, stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
+Object.assign(window, { __game: { ...veilDebug, stats, addModel, setWoods, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
   place: (k: PlaceKind, x: number, z: number, turn = 0) => { const { foot, facing } = footAt(k, toTileX(world, x), toTileZ(world, z), turn); return placeProject(world, colony.village, community, k, foot, facing); },
   folkOrder: (k: never, x: number, z: number) => orderFolkWork(colony, k, x, z), folkWhy: (x: number, z: number) => whyNotFolkWork(colony, x, z),
   save: () => saveNow('manual'),

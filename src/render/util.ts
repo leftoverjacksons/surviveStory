@@ -122,6 +122,8 @@ export const worldUniforms = {
   /** The Veil: resonance texture and how strongly to show it (0 = hidden). */
   uResTex: { value: null as THREE.Texture | null },
   uVeil: { value: 0 },
+  /** See-through woods: 0 full, 1 canopies stippled on the Folk's Wild, 2 stippled everywhere. */
+  uThin: { value: 1 },
 };
 /** Back-compat alias used by older call sites. */
 export const windUniforms = worldUniforms;
@@ -151,7 +153,17 @@ export interface EnhanceOptions {
    * materials, 'soil' for ground, otherwise none.
    */
   surface?: 'auto' | 'soil' | 'paving' | 'leaf' | 'brick' | 'corrugated' | 'none';
+  /**
+   * Tree canopies: stipple them away (ordered dither) where `uThin` asks, so
+   * what stands beneath them (the Folk's mound and works) can be seen.
+   */
+  thin?: boolean;
 }
+
+/** Wild's zone colour as the shader reads it from uZoneTex. */
+const WILD_RGB = '0.314, 0.784, 0.667';
+/** A thinned canopy keeps the surface whose facing (|n · view|) is below this: its rim. */
+const THIN_RIM = 0.4;
 
 const SURFACE_GLSL = `
   float sh21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -285,6 +297,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
   const season = opts.season ?? 'solid';
   const shade = opts.shade ?? 0;
   const upLit = opts.upLit ?? false;
+  const thin = opts.thin ?? false;
   const surface = !PIXEL ? 'none' : opts.surface ?? (season === 'solid' ? 'auto' : season === 'ground' ? 'soil' : season === 'broadleaf' || season === 'conifer' ? 'leaf' : 'none');
   const surfaceKind = { none: 0, auto: 1, soil: 2, paving: 3, leaf: 4, brick: 5, corrugated: 6 }[surface];
   mat.onBeforeCompile = (shader) => {
@@ -294,7 +307,8 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       `#include <common>
       uniform float uTime; uniform float uWind; uniform float uBare; uniform float uFogSize;
       uniform sampler2D uWearTex;
-      varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;`,
+      varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
+      ${thin ? 'uniform sampler2D uZoneTex; uniform float uThin; varying float vThin;' : ''}`,
     );
     vs = vs.replace(
       '#include <begin_vertex>',
@@ -306,6 +320,12 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       #endif
       vHash = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))) * 43758.5453);
       vShade = clamp(position.y * ${shade.toFixed(3)} * 0.5 + 0.5, 0.0, 1.0);
+      ${thin ? `{
+        // One decision per clump (from where it stands), so a canopy never half-fades.
+        vec4 zc = texture2D(uZoneTex, (ip.xz + uFogSize * 0.5) / uFogSize);
+        float wild = step(0.5, zc.a) * step(distance(zc.rgb, vec3(${WILD_RGB})), 0.03);
+        vThin = uThin > 1.5 ? 1.0 : uThin > 0.5 ? wild : 0.0;
+      }` : ''}
       ${season === 'broadleaf' ? 'transformed *= mix(1.0, 0.42, uBare);' : ''}
       ${season === 'grass' ? `{
         float wr = texture2D(uWearTex, (ip.xz + uFogSize * 0.5) / uFogSize).r;
@@ -343,8 +363,21 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       uniform float uFogSize; uniform float uTime; uniform float uZone;
       uniform float uSnow; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
       varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
+      ${thin ? 'varying float vThin;' : ''}
       ${surfaceKind ? SURFACE_GLSL : ''}`,
     );
+    if (thin) {
+      // A ghost of the canopy: only its rim, where the surface turns away from
+      // the camera, is kept; the faces looking at you are cut, so what stands
+      // beneath shows. Kept pixels mark alpha 0.5 so the outline pass leaves them uninked.
+      fs = fs.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+        if (vThin > 0.5) {
+          vec3 toCam = normalize(vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]));
+          if (abs(dot(normalize(vWN), toCam)) > ${THIN_RIM.toFixed(3)}) discard;
+        }`);
+      if (PIXEL) fs = fs.replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        if (vThin > 0.5) gl_FragColor.a = 0.5;`);
+    }
     if (surfaceKind) {
       fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
         diffuseColor.rgb = surfaceTex(diffuseColor.rgb, vWP, vWN, ${surfaceKind});`);
@@ -409,7 +442,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
     }
     shader.fragmentShader = fs;
   };
-  mat.customProgramCacheKey = () => `enh-${wind}-${fog}-${zone}-${season}-${shade}-${upLit}-${surfaceKind}`;
+  mat.customProgramCacheKey = () => `enh-${wind}-${fog}-${zone}-${season}-${shade}-${upLit}-${surfaceKind}-${thin}`;
   return mat;
 }
 

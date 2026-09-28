@@ -192,8 +192,8 @@ export class TreeField {
   private slots = new Map<number, Slot[]>();
   private geos: Record<Part['geo'], THREE.BufferGeometry>;
   private trunkMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { surface: 'none' });
-  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { wind: 0.04, season: 'broadleaf', shade: 1 });
-  private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { wind: 0.03, season: 'conifer', shade: 2 });
+  private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { wind: 0.04, season: 'broadleaf', shade: 1, thin: true });
+  private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), { wind: 0.03, season: 'conifer', shade: 2, thin: true });
   private falling: { g: THREE.Group; t: number; axis: THREE.Vector3; pivot: THREE.Vector3 }[] = [];
   private stumps: THREE.InstancedMesh;
   private stumpCount = 0;
@@ -283,8 +283,8 @@ export class TreeField {
       const col = p.color.clone();
       // Clones lose the shader patch, so re-apply it with the same seasonal style.
       const mat = p.geo === 'trunk' ? enhance(this.trunkMat.clone(), { surface: 'none' })
-        : p.geo === 'cone' ? enhance(this.pineMat.clone(), { season: 'conifer', shade: 2 })
-        : enhance(this.leafMat.clone(), { season: 'broadleaf', shade: 1 });
+        : p.geo === 'cone' ? enhance(this.pineMat.clone(), { season: 'conifer', shade: 2, thin: true })
+        : enhance(this.leafMat.clone(), { season: 'broadleaf', shade: 1, thin: true });
       (mat as THREE.MeshLambertMaterial).color = col;
       mat.transparent = true;
       const mesh = new THREE.Mesh(this.geos[p.geo], mat);
