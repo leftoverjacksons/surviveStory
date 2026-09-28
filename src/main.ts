@@ -26,7 +26,8 @@ import { PlacementView } from './render/placement';
 import { DEFS, canPlace, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
 import { FOLK_WORKS, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
-import { claimPlot, outlinePlot } from './sim/homes';
+import { claimPlot, outlinePlot, plotFailAt } from './sim/homes';
+import { KeepOut } from './render/keepout';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
 import { playTurn } from './sim/clearbot';
@@ -375,6 +376,9 @@ const draftDots = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsM
 draftDots.renderOrder = 10;
 draftDots.frustumCulled = false;
 scene.add(draftLine, draftDots);
+/** Where a drawn plot can't go, tinted around the cursor while drawing one. */
+const keepOut = new KeepOut(world, colony.village);
+scene.add(keepOut.group);
 function groundAt(clientX: number, clientY: number): THREE.Vector3 | null {
   const r = canvas.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
@@ -394,7 +398,7 @@ function closeDraft() {
     if (draft.length >= 3) {
       const rng = new Rng((world.seed ^ (community.day * 7919) ^ (colony.village.nextId * 104729)) >>> 0);
       const plan = outlinePlot(world, colony.village, draft.slice(), rng);
-      if (typeof plan === 'string') { buildPanel.hint(`${plan} Keep clicking corners, or Esc to start again.`); return; }
+      if (typeof plan === 'string') { keepOut.markFail(plotFailAt); buildPanel.hint(`${plan} (Marked in yellow.) Keep clicking corners, or Esc to start again.`); return; }
       const plot = claimPlot(colony, plan, rng);
       log(community, `A plot is pegged out: ${plot.tiles.length} squares, the house to stand near the front. It waits for a household.`, 'good');
       replan(colony);
@@ -458,6 +462,7 @@ function setBuild(tool: BuildTool | null, why = '') {
   else if (resumeAfterBuild) { resumeAfterBuild = false; resumeAfterCouncil(); }
   build = tool;
   buildWhy = tool ? why : '';
+  if (tool?.kind !== 'plot') keepOut.show(null);
   clearDraft();
   placement.hide();
   draftLine.material.color.set(tool?.kind === 'plot' ? '#f4ecd0' : '#f0a040');
@@ -784,6 +789,7 @@ canvas.addEventListener('pointerdown', (e) => {
 canvas.addEventListener('pointermove', (e) => {
   lastPointer.x = e.clientX; lastPointer.y = e.clientY;
   if (drafting() && draft.length) drawDraft(groundAt(e.clientX, e.clientY));
+  if (build?.kind === 'plot') keepOut.show(groundAt(e.clientX, e.clientY));
   if (build && build.kind !== 'plot' && !pointers.size) placeHover(e.clientX, e.clientY);
   if (veil) { const g = groundAt(e.clientX, e.clientY); veil.hover = g ? { tx: toTileX(world, g.x), tz: toTileZ(world, g.z) } : null; if (!pointers.size) veilHover(e.clientX, e.clientY); }
   const p = pointers.get(e.pointerId);
@@ -1031,6 +1037,7 @@ function frame() {
   resonance.sync(t);
   phenomena.update(t, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   folkView.update(t, sky.night, people.selected, iso.camera, view.clientWidth, view.clientHeight);
+  keepOut.update();
   if (veil) {
     // The team stands where they stand in the Veil.
     const w = world;

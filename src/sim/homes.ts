@@ -793,33 +793,51 @@ function houseSite(w: World, plot: Plot, tiles: Set<number>): { houseTiles: numb
  * the nearest lane, path or the fire), and fit a house near the front. The
  * rest is yard. Returns the plan, or why it won't do.
  */
-export function outlinePlot(w: World, v: Village, pts: Point[], rng: Rng): PlotPlan | string {
-  if (pts.length < 3) return 'Click at least three corners.';
-  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-  for (const c of pts) { x0 = Math.min(x0, c.x); x1 = Math.max(x1, c.x); z0 = Math.min(z0, c.z); z1 = Math.max(z1, c.z); }
-  const others = [
+/** Footprints a drawn plot may not cover (buildings and sites other than homes and restored ruins). */
+export function plotObstacles(v: Village): Footprint[] {
+  return [
     ...v.buildings.filter((b) => b.kind !== 'home' && b.ruin === undefined).map((b) => b.foot),
     ...v.projects.filter((p) => !p.done && p.kind !== 'home' && p.kind !== 'restore').map((p) => p.foot),
   ];
-  const sp = w.stockpile, CAMP = w.campfire;
+}
+
+/** What the plot-drawing keep-out overlay should say about a tile: why a plot can't cover it, or null. */
+export type PlotBlock = 'unexplored' | 'folk' | 'haunted' | 'hard';
+export function plotTileWhy(w: World, v: Village, tx: number, tz: number, others: Footprint[]): { why: string; kind: PlotBlock } | null {
+  if (!inBounds(w, tx, tz) || !isExplored(w, tx, tz)) return { why: 'Nobody has been out that far yet.', kind: 'unexplored' };
+  const i = idx(w, tx, tz);
+  const p = { x: tileX(w, tx), z: tileZ(w, tz) };
+  const g = w.ground[i], sp = w.stockpile, CAMP = w.campfire;
+  if (g === Ground.Water) return { why: 'That runs into the water.', kind: 'hard' };
+  if (g === Ground.Asphalt || g === Ground.Concrete) return { why: 'That runs over a road or old paving.', kind: 'hard' };
+  if (w.haunted?.[i]) return { why: 'Something still lives there. Clear the district first.', kind: 'haunted' };
+  if (w.zone[i] === 6 /* Zone.Wild */ || w.folk?.path[i]) return { why: 'That is the Folk\'s land.', kind: 'folk' };
+  if (w.fieldAt?.[i] > 0) return { why: 'That runs over a field.', kind: 'hard' };
+  if (v.plotAt[i]) return { why: 'That overlaps another plot.', kind: 'hard' };
+  if (w.blocked[i] && w.treeAt[i] < 0) return { why: 'Something is in the way there (rubble, a wall or a rock).', kind: 'hard' };
+  if (Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 4.5) return { why: 'Too close to the fire.', kind: 'hard' };
+  if (p.x > sp.x0 - 1 && p.x < sp.x1 + 1 && p.z > sp.z0 - 1 && p.z < sp.z1 + 1) return { why: 'That runs over the stockpile.', kind: 'hard' };
+  for (const f of others) if (tx >= f.tx && tx < f.tx + f.w && tz >= f.tz && tz < f.tz + f.d) return { why: 'That runs over a building.', kind: 'hard' };
+  return null;
+}
+
+/** Where the last refused drawn plot first failed (for the overlay to mark), or null. */
+export let plotFailAt: { tx: number; tz: number } | null = null;
+
+export function outlinePlot(w: World, v: Village, pts: Point[], rng: Rng): PlotPlan | string {
+  plotFailAt = null;
+  if (pts.length < 3) return 'Click at least three corners.';
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const c of pts) { x0 = Math.min(x0, c.x); x1 = Math.max(x1, c.x); z0 = Math.min(z0, c.z); z1 = Math.max(z1, c.z); }
+  const others = plotObstacles(v);
+  const CAMP = w.campfire;
   const tiles: number[] = [];
   for (let tz = toTileZ(w, z0); tz <= toTileZ(w, z1); tz++) for (let tx = toTileX(w, x0); tx <= toTileX(w, x1); tx++) {
     const p = { x: tileX(w, tx), z: tileZ(w, tz) };
     if (!pointInPoly(p, pts)) continue;
-    if (!inBounds(w, tx, tz) || !isExplored(w, tx, tz)) return 'Nobody has been out that far yet.';
-    const i = idx(w, tx, tz);
-    const g = w.ground[i];
-    if (g === Ground.Water) return 'That runs into the water.';
-    if (g === Ground.Asphalt || g === Ground.Concrete) return 'That runs over a road or old paving.';
-    if (w.haunted?.[i]) return 'Something still lives there. Clear the district first.';
-    if (w.zone[i] === 6 /* Zone.Wild */ || w.folk?.path[i]) return 'That is the Folk\'s land.';
-    if (w.fieldAt?.[i] > 0) return 'That runs over a field.';
-    if (v.plotAt[i]) return 'That overlaps another plot.';
-    if (w.blocked[i] && w.treeAt[i] < 0) return 'Something is in the way there.';
-    if (Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 4.5) return 'Too close to the fire.';
-    if (p.x > sp.x0 - 1 && p.x < sp.x1 + 1 && p.z > sp.z0 - 1 && p.z < sp.z1 + 1) return 'That runs over the stockpile.';
-    for (const f of others) if (tx >= f.tx && tx < f.tx + f.w && tz >= f.tz && tz < f.tz + f.d) return 'That runs over a building.';
-    tiles.push(i);
+    const bad = plotTileWhy(w, v, tx, tz, others);
+    if (bad) { plotFailAt = { tx, tz }; return bad.why; }
+    tiles.push(idx(w, tx, tz));
   }
   if (tiles.length < PLOT_MIN) return `Too small for a house and a yard (at least ${PLOT_MIN} squares; this is ${tiles.length}).`;
   if (tiles.length > PLOT_MAX) return `Too big for one household (at most ${PLOT_MAX} squares; this is ${tiles.length}).`;

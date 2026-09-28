@@ -172,6 +172,11 @@ reference: Tiny Glade.
   - v27 = v26 + a fix: browser dialogs (confirm/alert/prompt) are BLOCKED in the claude.ai artifact
     frame, so "Start a new village" did nothing. Never use them: confirm with a second click instead
     (start menu button, field removal). v27 was built from d9607cb + that fix (D + E not in it).
+  - ROUND 4 (DESIGN §23): user agreed A (staging) and C (councils: request tray, dilemma-driven
+    councils, visible commitments); B pending their thoughts (symbiotic Folk/human growth pressing on
+    uncleared zones). Backlog §23.2 (cleared districts fully usable like the start — user insists;
+    mycelium network; solar/windmills; cars; timber handling). Order: overlay (DONE §23.3, NOT
+    published) → councils (C) → staging (A) → B.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

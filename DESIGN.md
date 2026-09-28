@@ -2584,3 +2584,14 @@ From the pacing audit (§22.11, proposals D and E), which the user approved.
   for scrap is one renewable source.
 - **Timber handling (Manor Lords):** felled trees lie as logs to be moved,
   cut up and processed (a chopping block or saw pit) before they are wood.
+
+### 23.3 Plot keep-out overlay (built)
+- While drawing a plot, every tile a plot may not cover is tinted within 22
+  tiles of the cursor (fading at the edge): red for hard blocks (water,
+  roads and paving, fields, other plots, rubble and rock, buildings, the
+  fire, the stockpile), teal for the Folk's land, violet for haunted
+  ground, dark for unexplored (`render/keepout.ts`).
+- A refused plot marks the tile it failed on with a pulsing yellow ring
+  for four seconds, and the hint names the reason.
+- One rule set for both: the per-tile test moved out of `outlinePlot` into
+  `homes.ts#plotTileWhy` (and `plotObstacles`), used by the overlay too.
