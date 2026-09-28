@@ -150,7 +150,7 @@ reference: Tiny Glade.
   - SEE-THROUGH WOODS §22.6: trees on the Folk's Wild become translucent ghosts (solid meshes
     discard them, `ghostTwin` alpha twins share instance buffers, no shadows; `enhance` `thin`,
     `worldUniforms.uThin`); button/key O cycles Wild ghosted → all ghosted → solid. The v23 rim
-    outlines were rejected by the user. Ghost version NOT published.
+    outlines were rejected by the user. Ghost version published in v25.
   - HUD TIDY §22.7: village plans, Crew and Events collapse (`.fold-btn`, remembered); Events is a
     short running log (5 in view, 30 back); left column sized by measured `--top`/`--foot`. Published in v24.
   - NEXT (agreed): economy balance from soak data (§22.2 open findings: food surplus >1,500 by
