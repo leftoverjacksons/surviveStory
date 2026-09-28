@@ -169,6 +169,9 @@ reference: Tiny Glade.
   - D + E BUILT §22.12 (seasonal warmth `warmthWanted`; `autopilotFolk`), tests pass, soak verification
     pending. Open: seed 6 exhausts all scrap by day ~40 (finite salvage; ask the user) and its late days
     are slow (3–5 s/day, cause not found yet). NOT published. Next after that: A–C with the user.
+  - v27 = v26 + a fix: browser dialogs (confirm/alert/prompt) are BLOCKED in the claude.ai artifact
+    frame, so "Start a new village" did nothing. Never use them: confirm with a second click instead
+    (start menu button, field removal). v27 was built from d9607cb + that fix (D + E not in it).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

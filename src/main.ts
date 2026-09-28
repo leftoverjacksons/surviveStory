@@ -417,13 +417,24 @@ function closeDraft() {
   clearDraft();
   hud.render();
 }
+/** A field clicked once for removal, waiting for the second click. */
+let fieldArmed: { id: number; until: number } | null = null;
 function fieldClick(clientX: number, clientY: number) {
   const g = groundAt(clientX, clientY);
   if (!g) return;
   if (!draft.length && build?.kind !== 'plot') {
     const f = fieldAtPoint(world, g.x, g.z);
     if (f) {
-      if (confirm('Remove this field? Anything growing in it will be lost.')) { deleteField(world, f.id); replan(colony); hud.render(); }
+      // Click twice to remove (browser dialogs are blocked where the game is embedded).
+      if (fieldArmed?.id === f.id && performance.now() < fieldArmed.until) {
+        fieldArmed = null;
+        buildPanel.hint(null);
+        deleteField(world, f.id); replan(colony); hud.render();
+      } else {
+        fieldArmed = { id: f.id, until: performance.now() + 4000 };
+        buildPanel.hint('Click the field again to remove it. Anything growing in it will be lost.');
+        setTimeout(() => { if (fieldArmed?.id === f.id) { fieldArmed = null; buildPanel.hint(null); } }, 4000);
+      }
       return;
     }
   }

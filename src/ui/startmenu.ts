@@ -59,8 +59,15 @@ export function startMenu(saved: SaveFile | null, why: string | null, autopilotD
         el.querySelectorAll('button[data-site]').forEach((b) => b.setAttribute('aria-pressed', String(b === s)));
         return;
       }
-      if (t.closest('#start-new-go')) {
-        if (saved && !confirm(`Start a new village? ${saved.place} will be lost.`)) return;
+      const go = t.closest<HTMLButtonElement>('#start-new-go');
+      if (go) {
+        // Replacing a save takes a second click (browser dialogs are blocked where the game is embedded).
+        if (saved && go.dataset.armed !== '1') {
+          go.dataset.armed = '1';
+          go.textContent = `Click again to replace ${saved.place}`;
+          go.classList.add('danger');
+          return;
+        }
         const seed = Number((document.getElementById('start-seed') as HTMLInputElement).value) || null;
         const autopilot = (document.getElementById('start-auto') as HTMLInputElement).checked;
         done({ kind: 'new', site, seed, autopilot });
