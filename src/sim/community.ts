@@ -17,6 +17,8 @@ export interface Memory { day: number; text: string }
 
 export interface Survivor {
   id: number;
+  /** Day the player last chose this person's work; the village leaves that choice alone for a season. */
+  roleSetDay?: number;
   name: string;
   background: string;
   age: number;
@@ -319,5 +321,5 @@ export function recruit(c: Community): Survivor {
 
 export function setRole(c: Community, id: number, role: RoleId) {
   const s = c.survivors.find((x) => x.id === id);
-  if (s && s.alive && role in ROLES) s.role = role;
+  if (s && s.alive && role in ROLES) { s.role = role; s.roleSetDay = c.day; }
 }

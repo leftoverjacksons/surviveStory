@@ -14,6 +14,7 @@ import { Zone, idx, paintZone, toTileX, toTileZ, zoneAllowed, type World } from 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const N = Number(args[0] ?? 6), DAYS = Number(args[1] ?? DAYS_PER_YEAR);
 const prepared = process.argv.includes('--prepared');
+const WINTER = DAYS_PER_SEASON * 3 + 1;
 const siteArg = process.argv.find((a) => a.startsWith('--site='))?.slice(7) as SiteKind | undefined;
 
 function bestSpot(w: World, r0: number, r1: number, radius: number, kind: number, wantTrees: boolean, avoid: { x: number; z: number }[]) {
@@ -54,8 +55,9 @@ for (let seed = 1; seed <= N; seed++) {
     minMor = Math.min(minMor, ...alive(col.community).map((s) => s.morale));
     if (inf100 < 0 && col.veil.influence >= 99.9) inf100 = d;
     if (pop10 < 0 && alive(col.community).length >= 10) pop10 = d;
-    if (d === 37) foodW = col.community.resources.food;
-    if (d > 37) { minWinter = Math.min(minWinter, col.community.resources.food); if (col.community.resources.food < col.agents.length * 6) ration++; }
+    // Winter starts on the first day of the fourth season (day 25 with 8-day seasons).
+    if (d === WINTER) foodW = col.community.resources.food;
+    if (d > WINTER) { minWinter = Math.min(minWinter, col.community.resources.food); if (col.community.resources.food < col.agents.length * 6) ration++; }
     if (prepared && (col.village.noPlotDay ?? -9) >= d - 1) { const s = bestSpot(col.world, 22, 34, 6, Zone.Home, false, []); if (s.score > 20) paintZone(col.world, s.x, s.z, 6, Zone.Home); }
   }
   ledgers.push(col.ledger);

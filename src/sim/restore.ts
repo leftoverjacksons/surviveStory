@@ -9,7 +9,7 @@
  */
 import type { Colony } from './colony';
 import { alive, log } from './community';
-import { bedsTotal, storageCapacity, type BuildingKind, type Cost, type Project } from './buildings';
+import { bedsTotal, storageCapacity, storageWanted, type BuildingKind, type Cost, type Project } from './buildings';
 import type { Ruin, RuinKind } from './oldworld';
 import { inBounds, passable, toTileX, toTileZ, type Point, type World } from './world';
 import { findPath } from './path';
@@ -100,7 +100,10 @@ export function planRestore(col: Colony, lead: string, newProject: (p: Omit<Proj
     // Nearer is easier to keep up.
     return s - Math.hypot(r.x, r.z) / 60;
   };
-  const r = options.sort((a, b) => score(b) - score(a))[0];
+  // Storehouses only while the stores can't hold two seasons' eating.
+  const wanted = options.filter((x) => RESTORE[x.kind]!.as !== 'cellar' || storageWanted(v, pop));
+  if (!wanted.length) return null;
+  const r = wanted.sort((a, b) => score(b) - score(a))[0];
   // Only for a real need; otherwise one quiet improvement every eight days or so.
   const last = v.lastRestore ?? -99;
   if (score(r) < 2.5 && col.community.day - last < 8) return null;

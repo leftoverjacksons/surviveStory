@@ -519,6 +519,31 @@ function neighbourCandidates(v: Village, rng: Rng): Candidate[] {
   return out;
 }
 
+/**
+ * Anywhere on the Home ground: so any patch of Home zone can
+ * take plots, not only along lanes, beside neighbours or around the green.
+ * Every third tile, as a last resort (a slight penalty, least for plots whose
+ * house faces the fire). Only surveyed when a household needs a plot.
+ */
+function zoneCandidates(w: World, v: Village): Candidate[] {
+  const CAMP = w.campfire;
+  const out: Candidate[] = [];
+  for (let tz = 0; tz < w.h; tz += 3) for (let tx = (tz / 3) % 2 ? 1 : 0; tx < w.w; tx += 3) {
+    if (!inZone(w, tx, tz) || !isExplored(w, tx, tz)) continue;
+    const i = idx(w, tx, tz);
+    if (v.plotAt[i] || w.blocked[i]) continue;
+    const p = { x: tileX(w, tx), z: tileZ(w, tz) };
+    const d = Math.hypot(p.x - CAMP.x, p.z - CAMP.z);
+    if (d < 8) continue;
+    out.push({ origin: p, n: { x: (p.x - CAMP.x) / d, z: (p.z - CAMP.z) / d }, bonus: 2, from: 'green' });
+  }
+  // Each spot four ways: the plot running back from the fire, toward it, or across.
+  return out.flatMap((c) => [
+    c, { ...c, n: { x: -c.n.x, z: -c.n.z }, bonus: 3 },
+    { ...c, n: { x: -c.n.z, z: c.n.x }, bonus: 2.5 }, { ...c, n: { x: c.n.z, z: -c.n.x }, bonus: 2.5 },
+  ]);
+}
+
 export interface PlotPlan { plot: Plot; trees: number[]; houseTiles: number[]; score: number; from: string }
 
 function tryPlot(w: World, v: Village, cand: Candidate, beds: number, rng: Rng, compact: boolean): PlotPlan | null {
@@ -622,7 +647,7 @@ function tryPlot(w: World, v: Village, cand: Candidate, beds: number, rng: Rng, 
 
 /** Survey the home ground for the best free plot for a household of this size. */
 export function findPlot(w: World, v: Village, beds: number, rng: Rng): PlotPlan | null {
-  const cands = [...neighbourCandidates(v, rng), ...streetCandidates(w, rng), ...ringCandidates(w)];
+  const cands = [...neighbourCandidates(v, rng), ...streetCandidates(w, rng), ...ringCandidates(w), ...zoneCandidates(w, v)];
   let best: PlotPlan | null = null;
   // A full plot if there's room; a narrow one if that's all that's left (or
   // all a single person wants).

@@ -311,6 +311,13 @@ export function heatNeed(b: Building): number {
   }
 }
 
+/** Food a village wants to be able to keep, per head: about two seasons' eating (DESIGN §22.8). */
+export const STORE_PER_HEAD = 25;
+/** Whether more storage would help: none yet, or less than STORE_PER_HEAD a head. */
+export function storageWanted(v: Village, pop: number): boolean {
+  return !v.buildings.some((b) => b.kind === 'cellar') || storageCapacity(v) < pop * STORE_PER_HEAD;
+}
+
 /** Food that keeps; anything above this slowly spoils. */
 export function storageCapacity(v: Village): number {
   // Cellars keep roots and grain; the fishing hut's racks keep smoked fish.
@@ -481,7 +488,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   if (seasonIdx >= 1 && seasonIdx <= 2) wants.push(cellar);
   // Stores filling up before winter: dig another cellar.
   const cellars = v.buildings.filter((b) => b.kind === 'cellar').length;
-  if (seasonIdx >= 1 && seasonIdx <= 2 && cellars > 0 && cellars < 3 && com.resources.food > storageCapacity(v) * 0.85 && !has('cellar')) {
+  if (seasonIdx >= 1 && seasonIdx <= 2 && cellars > 0 && cellars < 3 && com.resources.food > storageCapacity(v) * 0.85 && storageWanted(v, pop) && !has('cellar')) {
     wants.push(() => site('cellar'));
   }
   const workshop = () => (!hasBuilt(v, 'workshop') && !has('workshop') ? site('workshop') : null);

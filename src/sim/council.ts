@@ -9,7 +9,7 @@
 import type { Colony } from './colony';
 import { adjustBond, alive, bondValue, log, type Survivor } from './community';
 import { DAYS_PER_SEASON, dayOfSeason, seasonOf } from './calendar';
-import { bedsTotal, hasBuilt, sharedBeds, storageCapacity, store, type SiteKind } from './buildings';
+import { bedsTotal, hasBuilt, sharedBeds, storageCapacity, storageWanted, store, type SiteKind } from './buildings';
 import { householdName, householdOf, waitingHouseholds } from './homes';
 import type { Rng } from './rng';
 import { communitySight, homeResonance, lanternGift, nurture, type EntityRequest } from './veil';
@@ -97,7 +97,8 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
     out.push({ score, make: () => ({ kind: 'build', build: kind, title, pitch, proposer: voice(living, fit, rng, taken).id, cost: {} }) });
   };
 
-  if (season === 'summer' || season === 'autumn') {
+  // A cellar before the frost, and another only while the stores can't hold two seasons' eating.
+  if ((season === 'summer' || season === 'autumn') && storageWanted(v, pop)) {
     const tight = r.food > storageCapacity(v) * 0.6;
     buildCand('cellar', tight ? 2 : 0.8, 'Dig a root cellar',
       'Before the frost, we need somewhere cold to keep the harvest.',
@@ -183,7 +184,7 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
     const [name, pitch] = FESTIVALS[season];
     const low = living.reduce((n, s) => n + s.morale, 0) / pop < 60;
     out.push({
-      score: (low ? 1.8 : 1) + (dayOfSeason(day) > DAYS_PER_SEASON / 2 ? 0.3 : 0),
+      score: (low ? 1.8 : 1) + (dayOfSeason(day) > DAYS_PER_SEASON / 2 ? 0.3 : 0) + (festivalOverdue(col) ? 0.8 : 0),
       make: () => ({
         kind: 'festival', title: `Hold ${name}`, pitch, cost: { food: 15, wood: 10 },
         proposer: voice(living, (s) => (has(s, 'storyteller') ? 2 : 0) + (s.role === 'tender' ? 1 : 0) + s.stats.empathy / 5, rng, taken).id,
@@ -286,6 +287,11 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
   return out;
 }
 
+/** Two seasons or more since the last festival (the Thriving need, trades.ts). */
+function festivalOverdue(col: Colony): boolean {
+  return col.community.day >= DAYS_PER_SEASON * 2 && (col.minute - col.council.festivalUntil) / 1440 >= DAYS_PER_SEASON * 1.5;
+}
+
 function affinity(col: Colony, s: Survivor, p: Omit<Proposal, 'id' | 'support'>): number {
   switch (p.kind) {
     case 'home': {
@@ -301,7 +307,8 @@ function affinity(col: Colony, s: Survivor, p: Omit<Proposal, 'id' | 'support'>)
       if (p.build === 'hut') return (col.beds.has(s.id) ? 0 : 0.5) + (s.role === 'builder' ? 0.1 : 0);
       if (p.build === 'shrine' || p.build === 'lantern') return s.sight / 100 + (has(s, 'skittish') ? 0.2 : 0);
       return s.role === 'builder' ? 0.2 : 0;
-    case 'festival': return (has(s, 'storyteller') ? 0.3 : 0) + (s.morale < 55 ? 0.3 : 0.1);
+    // Also wanted when it has simply been too long: a village that is doing well still needs to celebrate it.
+    case 'festival': return (has(s, 'storyteller') ? 0.3 : 0) + (s.morale < 55 ? 0.3 : 0.1) + (festivalOverdue(col) ? 0.35 : 0);
     case 'rest_day': return s.morale < 55 ? 0.5 : s.role === 'builder' ? -0.2 : 0.05;
     case 'wild_ring': case 'grove': case 'offering': return s.sight / 80 - (has(s, 'stoic') ? 0.2 : 0);
     case 'open_gates': return s.stats.empathy / 20 - (has(s, 'hoarder') ? 0.3 : 0);

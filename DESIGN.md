@@ -2356,3 +2356,50 @@ event log, and for a smaller log with a shorter running history.
     so they cost nothing then. The outline pass needs no special case: the
     ghosts are not in the depth buffer.
   - Button labels: *Woods: solid / Wild ghosted / all ghosted* (key O).
+
+### 22.8 Economy balance pass 2: stores, homes, wood, festivals (built)
+Diagnosed with the soak's new per-village report
+(`npx vite-node scripts/soak.ts -- 6 4 --detail`: households, buildings,
+roles, food by source, stocks, unmet needs).
+- **Food piled up past 1,200** because storage kept growing: the council
+  proposed a root cellar at every summer and autumn meeting, and ruins were
+  restored as storehouses, giving 8–11 cellars and room for 1,000–1,700.
+  Fields also made twice what was eaten (autopilot laid 8 tiles a head, and
+  each 20 tiles drew a newcomer into farming).
+  - Storage is wanted only up to `STORE_PER_HEAD` = 25 food a head (about
+    two seasons' eating; `buildings.ts#storageWanted`), for the council,
+    self-planning and restorations alike. Food above capacity spoils as
+    before.
+  - Autopilot lays new fields only while stores are below that.
+  - Work follows need (`colony.ts#rebalanceWork`, every 4 days, one person
+    at most): if the stores are still above 35 a head in spring (after
+    winter has drawn them down), or above 60 at any time, a farmer turns
+    builder; if stores fall under 8 a head with fields untended, a builder
+    goes back to farming. Not in the first year, and never someone whose
+    work the player chose this season (`Survivor.roleSetDay`).
+- **Homes plateaued** with 6–9 households waiting: no plot fitted.
+  Plot searches started only beside neighbours, along streets and on rings
+  10–15 tiles from the fire, while autopilot painted new Home ground as
+  discs of radius 6 some 20–36 tiles out, too small for an 8 × 11 plot.
+  Plots are now also tried from every third Home tile, four ways
+  (`homes.ts#zoneCandidates`), and autopilot paints discs of radius 9,
+  14–30 tiles out.
+- **A village ran out of wood for a year** (and so of tools): everything
+  within 45 tiles was cut and autopilot never marked a woodlot, since it
+  only looked for standing trees. It now marks bare ground (planted up by
+  the existing rule), and choppers look out to 70 tiles when nothing is
+  nearer.
+- **Festivals were the most unmet need**: support for one came mostly from
+  low morale, so a happy village rarely held one. An overdue festival (1.5
+  seasons since the last) now scores higher and gains support from
+  everyone.
+- **Soak, 6 villages × 4 years, before → after:** homes in year 4 8.7 →
+  11.5; winter food 1,214 → 508; cellars 8–11 → 2–4; winter wood 77 → 114;
+  need tier late 1.8–2.2 → 2.8–3.0; at the end, five of six villages meet
+  every need (the sixth lacks a festival). No deaths or stalls. Unmet needs
+  now fall mostly in years 1–2.
+- **One-year probe** (plain self-planning, 16 villages): morale by season
+  unchanged (65/67/69/63); a few more people fed. The probe measured winter
+  from day 37, left over from 12-day seasons; it now uses the calendar.
+- **Open:** simulation time per day rises to about 390 ms at 24 people in
+  year 4.

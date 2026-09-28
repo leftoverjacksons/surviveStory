@@ -153,9 +153,11 @@ reference: Tiny Glade.
     outlines were rejected by the user. Ghost version published in v25.
   - HUD TIDY §22.7: village plans, Crew and Events collapse (`.fold-btn`, remembered); Events is a
     short running log (5 in view, 30 back); left column sized by measured `--top`/`--foot`. Published in v24.
-  - NEXT (agreed): economy balance from soak data (§22.2 open findings: food surplus >1,500 by
-    year 5, homes plateau ~8.5 for 24 people, some villages never build a sewing room so clothes
-    hit 0, winter warmth dips; ~300 ms sim per day at 24 people), then performance at 24 people.
+  - ECONOMY BALANCE PASS 2 §22.8 DONE: storage capped at `STORE_PER_HEAD` (25/head), `rebalanceWork`
+    (farmers follow need; `Survivor.roleSetDay` protects player choices), plots on any Home tile
+    (`zoneCandidates`), autopilot woodlot on bare ground, chop radius 70, overdue festivals wanted.
+    `soak.ts --detail` gives per-village diagnosis. NOT published.
+  - NEXT: performance at 24 people (~390 ms sim/day in year 4; rendering unmeasured).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

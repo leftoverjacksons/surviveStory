@@ -8,6 +8,7 @@ import type { Colony } from './colony';
 import { log } from './community';
 import { seasonOf } from './calendar';
 import { roundField } from './fields';
+import { STORE_PER_HEAD } from './buildings';
 import { Zone, idx, paintZone, toTileX, toTileZ, zoneAllowed, type World } from './world';
 import { DAYS_PER_SEASON } from './calendar';
 import { alive, communityMorale } from './community';
@@ -44,7 +45,9 @@ export function autopilotDaily(col: Colony) {
   let tiles = 0;
   for (let i = 0; i < w.fieldAt.length; i++) if (w.fieldAt[i] > 0) tiles++;
   const season = seasonOf(c.day);
-  if ((season === 'spring' || !w.fields.length) && tiles < pop * 8 && w.fields.length < 8) {
+  // …and only while the stores are short of two seasons' eating (STORE_PER_HEAD a head).
+  const perHead = (c.resources.food + c.resources.preserves) / Math.max(1, pop);
+  if ((season === 'spring' || !w.fields.length) && tiles < pop * 8 && w.fields.length < 8 && (perHead < STORE_PER_HEAD || !w.fields.length)) {
     const s = bestSpot(w, 16, 30, 3.5, Zone.Field, false, fields);
     if (s.score > 20 && roundField(w, s.x, s.z, 4, w.campfire)) log(c, 'Autopilot marked out a new field.', 'info');
   }
@@ -54,12 +57,19 @@ export function autopilotDaily(col: Colony) {
   if (lot < 40 || (lot < 120 && pop >= 10 && c.day % 16 === 0)) {
     const s = bestSpot(w, 16, 30, 4.5, Zone.Woodlot, true, fields);
     if (s.score > 10) { paintZone(w, s.x, s.z, 4.5, Zone.Woodlot); log(c, 'Autopilot set aside a woodlot.', 'info'); }
+    else {
+      // Nothing left standing nearby: open ground, to be planted (bare woodlot is planted up).
+      const o = bestSpot(w, 16, 34, 4.5, Zone.Woodlot, false, fields);
+      if (o.score > 20) { paintZone(w, o.x, o.z, 4.5, Zone.Woodlot); log(c, 'Autopilot set aside bare ground for a woodlot, to be planted.', 'info'); }
+    }
   }
   autopilotClear(col);
   // More Home ground when households find no room.
   if ((col.village.noPlotDay ?? -9) >= c.day - 1) {
-    const s = bestSpot(w, 20, 36, 6, Zone.Home, false, fields);
-    if (s.score > 20) paintZone(w, s.x, s.z, 6, Zone.Home);
+    // Next to the village, not out in the woods: plots are found anywhere on Home ground now.
+    // Wide enough for a few plots (each is ~8 × 11 tiles).
+    const s = bestSpot(w, 14, 30, 9, Zone.Home, false, fields);
+    if (s.score > 60) paintZone(w, s.x, s.z, 9, Zone.Home);
   }
 }
 

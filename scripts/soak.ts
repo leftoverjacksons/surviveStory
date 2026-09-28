@@ -2,7 +2,8 @@
  * Long-run soak (DESIGN §22.2): villages on autopilot for several years,
  * reporting by season, and flagging what goes wrong over time: errors,
  * slowdowns, lists that grow without bound, sites that stall, collapse.
- * Usage: npx vite-node scripts/soak.ts -- [colonies=8] [years=5]
+ * Usage: npx vite-node scripts/soak.ts -- [colonies=8] [years=5] [--detail]
+ * (--detail: per village at the end: households, buildings, roles, food by source, stocks, unmet needs).
  */
 import { DAYS_PER_SEASON, DAYS_PER_YEAR, SEASONS } from '../src/sim/calendar';
 import { alive, communityMorale, createCommunity } from '../src/sim/community';
@@ -10,9 +11,11 @@ import { createColony, tick } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
 import { heapHaunted } from '../src/sim/haunt';
 import { needRows } from '../src/sim/trades';
+import { storageCapacity } from '../src/sim/buildings';
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const N = Number(args[0] ?? 8), YEARS = Number(args[1] ?? 5);
+const DETAIL = process.argv.includes('--detail');
 const rows: Record<string, number[][]> = {};
 const flags: string[] = [];
 const unmet = new Map<string, number>();
@@ -57,6 +60,18 @@ for (let seed = 1; seed <= N; seed++) {
   const c = col.community;
   const dead = c.survivors.filter((s) => !s.alive && !s.departed && !s.taken).length, left = c.survivors.filter((s) => s.departed).length;
   console.log(`seed ${seed}: day ${c.day}, ${alive(c).length} alive, ${dead} died, ${left} left, ${col.village.buildings.length} buildings, last day ${lastMs.toFixed(0)} ms, log ${c.log.length}, hints ${col.hints.size}, projects ${col.village.projects.length}`);
+  if (DETAIL) {
+    // Where the village stands at the end, for diagnosing balance (--detail).
+    const v = col.village, r = c.resources;
+    const hh = v.households;
+    const kinds = v.buildings.reduce<Record<string, number>>((m, b) => ((m[b.kind] = (m[b.kind] ?? 0) + 1), m), {});
+    const perYear = (n: number) => Math.round(n / YEARS);
+    console.log(`  households ${hh.length} (homed ${hh.filter((h) => h.home).length}, sizes ${hh.map((h) => h.members.length).join('')}), plots ${v.plots.length}, open home sites ${v.projects.filter((p) => !p.done && p.kind === 'home').length}`);
+    console.log(`  built ${Object.entries(kinds).map(([k, n]) => `${k}${n > 1 ? '×' + n : ''}`).join(' ')}`);
+    console.log(`  roles ${Object.entries(alive(c).reduce<Record<string, number>>((m, s) => ((m[s.role] = (m[s.role] ?? 0) + 1), m), {})).map(([k, n]) => `${k} ${n}`).join(', ')}`);
+    console.log(`  food/yr ${Object.entries(col.ledger).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${perYear(n)}`).join(' · ')}; store cap ${storageCapacity(v)}`);
+    console.log(`  stock food ${Math.round(r.food)} jars ${Math.round(r.preserves)} wood ${Math.round(r.wood)} scrap ${Math.round(r.scrap)} cloth ${Math.round(r.cloth)} tools ${r.tools.toFixed(1)} clothes ${r.clothes.toFixed(1)} rare ${r.glass + r.copper + r.steel}; unmet ${needRows(col).filter((x) => !x.met).map((x) => x.id).join(',') || 'none'}; festival ${Math.round((col.minute - col.council.festivalUntil) / 1440)} days ago`);
+  }
 }
 
 const cols = ['alive', 'morale', 'food', 'wood', 'scrap', 'homes', 'tier', 'tools', 'clothes', 'jars', 'folkLv', 'folkSt', 'cleared', 'rare', 'scrapOK', 'scrapAll', 'cloth', 'active', 'ms/day'];

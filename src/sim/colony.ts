@@ -14,7 +14,7 @@ import {
   type Season, type Weather,
 } from './calendar';
 import {
-  assignBeds, bedsTotal, completeProject, heatNeed, storageCapacity, createVillage, footCenter, hasBuilt, materialsReady,
+  assignBeds, bedsTotal, completeProject, heatNeed, storageCapacity, STORE_PER_HEAD, createVillage, footCenter, hasBuilt, materialsReady,
   outstanding, plan, store, MAX_ACTIVE, newProject, GARDEN_YIELD, MATERIALS, type Building, type Material, type Project, type Village,
 } from './buildings';
 import {
@@ -431,7 +431,9 @@ function pickTree(col: Colony, a: Agent): Task | null {
   };
   let found = woodlot ? findNearest(w, home.tx, home.tz, 70, (tx, tz) => ok(tx, tz, true)) : null;
   if (!found) {
-    found = findNearest(w, home.tx, home.tz, 45, (tx, tz) => ok(tx, tz, false));
+    // Anywhere near, then (once all that is cut) further out.
+    found = findNearest(w, home.tx, home.tz, 45, (tx, tz) => ok(tx, tz, false))
+      ?? findNearest(w, home.tx, home.tz, 70, (tx, tz) => ok(tx, tz, false));
     if (found && !col.hints.has('woodlot')) {
       col.hints.add('woodlot');
       log(col.community, `${first(survivorOf(col, a.id))} is cutting wherever there's a tree. "We should mark out a woodlot, and replant what we take."`, 'info');
@@ -2067,6 +2069,7 @@ function daily(col: Colony) {
   aspirationsDaily(col);
   col.unreachable.clear();
   arrivals(col);
+  rebalanceWork(col);
   replan(col);
   log(c, `Day ${c.day}. Morale ${Math.round(communityMorale(c))}, food ${Math.floor(r.food)}, wood ${Math.floor(r.wood)}.`, 'info');
 }
@@ -2196,10 +2199,47 @@ function arrivals(col: Colony) {
   });
 }
 
+/** Food in store (and in jars) per head. */
+const foodPerHead = (col: Colony) => {
+  const r = col.community.resources;
+  return (r.food + r.preserves) / Math.max(1, alive(col.community).length);
+};
+
+/**
+ * Work follows need (DESIGN §22.8): with the cellars still full after winter,
+ * a farmer leaves the fields to build; with stores running low and fields untended, a
+ * builder goes back to them. Every few days, one person at most, and never
+ * someone whose work the player chose this season.
+ */
+function rebalanceWork(col: Colony) {
+  const c = col.community;
+  if (c.day % 4 !== 0) return;
+  const living = alive(c);
+  const free = living.filter((s) => s.roleSetDay === undefined || c.day - s.roleSetDay >= DAYS_PER_SEASON);
+  const count = (r: RoleId) => living.filter((s) => s.role === r).length;
+  const perHead = foodPerHead(col);
+  const knack = (s: Survivor) => (s.traits.includes('green_thumb') ? 2 : 0) + s.stats.grit / 10 - (s.id % 5) / 10;
+  // Judge the surplus in spring, once winter has eaten into it (a summer store is
+  // always high just before it's needed), or any time it is far beyond use.
+  const season = seasonOf(c.day);
+  const surplus = c.day > DAYS_PER_YEAR && ((season === 'spring' && perHead > STORE_PER_HEAD * 1.4) || perHead > STORE_PER_HEAD * 2.4);
+  if (surplus && count('farmer') > 2) {
+    const s = free.filter((x) => x.role === 'farmer').sort((a, b) => knack(a) - knack(b))[0];
+    if (!s) return;
+    s.role = 'builder';
+    log(c, `${s.name.split(' ')[0]} left the fields: the cellars are full, and there's building to do.`, 'info');
+  } else if (perHead < 8 && seasonOf(c.day) !== 'winter' && fieldTiles(col).length > 20 * Math.max(1, count('farmer')) && count('builder') > 2) {
+    const s = free.filter((x) => x.role === 'builder').sort((a, b) => knack(b) - knack(a))[0];
+    if (!s) return;
+    s.role = 'farmer';
+    log(c, `${s.name.split(' ')[0]} went back to the fields: the stores are getting low.`, 'info');
+  }
+}
+
 /** Newcomers take up whatever work is most short-handed. */
 function neededRole(col: Colony): RoleId {
   const count = (r: RoleId) => alive(col.community).filter((s) => s.role === r).length;
-  if (fieldTiles(col).length > 20 * Math.max(1, count('farmer'))) return 'farmer';
+  if (fieldTiles(col).length > 20 * Math.max(1, count('farmer')) && foodPerHead(col) < STORE_PER_HEAD) return 'farmer';
   const huts = col.village.fisheries.filter((f) => hasBuilding(col, f.hut)).length;
   if (huts > 0 && count('fisher') < huts) return 'fisher';
   // Standalone benches (from before backyard trades) want makers; a household's trade is staffed by its household.
