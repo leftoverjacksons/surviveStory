@@ -140,11 +140,13 @@ reference: Tiny Glade.
     autosave each morning); soak + fixes DONE (§22.2, `scripts/soak.ts`, `sim/autopilot.ts`:
     fields/woodlots/clearings, MAX_POP 24, abandonStalled, winter wood reserve); chronicle
     panel DONE (§22.3, `sim/chronicle.ts`, `ui/chronicle.ts`, key C); start menu DONE
-    (§22.4, `ui/startmenu.ts`: Continue / new village by site, seed, autopilot). Unpublished: §22.
+    (§22.4, `ui/startmenu.ts`: Continue / new village by site, seed, autopilot). Published in v21.
+    Smoke-testing the single-file build now needs `?new` (or click Begin), since the menu waits.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.
-  - Published: version 20 (everything through §21.10: loop v2, autopilot, backyard trades).
+  - Published: version 21 (everything through §22.4: loop v2, autopilot, backyard trades,
+    save/resume, soak fixes, chronicle, start menu).
   - NEW PLAN, under discussion: DESIGN §19. Haunted districts are cleared by a small
     turn-based team (Sight = fog of war, Nerve not HP, convert/lay to rest/banish),
     and the Folk are a second society (mounds, Folk paths, the Wild, Standing).
