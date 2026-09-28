@@ -84,6 +84,8 @@ export interface Community {
   bonds: Bond[];
   resources: Resources;
   log: LogEntry[];
+  /** Log entries ever written (the log itself keeps the last 200); the chronicle reads new ones by it. */
+  logCount?: number;
 }
 
 // ---------- tuning ----------
@@ -148,6 +150,7 @@ export function communityMorale(c: Community): number {
 
 export function log(c: Community, text: string, tone: LogEntry['tone'] = 'info') {
   c.log.push({ day: c.day, text, tone });
+  c.logCount = (c.logCount ?? 0) + 1;
   if (c.log.length > 200) c.log.splice(0, c.log.length - 200);
 }
 

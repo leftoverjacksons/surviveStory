@@ -2224,3 +2224,31 @@ order: save and resume, multi-year soak testing, a chronicle of the run.
   surplus), and homes plateau at about 8.5 for 24 people.
 - **One-year probe (plain self-planning):** unchanged in essentials. No
   deaths or hunger; morale 66.
+
+### 22.3 The chronicle (built)
+- **Record** (`sim/chronicle.ts`, `col.chronicle`, saved with the game):
+  - One sample as each day ends: people, morale, food with preserves,
+    wood, scrap, homes, need tier, tools, clothes, glass/copper/steel,
+    standing with the Folk and their hill's level, districts cleared,
+    Influence. At most 2,000 samples, which is over 60 years.
+  - Notable events, picked out of the log by what it says (`classify`):
+    people (arrivals, pairings, the taken and their return), hardship
+    (cold nights, hunger, departures, deaths, sites given up), council,
+    the Veil and the Folk, milestones (joinery, first goods, tiers,
+    restorations, rare salvage), building. At most 1,500.
+  - `community.logCount` counts every log line ever written (the log
+    keeps 200), so each line is read once.
+- **Panel** (`ui/chronicle.ts`; the Chronicle button under the clock, or
+  **C**):
+  - twelve small line charts, one measure each on its own axis (steps for
+    counts and tiers), winters shaded;
+  - a crosshair shared across all charts: hovering any chart reads every
+    measure on that day;
+  - the events, newest first under a heading for each season, with filters
+    and counts by kind;
+  - "Numbers by season": a table of means.
+- The first look (seed 6, two years on autopilot) showed a village whose
+  clothes wore down to nothing with no sewing room built, so it never
+  reached Settled. That is the balance item from §22.2, now visible at a
+  glance.
+- **Tests:** `tests/chronicle.test.ts`.

@@ -44,6 +44,7 @@ import { Hud, type ZoneTool } from './ui/hud';
 
 import { canSave, makeSave, restore } from './sim/save';
 import { deleteSave, readSave, writeSave } from './ui/storage';
+import { ChronicleView } from './ui/chronicle';
 import type { Colony } from './sim/colony';
 
 // ---------- simulation ----------
@@ -842,6 +843,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'q') iso.snap(-1);
   else if (k === 'e') iso.snap(1);
   else if (k === 'l') hud.toggleLabels();
+  else if (k === 'c') chronicle.toggle();
   else if (k === 'f') setFollow(!following);
   else if (k === ' ') {
     e.preventDefault();
@@ -898,6 +900,8 @@ function adaptQuality(dt: number) {
   }
   console.info(`Quality lowered (step ${perfStep}) at ${fps.toFixed(0)} fps`);
 }
+
+const chronicle = new ChronicleView(colony);
 
 // ---------- saving (DESIGN §22.1) ----------
 let savedDay = community.day, saving = false;
@@ -1051,6 +1055,7 @@ function frame() {
     trees.syncPlanted();
     lightPeopleLayer(scene);
     hud.render();
+    chronicle.render();
   }
   hud.updateClock(iso.headingDeg);
   hud.placeLabels((id, out) => {

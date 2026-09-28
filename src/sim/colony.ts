@@ -31,6 +31,7 @@ import { breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, mayb
 import { planRestore, ruinDoor } from './restore';
 import { rareDaily, ruinToStrip, strip } from './rare';
 import { autopilotDaily } from './autopilot';
+import { chronicleDaily, type Chronicle } from './chronicle';
 import { TRADES, clothFrom, clothed, finishBatch, needComfort, needRows, needTier, pickTrade, toolFactor, tradeDemand, tradesDaily } from './trades';
 import { createHaunts, hauntDaily, heapHaunted, senseDistrict, type Clearing, type Haunt, type TakenRecord } from './haunt';
 import {
@@ -157,6 +158,8 @@ export interface Colony {
   taken: TakenRecord[];
   /** Food gained and spent this year, by source (for balancing and the HUD). */
   ledger: Record<string, number>;
+  /** Daily samples and notable events, for the chronicle panel (chronicle.ts). */
+  chronicle?: Chronicle;
 }
 
 /** Add (or, if negative, spend) food, noting where it came from. */
@@ -2049,6 +2052,7 @@ function daily(col: Colony) {
   hauntDaily(col);
   fishingDaily(col, (x, z, amt) => disturb(col, x, z, amt, 2));
   councilDaily(col);
+  chronicleDaily(col);
   abandonStalled(col);
   autopilotDaily(col);
   tradesDaily(col);

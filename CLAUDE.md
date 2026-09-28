@@ -138,8 +138,8 @@ reference: Tiny Glade.
     plot, `sim/backyard.ts`).
   - UNATTENDED RUNS (DESIGN §22): save/resume DONE (§22.1, `sim/save.ts`, IndexedDB,
     autosave each morning); soak + fixes DONE (§22.2, `scripts/soak.ts`, `sim/autopilot.ts`:
-    fields/woodlots/clearings, MAX_POP 24, abandonStalled, winter wood reserve). Next: the
-    chronicle panel (§22.3). Unpublished: §22.
+    fields/woodlots/clearings, MAX_POP 24, abandonStalled, winter wood reserve); chronicle
+    panel DONE (§22.3, `sim/chronicle.ts`, `ui/chronicle.ts`, key C). Unpublished: §22.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

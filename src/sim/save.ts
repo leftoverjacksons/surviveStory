@@ -51,4 +51,5 @@ function migrate(col: Colony) {
   for (const k of ['cloth', 'tools', 'clothes', 'preserves', 'glass', 'copper', 'steel']) r[k] ??= 0;
   col.folk.dew ??= 0;
   col.folk.song ??= 0;
+  col.community.logCount ??= col.community.log.length;
 }
