@@ -2507,3 +2507,23 @@ A game day lasts 12 real minutes at 1×, 4 at 3×, 1.5 at 8×.
 - D. *Seasonal warmth:* the firewood needed should rise toward winter
   (e.g. the winter reserve in autumn and winter, a little otherwise).
 - E. *Autopilot orders Folk works,* so soaks exercise the Folk's growth.
+
+### 22.12 Seasonal warmth; autopilot asks the Folk (built, being verified)
+From the pacing audit (§22.11, proposals D and E), which the user approved.
+- **Warmth** (`trades.ts#warmthWanted`): two days' firewood at the season's
+  burn rate (`fireWood`): the cooking fire in spring and summer, heating as
+  well in autumn and winter (at least 2). It was a flat 6 wood in any
+  season, so villages read "Struggling" in midsummer on 34% of year-1 days.
+- **Autopilot orders Folk works** (`autopilot.ts#autopilotFolk`): once the
+  Folk are met and not soured, one order at a time for whichever of rest,
+  dance or light is unmet (a bower, a ring, a lantern), on the nearest free
+  spot in the Wild.
+- The nearest shore (leisure and scrounging) is now found once a day for
+  both (`colony.ts#nearestShore`).
+- **Found while testing:** one soak village (seed 6) used up every scrap
+  heap on its map by day ~40 (about 300 scrap in all) with every district
+  cleared; homes, the tavern and lanterns then stalled for good, 3 people
+  died around days 24–32, and simulated days slowed to 3–5 s. Salvage is
+  finite on every map, with no renewable source once the heaps are gone;
+  a design question for the user (e.g. dismantling ruins in cleared
+  districts for scrap). The slow days are still under investigation.

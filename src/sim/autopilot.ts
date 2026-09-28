@@ -14,6 +14,7 @@ import { DAYS_PER_SEASON } from './calendar';
 import { alive, communityMorale } from './community';
 import { FOLK_SUITED, canClear, finish, giveDistrict, startClearing, type Clearing } from './haunt';
 import { playTurn } from './clearbot';
+import { WILD_RADIUS, folkNeeds, orderFolkWork, whyNotFolkWork, type FolkWorkKind } from './folk';
 
 /** Best spot on a ring around home for a zone disc, by count of allowed tiles (and trees for woodlots). */
 export function bestSpot(w: World, r0: number, r1: number, radius: number, kind: number, wantTrees: boolean, avoid: { x: number; z: number }[]) {
@@ -64,6 +65,7 @@ export function autopilotDaily(col: Colony) {
     }
   }
   autopilotClear(col);
+  autopilotFolk(col);
   // More Home ground when households find no room.
   if ((col.village.noPlotDay ?? -9) >= c.day - 1) {
     // Next to the village, not out in the woods: plots are found anywhere on Home ground now.
@@ -103,4 +105,27 @@ function autopilotClear(col: Colony) {
     giveDistrict(col, h.district, folk ? 'folk' : 'village');
   }
   log(c, `Autopilot sent a team into ${col.world.districts[h.district].name}: ${cl.outcome ?? 'withdrew'}.`, 'info');
+}
+
+/**
+ * Ask the Folk for what their hill lacks (DESIGN §22.12): a bower, a dancing
+ * ring or a lantern, whichever need is unmet, one order at a time, on the
+ * nearest free spot in the Wild. Without this the unattended runs never
+ * grow the hill.
+ */
+function autopilotFolk(col: Colony) {
+  const f = col.folk, w = col.world, m = w.folk.mound;
+  if (!f.met || f.standing < 20 || f.works.some((k) => k.built !== undefined && k.built < 1)) return;
+  const want: Record<string, FolkWorkKind> = { rest: 'bower', dance: 'ring', light: 'lantern' };
+  const need = folkNeeds(col).find((n) => !n.met && want[n.id]);
+  if (!need) return;
+  for (let r = m.r + 2; r <= WILD_RADIUS + 8; r += 1.5) {
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 10) {
+      const x = m.x + Math.cos(a + r) * r, z = m.z + Math.sin(a + r) * r;
+      if (whyNotFolkWork(col, x, z)) continue;
+      const k = orderFolkWork(col, want[need.id], x, z);
+      if (typeof k !== 'string') log(col.community, `Autopilot asked the Folk for a ${want[need.id]}.`, 'info');
+      return;
+    }
+  }
 }

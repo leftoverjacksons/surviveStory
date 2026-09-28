@@ -12,7 +12,7 @@
  * draws newcomers and lets houses be improved further; once the village has
  * been going a while, unmet needs of the next tier begin to weigh.
  */
-import type { Colony } from './colony';
+import { fireWood, type Colony } from './colony';
 import { DAYS_PER_SEASON, seasonOf } from './calendar';
 import { alive, log, type Resources } from './community';
 import { DEFS, bedsTotal, hasBuilt, type Building, type TradeKind } from './buildings';
@@ -184,6 +184,16 @@ function staffTrades(col: Colony) {
 
 // ---------- needs ----------
 
+/**
+ * Firewood the Warmth need asks for (DESIGN §22.12): two days' burning at the
+ * season's rate. In spring and summer that is only the cooking fire, so a
+ * village building with every stick it cuts isn't "Struggling" in midsummer;
+ * in autumn and winter the houses must be heated too.
+ */
+export function warmthWanted(col: Colony): number {
+  return Math.max(2, fireWood(col) * 2);
+}
+
 export interface NeedRow { id: string; tier: 1 | 2 | 3; label: string; met: boolean; hint: string }
 export const TIER_NAMES = ['Struggling', 'Getting by', 'Settled', 'Thriving'];
 
@@ -195,7 +205,7 @@ export function needRows(col: Colony): NeedRow[] {
   return [
     { id: 'food', tier: 1, label: 'Food', met: r.food + r.preserves >= n * 3, hint: 'Three days of food in store.' },
     { id: 'shelter', tier: 1, label: 'Shelter', met: bedsTotal(v) >= n, hint: 'A bed under a roof for everyone.' },
-    { id: 'warmth', tier: 1, label: 'Warmth', met: r.wood >= 6, hint: 'Firewood on the pile.' },
+    { id: 'warmth', tier: 1, label: 'Warmth', met: r.wood >= warmthWanted(col), hint: 'Firewood for the next two days: the cooking fire in summer, heating as well in autumn and winter.' },
     { id: 'tools', tier: 2, label: 'Tools', met: r.tools >= Math.max(1, workers(col) * 0.4), hint: 'Tools for the workers: a tool bench and a maker.' },
     { id: 'clothes', tier: 2, label: 'Clothes', met: r.clothes >= n * 0.6, hint: 'Warm clothes for most: a sewing room, and cloth from salvage.' },
     { id: 'stores', tier: 2, label: 'Stores that keep', met: hasBuilt(v, 'cellar') || r.preserves >= n * 2, hint: 'A root cellar, or preserves from the smoke shed.' },

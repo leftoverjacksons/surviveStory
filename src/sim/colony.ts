@@ -679,11 +679,22 @@ export function rationing(col: Colony): boolean {
 }
 
 /** Winter hunger: ice-fishing at the nearest pond, or picking over old tins. */
+/** The walkable shore tile nearest home, if any within 45 tiles. It hardly moves, so it is found once a day. */
+function nearestShore(col: Colony): { tx: number; tz: number } | null {
+  const w = col.world, memo = (col.memo ??= {});
+  if (memo.shoreDay !== col.community.day) {
+    const home = { tx: toTileX(w, w.home.x), tz: toTileZ(w, w.home.z) };
+    const f = findNearest(w, home.tx, home.tz, 45, (tx, tz) => passable(w, tx, tz) && isExplored(w, tx, tz)
+      && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => w.ground[idx(w, tx + dx, tz + dz)] === Ground.Water));
+    memo.shoreDay = col.community.day;
+    memo.shore = f ? idx(w, f.tx, f.tz) : -1;
+  }
+  return memo.shore >= 0 ? { tx: memo.shore % w.w, tz: Math.floor(memo.shore / w.w) } : null;
+}
+
 function pickScrounge(col: Colony, a: Agent): Task | null {
   const w = col.world;
-  const home = { tx: toTileX(w, w.home.x), tz: toTileZ(w, w.home.z) };
-  const shore = findNearest(w, home.tx, home.tz, 45, (tx, tz) => passable(w, tx, tz) && isExplored(w, tx, tz)
-    && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => w.ground[idx(w, tx + dx, tz + dz)] === Ground.Water));
+  const shore = nearestShore(col);
   const spot = shore
     ? { x: tileX(w, shore.tx), z: tileZ(w, shore.tz) }
     : { x: w.home.x + ((a.id * 37) % 21) - 10, z: w.home.z + ((a.id * 53) % 21) - 10 };
@@ -923,16 +934,7 @@ function pickLeisure(col: Colony, a: Agent, s: Survivor): Task | null {
   const season = seasonNow(col);
   const k = habit(col, s.id * 7 + Math.floor(col.minute / 240));
   if (season !== 'winter' && col.weather !== 'rain' && k < 35) {
-    const home = { tx: toTileX(w, w.home.x), tz: toTileZ(w, w.home.z) };
-    // The nearest shore hardly moves: found once a day (-1: none).
-    const memo = (col.memo ??= {});
-    if (memo.shoreDay !== col.community.day) {
-      const f = findNearest(w, home.tx, home.tz, 45, (tx, tz) => passable(w, tx, tz) && isExplored(w, tx, tz)
-        && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => w.ground[idx(w, tx + dx, tz + dz)] === Ground.Water));
-      memo.shoreDay = col.community.day;
-      memo.shore = f ? idx(w, f.tx, f.tz) : -1;
-    }
-    const shore = memo.shore >= 0 ? { tx: memo.shore % w.w, tz: Math.floor(memo.shore / w.w) } : null;
+    const shore = nearestShore(col);
     if (shore && setDest(col, a, tileX(w, shore.tx) + ((a.id % 3) - 1) * 0.6, tileZ(w, shore.tz))) return { kind: 'leisure', what: 'fish', stage: 'go', t: 0 };
   }
   if (season !== 'winter' && k < 60) {

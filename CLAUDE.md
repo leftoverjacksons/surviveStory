@@ -165,7 +165,10 @@ reference: Tiny Glade.
   - PACING AUDIT §22.11 DONE (measured only): `scripts/pacing.ts`, `scripts/choices.ts`. Findings: ~0.4
     decisions/day, councils every 4 days, everything opens in week 1, tier ladder done by ~day 40,
     council choices barely matter except Folk standing, warmth false alarm in summer, autopilot never
-    orders Folk works. Proposals A–E there await the user's choice. §22.8–22.10 still NOT published.
+    orders Folk works. User agreed to all of A–E; §22.8–22.10 published in v26.
+  - D + E BUILT §22.12 (seasonal warmth `warmthWanted`; `autopilotFolk`), tests pass, soak verification
+    pending. Open: seed 6 exhausts all scrap by day ~40 (finite salvage; ask the user) and its late days
+    are slow (3–5 s/day, cause not found yet). NOT published. Next after that: A–C with the user.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
