@@ -5,8 +5,8 @@
  */
 import { alive, log, type Community } from './community';
 import type { Site } from './sites';
-import type { Rng } from './rng';
-import { houseFloor, type Household, type Plot } from './homes';
+import { Rng } from './rng';
+import { chooseCladding, houseFloor, type HouseSpec, type Household, type Plot } from './homes';
 import type { Fishery } from './fishing';
 import { RESTORE } from './restore';
 import {
@@ -15,8 +15,10 @@ import {
 } from './world';
 
 export type FisheryKind = 'jetty' | 'fishhut' | 'netshed' | 'boat';
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | FisheryKind;
-export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'upgrade' | FisheryKind;
+export type TradeKind = 'toolshop' | 'tailor' | 'smokehouse' | 'tavern';
+export const TRADE_KINDS: TradeKind[] = ['toolshop', 'tailor', 'smokehouse', 'tavern'];
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | FisheryKind;
+export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | 'upgrade' | FisheryKind;
 export const FISHERY_KINDS: FisheryKind[] = ['jetty', 'fishhut', 'netshed', 'boat'];
 export type Tier = 0 | 1;
 
@@ -51,6 +53,8 @@ export interface Building {
   /** A restored ruin of the old world (drawn as that ruin), and the food it keeps if it is a store. */
   ruin?: number;
   capacity?: number;
+  /** The trades: what it's built from. */
+  clad?: HouseSpec['clad'];
 }
 
 export interface Project {
@@ -81,6 +85,8 @@ export interface Project {
   door?: Point;
   inside?: Point;
   yaw?: number;
+  /** The trades: what it's built from (salvage the village has brought home). */
+  clad?: HouseSpec['clad'];
 }
 
 export interface Village {
@@ -115,6 +121,8 @@ export interface Village {
   hearths: { name: string; building: number; ruin?: number }[];
   /** Day the last restoration was planned. */
   lastRestore?: number;
+  /** Highest tier of needs met (see trades.ts), updated daily. */
+  needTier?: number;
   /** The village plans and places its own buildings (tests, probes). Off in the game: the player places them. */
   autoPlan?: boolean;
 }
@@ -134,6 +142,11 @@ export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_st
   cellar:   { name: ['Root cellar', 'Stone-lined cellar'], w: 3, d: 3, cost: [c(10, 4), c(20, 0)], work: [360, 480] },
   shrine:   { name: ['Wayside shrine', 'Stone shrine'], w: 2, d: 2, cost: [c(8, 2, 8), c(14, 0, 8)], work: [300, 360] },
   lantern:  { name: ['Solar lantern', 'Solar lantern'], w: 1, d: 1, cost: [c(2, 2, 6), c(2, 2, 6)], work: [120, 120] },
+  // The trades (DESIGN §21.6): small salvage buildings, each with its own yard of work.
+  toolshop:   { name: ['Tool bench', 'Toolmaker\'s shop'], w: 4, d: 3, cost: [c(14, 10), c(28, 8)], work: [480, 660] },
+  tailor:     { name: ['Sewing room', 'Tailor\'s shop'], w: 3, d: 3, cost: [c(12, 6), c(26, 4)], work: [420, 600] },
+  smokehouse: { name: ['Smoke shed', 'Smokehouse'], w: 3, d: 3, cost: [c(16, 4), c(26, 2)], work: [420, 560] },
+  tavern:     { name: ['Tap room', 'Tavern'], w: 5, d: 4, cost: [c(24, 12), c(40, 8)], work: [900, 1200] },
 };
 
 export const GARDEN_YIELD: [number, number] = [2, 3]; // food per tended day: kitchen plots, not staples
@@ -282,7 +295,7 @@ export function storageCapacity(v: Village): number {
     + v.buildings.filter((b) => b.kind === 'fishhut').length * 50;
 }
 
-export type SiteKind = 'hut' | 'garden' | 'workshop' | 'lantern' | 'cellar' | 'shrine';
+export type SiteKind = 'hut' | 'garden' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | TradeKind;
 
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
@@ -299,7 +312,7 @@ export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot
       const foot = { tx: cxT + dx, tz: czT + dz, w: fw, d: fd };
       const cen = footCenter(w, foot);
       const dist = Math.hypot(cen.x - CAMP.x, cen.z - CAMP.z);
-      const ideal = kind === 'lantern' ? 7 : kind === 'garden' ? 13 : kind === 'workshop' || kind === 'cellar' ? 10 : kind === 'shrine' ? 14 : 9;
+      const ideal = kind === 'lantern' ? 7 : kind === 'garden' ? 13 : kind === 'workshop' || kind === 'cellar' || kind === 'toolshop' ? 10 : kind === 'shrine' ? 14 : kind === 'tavern' ? 8 : kind === 'smokehouse' ? 12 : 9;
       let score = Math.abs(dist - ideal) * 1.2;
       if (score - 7 > bestScore) continue; // 7 = the most frontage can win back
       const free = footprintFree(w, v, foot, kind === 'lantern' ? 0 : 1);
@@ -346,6 +359,7 @@ export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot
 
 export function newProject(v: Village, p: Omit<Project, 'id' | 'delivered' | 'incoming' | 'work' | 'done'>): Project {
   const proj: Project = { ...p, id: v.nextId++, delivered: zero(), incoming: zero(), work: 0, done: false };
+  if ((TRADE_KINDS as string[]).includes(p.kind)) proj.clad = chooseCladding(v, new Rng(proj.id * 7919 + 13));
   v.projects.push(proj);
   return proj;
 }
@@ -463,7 +477,8 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   if (!has('upgrade') && com.day >= 12) {
     // Glasshouses come slowly: the first around day 40, then one every eight days.
     const kept = v.buildings.filter((b) => b.kind === 'home' && b.level >= 2).length;
-    const glassOk = v.tier === 1 && com.day >= 40 + kept * 8;
+    // …and only once the village is settled (tools, clothes, stores, homes: see trades.ts).
+    const glassOk = v.tier === 1 && com.day >= 40 + kept * 8 && (v.needTier ?? 0) >= 2;
     const home = v.buildings
       .filter((b) => b.kind === 'home' && b.household && b.level < 2 && (b.level === 0 || glassOk))
       .sort((a, b) => a.level - b.level)[0];
@@ -488,6 +503,15 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   if (v.buildings.filter((b) => b.kind === 'garden').length < Math.min(2, Math.ceil(pop / 6)) && !has('garden')) {
     wants.push(() => site('garden'));
   }
+  // The trades, as the village grows into them (DESIGN §21.6).
+  // Only from a surplus: a trade is never worth a cold night.
+  const trade = (k: TradeKind, when: boolean) => {
+    if (when && !hasBuilt(v, k) && !has(k) && com.resources.wood >= DEFS[k].cost[v.tier].wood + 20) wants.push(() => site(k));
+  };
+  trade('toolshop', hasBuilt(v, 'workshop') && pop >= 5);
+  trade('smokehouse', pop >= 5 && (seasonIdx === 1 || seasonIdx === 2));
+  trade('tailor', pop >= 6 && com.day >= 14);
+  trade('tavern', pop >= 8 && v.buildings.filter((b) => b.kind === 'home').length >= 3);
 
   // The council's wish goes first.
   if (v.priority && !has(v.priority)) {
@@ -513,6 +537,10 @@ export const PLACEABLE: { kind: SiteKind; blurb: string }[] = [
   { kind: 'garden', blurb: 'A kitchen garden: a little food, tended daily.' },
   { kind: 'shrine', blurb: 'Somewhere the land can rest: Resonance around it.' },
   { kind: 'lantern', blurb: 'A lamp post on salvaged solar. Light between the houses.' },
+  { kind: 'toolshop', blurb: 'A maker turns scrap and wood into tools. Tools make every job go faster.' },
+  { kind: 'tailor', blurb: 'A maker sews salvaged cloth into clothes. Winter is kinder to the well dressed.' },
+  { kind: 'smokehouse', blurb: 'A maker puts up food in smoke and jars. Preserves never spoil.' },
+  { kind: 'tavern', blurb: 'Somewhere to go of an evening: company, a fiddle, something to drink.' },
 ];
 
 /** The footprint of a building placed at a tile, turned (0–3). */
@@ -652,7 +680,7 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
       const b: Building = {
         id: v.nextId++, kind, tier: p.tier, foot: p.foot, facing: p.facing,
         door: kind === 'kitchen' ? { ...v.site.kitchen } : doorOf(w, p.foot, p.facing),
-        inside: cen, beds: def.beds ? def.beds[p.tier] : 0, level: 0, tended: 0, growth: 0.1, name: def.name[p.tier],
+        inside: cen, beds: def.beds ? def.beds[p.tier] : 0, level: 0, tended: 0, growth: 0.1, name: def.name[p.tier], clad: p.clad,
       };
       v.buildings.push(b);
       if (kind !== 'kitchen' && kind !== 'garden') block(p.foot);

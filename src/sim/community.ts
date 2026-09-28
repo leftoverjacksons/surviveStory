@@ -61,6 +61,12 @@ export interface Resources {
   scrap: number;
   medicine: number;
   glimmer: number; // gathered from wisps; fuels psi
+  /** Salvaged fabric: curtains, seat covers, sheets. The tailor makes it into clothes. */
+  cloth: number;
+  /** Made goods (DESIGN §21.6): tools speed work, clothes keep out the cold, preserves keep. */
+  tools: number;
+  clothes: number;
+  preserves: number;
 }
 
 export interface LogEntry { day: number; text: string; tone: 'info' | 'good' | 'bad' | 'strange' }
@@ -207,7 +213,7 @@ export function createCommunity(seed: number, size = 5): Community {
     nextId: 1,
     survivors: [],
     bonds: [],
-    resources: { food: 40, wood: 16, scrap: 4, medicine: 2, glimmer: 0 },
+    resources: { food: 40, wood: 16, scrap: 4, medicine: 2, glimmer: 0, cloth: 2, tools: 2, clothes: 3, preserves: 0 },
     log: [],
   };
   for (let i = 0; i < size; i++) c.survivors.push(createSurvivor(c, rng));

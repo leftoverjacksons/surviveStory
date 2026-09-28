@@ -40,13 +40,14 @@ export const PSI: Record<PsiId, PsiDef> = {
   echo:     { id: 'echo', name: 'Echo', blurb: 'Reads the last memory left in an object.' },
 };
 
-export type RoleId = 'builder' | 'farmer' | 'forager' | 'fisher' | 'scout' | 'tender' | 'attune' | 'rest';
+export type RoleId = 'builder' | 'farmer' | 'forager' | 'fisher' | 'maker' | 'scout' | 'tender' | 'attune' | 'rest';
 
 export const ROLES: Record<RoleId, { name: string; blurb: string }> = {
   builder: { name: 'Builder', blurb: 'Fells trees and hauls what the village needs.' },
   farmer:  { name: 'Farmer', blurb: 'Tills, sows, tends and harvests the fields you mark.' },
   forager: { name: 'Forager', blurb: 'Gathers berries and greens from the overgrowth.' },
   fisher:  { name: 'Fisher', blurb: 'Works the fishing grounds you mark: jetty, nets and boat.' },
+  maker:   { name: 'Maker', blurb: 'Works the trades: tools at the bench, clothes from salvaged cloth, fish and meat put up in the smoke shed.' },
   scout:   { name: 'Scout', blurb: 'Walks the edge of the known map and pushes it back.' },
   tender:  { name: 'Tender', blurb: 'Keeps the fire and keeps people company.' },
   attune:  { name: 'Attuner', blurb: 'Sits with the wisps at the ring. Gathers glimmer.' },

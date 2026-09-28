@@ -24,6 +24,7 @@ import { ASPIRATIONS, SKILLED, knowers, skill } from '../sim/purpose';
 import { YARD, homeComfort, householdName, householdOf, waitingHouseholds } from '../sim/homes';
 import { fisheryOf } from '../sim/fishing';
 import { CALM_COST, DREAM_COST, OMEN_COST, councilFavourite, resolvable } from '../sim/council';
+import { TIER_NAMES, needRows, needTier } from '../sim/trades';
 
 /** What each kind of building is for, in plain words. */
 const BUILDING_INFO: Record<string, string> = {
@@ -40,6 +41,10 @@ const BUILDING_INFO: Record<string, string> = {
   jetty: 'A jetty out over the pond. Fishers sit at its end; in winter they cut holes in the ice beside it.',
   fishhut: 'The fishing hut, with racks for drying and smoking the catch: smoked fish keeps (more room in the stores). Fishers eat here instead of walking home.',
   netshed: 'The net shed, where nets are mended. Fishers who know net-mending catch half again as much once there is one. In heavy rain they work here.',
+  toolshop: 'The tool bench. A maker turns 2 scrap and 1 wood into a tool. Tools wear out, and with enough of them every job goes up to a quarter faster.',
+  tailor: 'The sewing room. A maker sews 2 cloth into clothes. Cloth comes back with salvage: curtains, seat covers, sheets. Clothes wear out; people without them feel the winter.',
+  smokehouse: 'The smoke shed. A maker puts up food with a little wood: preserves never spoil and aren\'t limited by storage. They are opened when the stores run low.',
+  tavern: 'The tavern. Most evenings, people without a home to go to (and some with) spend them here: company, a fiddle, a little food and drink. Lifts everyone\'s mood.',
   boat: 'A rowing boat. Out in the middle is where the big ones are: a third more catch, except in winter.',
 };
 
@@ -255,15 +260,22 @@ export class Hud {
     const r = c.resources;
     const morale = communityMorale(c);
     const res: [string, string, string][] = [
-      ['Food', Math.floor(r.food).toString(), ''],
+      ['Food', r.preserves >= 1 ? `${Math.floor(r.food)}+${Math.floor(r.preserves)}` : Math.floor(r.food).toString(), ''],
       ['Wood', Math.floor(r.wood).toString(), ''],
       ['Scrap', Math.floor(r.scrap).toString(), ''],
+      ['Tools', Math.floor(r.tools).toString(), ''],
+      ['Clothes', Math.floor(r.clothes).toString(), ''],
       ['Glimmer', r.glimmer.toFixed(1), 'glimmer'],
       ['Morale', morale.toFixed(0), morale < 40 ? 'morale low' : 'morale'],
       ['Influence', Math.floor(this.col.veil.influence).toString(), 'influence'],
       ['Explored', `${(exploredFraction(this.col.world) * 100).toFixed(1)}%`, ''],
     ];
-    const resHtml = res.map(([k, v, cls]) => `<div class="res ${cls}"><b>${v}</b><span>${k}</span></div>`).join('');
+    const tips: Record<string, string> = {
+      Food: 'Food in store, plus preserves (which never spoil and are opened when stores run low).',
+      Tools: 'Made at the tool bench. Up to a quarter faster at every job; they wear out.',
+      Clothes: `Made in the sewing room from cloth (${Math.floor(r.cloth)} in store, from salvage). Keep out the winter cold; they wear out.`,
+    };
+    const resHtml = res.map(([k, v, cls]) => `<div class="res ${cls}"${tips[k] ? ` title="${esc(tips[k])}"` : ''}><b>${v}</b><span>${k}</span></div>`).join('');
     if ($('res').innerHTML !== resHtml) $('res').innerHTML = resHtml;
 
     const living = alive(c);
@@ -337,12 +349,25 @@ export class Hud {
       : `<div class="empty">${v.autoPlan === false ? 'Nothing planned. Open Build (B) to place something, or wait for the council.' : 'Nothing planned. They\'ll think of something when the village needs it.'}</div>`)
       + this.agreedLine()
       + this.waitingLine()
+      + this.needsLine()
       + `<div class="st" style="display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--ink-dim)">${tier}<span>${built} built</span></div>`;
     if ($('projects').innerHTML !== html) $('projects').innerHTML = html;
     this.renderWinter();
     this.renderInspect();
     this.renderVeil();
     this.renderCouncil();
+  }
+
+  /** The village's needs: the tier it has reached, and what the next one asks for. */
+  private needsLine(): string {
+    const rows = needRows(this.col);
+    const tier = needTier(this.col, rows);
+    const next = rows.filter((x) => x.tier === Math.min(3, tier + 1));
+    const done = tier === 3;
+    const items = (done ? rows.filter((x) => x.tier === 3) : next).map((x) =>
+      `<span class="need ${x.met ? 'met' : ''}" title="${esc(x.hint)}">${x.met ? '✓' : '·'} ${esc(x.label)}</span>`).join('');
+    return `<div class="vneeds" title="Each tier met lifts everyone's mood and draws newcomers. Settled villages can build glasshouses; from the third week, unmet Settled needs weigh on people.">
+      <div class="nt"><span>Needs</span><b>${esc(TIER_NAMES[tier])}</b>${done ? '' : `<em>next: ${esc(TIER_NAMES[tier + 1])}</em>`}</div><div class="nl">${items}</div></div>`;
   }
 
   /** Council decisions still waiting for the player to place them. */

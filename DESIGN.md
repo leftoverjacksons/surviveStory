@@ -1871,3 +1871,79 @@ moon and festival rule) is folded into steps 5–7.
 - Headless runs are unchanged: an unanswered council settles itself at the
   first morning after its day is up.
 - **Tests:** `tests/council.test.ts`.
+
+### 21.6 Step 4: need tiers and the first trades (built)
+- **Goods** (`Resources`):
+  - `cloth` comes back with salvage: about 0.25 per scrap, 0.45 from
+    houses, motels and shops, 0.15 from cars (`trades.ts#clothFrom`).
+  - `tools`, `clothes` and `preserves` are made. The start is 2 tools,
+    3 clothes and 2 cloth.
+- **Trade buildings** (`TradeKind`; placeable from the Build menu,
+  proposed by the council, or self-planned under `autoPlan`):
+
+  | Building (tier 0 / 1) | Makes | From | Minutes | Wanted in stock |
+  |---|---|---|---|---|
+  | Tool bench / Toolmaker's shop | 1 tool | 2 scrap, 1 wood | 110 | 0.8 × workers + 1 |
+  | Sewing room / Tailor's shop | 1 clothes | 2 cloth | 100 | 1.3 × people |
+  | Smoke shed / Smokehouse | 4 preserves | 4 food, 1 wood | 80 | 7 × people in summer and autumn, else 3 × |
+  | Tap room / Tavern | evening place | — | — | — |
+
+  - Timber (tier 1) benches make 25% more per batch.
+  - Benches never burn wood when the pile is below 12 + people.
+  - Food is not smoked while stores are below 6 per person.
+- **Makers** (`RoleId 'maker'`) work the bench whose good is furthest
+  below its target and has materials (`pickTrade`); otherwise they salvage,
+  haul and build.
+  - The survivors staff the trades themselves (`staffTrades`): with
+    benches built and 5+ people, one person a day moves to maker, up to
+    ceil(benches / 2), at most 3. Tinkerers, those hoping to craft and
+    hoarders go first, drawn only from over-staffed roles.
+  - Newcomers fill the role too (`neededRole`).
+- **Effects:**
+  - Tools make builders, farmers, foragers, fishers and makers up to 25%
+    faster (`toolFactor`, in `workRate`). They wear at 0.035 per worker
+    per day.
+  - Clothes wear at 0.012 per person per day (0.03 in winter). Winter
+    comfort drops by up to 4 for the unclothed share. Cold nights and
+    sleeping out hurt less when clothed.
+  - Preserves never spoil and don't count against storage. They are
+    opened when food falls below 3 per person.
+  - The tavern takes about half the village most evenings (social need
+    +25/h, like the hall) and adds 1 to comfort. It costs up to 2 food a
+    day while stores are comfortable.
+- **Need tiers** (`trades.ts#needRows/needTier`, shown in the plans panel
+  as "Needs · Settled · next: Thriving"):
+  - Getting by: 3 days of food (with preserves), a bed for everyone,
+    6+ firewood.
+  - Settled: tools for 40% of workers, clothes for 60% of people, a
+    cellar or preserves of 2 per person, half the households in homes.
+  - Thriving: a tavern, a shrine and 2+ lanterns, a festival within 24
+    days.
+- **What the tier does:**
+  - Mood: −2 / 0 / +1.5 / +3 by tier. From day 16, each unmet Settled
+    need costs −0.75.
+  - Newcomers are drawn at ×0.6 / 1 / 1.4 / 1.8 of the usual rate.
+  - Glasshouses (house level 2) need Settled.
+  - Reaching Settled and Thriving is news in the log.
+- **Council:** proposes the tool bench, smoke shed (summer and autumn),
+  sewing room and tavern, each spoken for by someone who wants it. At
+  most one trade per council. The Folk's emissary proposals were raised
+  (festival 1.4, land 1.3) so they aren't crowded out.
+- **Autoplan** starts a trade only from a surplus of wood (its cost + 20),
+  so a trade is never worth a cold night.
+- **Rendering** (`render/trades.ts`):
+  - Trade buildings are small procedural salvage houses (`buildHouse`)
+    clad from `village.salvaged` (`Project.clad` → `Building.clad`).
+  - Each has props: an open tin lean-to with anvil, stump and grindstone;
+    a washing line of cut cloth; smoke racks hung with fish, and split
+    wood; a tavern porch with benches, a cable-drum table, barrels, a
+    hanging sign and a string of bulbs.
+  - Cellars (a turfed mound with a door front) and shrines (a cairn, a
+    roofed niche, candles and flowers) are drawn at last. Before, they
+    had no mesh.
+- **Probe** (48 colonies × 48 days, self-planning):
+  - by winter: need tier 1.9 (0–3), 3.9 trades, 1.9 makers, 7.7 tools,
+    14 clothes, 41 preserves;
+  - no deaths or departures, morale 69;
+  - homes 3.8 (4.4 before: builders now also raise the trades).
+- **Tests:** `tests/trades.test.ts`.

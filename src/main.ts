@@ -1047,6 +1047,7 @@ const veilDebug = {
   },
 };
 Object.assign(window, { __game: { ...veilDebug, stats, addModel, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
+  place: (k: PlaceKind, x: number, z: number, turn = 0) => { const { foot, facing } = footAt(k, toTileX(world, x), toTileZ(world, z), turn); return placeProject(world, colony.village, community, k, foot, facing); },
   fits: (k: PlaceKind, x: number, z: number, turn = 0) => canPlace(world, colony.village, k, footAt(k, toTileX(world, x), toTileZ(world, z), turn).foot).ok,
   screenOf: (x: number, z: number) => toScreen(x, heightAt(world, x, z), z),
   plotTry: (pts: { x: number; z: number }[]) => { const r = outlinePlot(world, colony.village, pts, new Rng(1)); return typeof r === 'string' ? r : 'ok'; } } });

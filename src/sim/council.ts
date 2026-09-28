@@ -57,6 +57,8 @@ export function createCouncil(): Council {
 }
 
 const first = (s: Survivor) => s.name.split(' ')[0];
+const isTrade = (p: { kind: string; build?: string }) => p.kind === 'build' && ['toolshop', 'tailor', 'smokehouse', 'tavern'].includes(p.build ?? '');
+const avgMoraleOf = (living: Survivor[]) => living.reduce((n, s) => n + s.morale, 0) / Math.max(1, living.length);
 /** Proposal titles inside a sentence: lower-case the first word, keep names. */
 const inline = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
 const has = (s: Survivor, t: string) => s.traits.includes(t as never);
@@ -148,6 +150,23 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
     buildCand('lantern', 0.9, 'Put up another solar lantern', 'The dark between the houses is too deep.',
       (s) => (s.role === 'attune' ? 1 : 0) + (has(s, 'skittish') ? 1 : 0));
   }
+  // The trades: someone who wants to make things speaks for each.
+  const tinker = (s: Survivor) => (has(s, 'tinkerer') ? 2 : 0) + (s.role === 'maker' ? 1.5 : 0) + (s.aspiration?.kind === 'craft' ? 1 : 0);
+  if (hasBuilt(v, 'workshop') && !hasBuilt(v, 'toolshop') && pop >= 4) {
+    buildCand('toolshop', r.tools < pop * 0.4 ? 1.9 : 1.1, 'Set up a tool bench', 'Half our tools are broken and the rest are borrowed. Give me a forge and a grindstone.', tinker);
+  }
+  if (!hasBuilt(v, 'smokehouse') && pop >= 4 && (season === 'summer' || season === 'autumn')) {
+    buildCand('smokehouse', 1.6, 'Build a smoke shed', 'We catch more than we can eat and it rots. Smoke it, jar it, and it keeps till spring.',
+      (s) => (s.role === 'fisher' ? 2 : 0) + (has(s, 'hoarder') ? 1 : 0) + tinker(s) / 2);
+  }
+  if (!hasBuilt(v, 'tailor') && pop >= 5 && day >= 10) {
+    buildCand('tailor', season === 'autumn' ? 2 : 1.2, 'Open a sewing room', 'There are curtains in every house out there. We could all be warm by winter.',
+      (s) => (s.background.includes('teacher') ? 1 : 0) + tinker(s) + s.stats.empathy / 10);
+  }
+  if (!hasBuilt(v, 'tavern') && pop >= 7) {
+    buildCand('tavern', avgMoraleOf(living) < 60 ? 1.8 : 1.2, 'Open a tavern', 'Somewhere to go of an evening that isn\'t the fire or our own four walls. A fiddle. Something to drink.',
+      (s) => (has(s, 'storyteller') ? 2 : 0) + (s.background.includes('cook') ? 2 : 0) + s.stats.empathy / 8);
+  }
   if (!hasBuilt(v, 'workshop')) {
     buildCand('workshop', 1.2, 'Set up a workbench', 'Give me a bench and a vice and I\'ll build you anything.',
       (s) => (has(s, 'tinkerer') ? 2 : 0) + (s.role === 'builder' ? 0.5 : 0));
@@ -167,8 +186,9 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
   const f = col.folk, hill = col.world.folk.mound.name;
   const folkVoice = () => voice(living, (s) => s.sight / 20 + (s.role === 'attune' ? 1 : 0), rng, taken).id;
   if (f.met && f.standing >= 35 && r.food >= 20 && r.wood >= 8 && col.minute > col.council.festivalUntil + 1440 * 8) {
+    // Word from the hill is rare, and weighs more than the everyday asks.
     out.push({
-      score: 1.1,
+      score: 1.4,
       make: () => ({
         kind: 'folk_festival', title: `Hold a festival with the Folk of ${hill}`, cost: { food: 12, wood: 6 },
         pitch: 'They dance at the Ring when the moon\'s up. Let\'s bring the food and the fiddle and dance with them, for once.',
@@ -178,7 +198,7 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
   }
   if (f.met && f.standing >= 40 && f.land < landWanted(f)) {
     out.push({
-      score: 1.0,
+      score: 1.3,
       make: () => ({
         kind: 'folk_land', title: 'Give the Folk more of the woods by their hill', cost: {},
         pitch: `${f.beings.find((b) => b.known)?.name ?? 'One of them'} asked me for room. Their hill wants to grow, and it can't without the land.`,
@@ -301,6 +321,8 @@ export function maybeConvene(col: Colony, rng: Rng) {
     const key = p.kind === 'build' ? `build:${p.build}` : p.kind === 'home' ? `home:${p.household}` : p.kind;
     if (kinds.has(key) || speakers.has(p.proposer)) continue;
     if (p.kind === 'home' && picked.filter((x) => x.kind === 'home').length >= 2) continue;
+    // One of the trades at a time, so they don't crowd out everything else.
+    if (isTrade(p) && picked.some(isTrade)) continue;
     kinds.add(key);
     speakers.add(p.proposer);
     picked.push({ ...p, id: council.nextId++, support: [] });

@@ -19,7 +19,7 @@ export interface Obstacle {
 
 /** Height (above ground) of each kind of building, ridge included. */
 const TOP: Partial<Record<string, number>> = {
-  annex: 3.1, hut: 3.5, workshop: 3.7, kitchen: 3.3, cellar: 1.6, shrine: 2.6, fishhut: 3.3, netshed: 2.9, garden: 0.9, upgrade: 3.7,
+  annex: 3.1, hut: 3.5, workshop: 3.7, kitchen: 3.3, cellar: 1.6, shrine: 2.6, fishhut: 3.3, netshed: 2.9, garden: 0.9, upgrade: 3.7, toolshop: 3.6, tailor: 3.4, smokehouse: 3.8, tavern: 3.9,
 };
 
 function box(w: World, cx: number, cz: number, yaw: number, hw: number, hd: number, top: number, base?: number): Obstacle {

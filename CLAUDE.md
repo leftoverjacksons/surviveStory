@@ -126,7 +126,9 @@ reference: Tiny Glade.
     step 2 (build menu, placement, drawn plots, restore from the menu) DONE §21.4:
     the game runs with `village.autoPlan = false` (`?auto` for the old self-planning).
     Step 3 (the council pauses and asks; builds go straight to placement) DONE §21.5.
-    Next is step 4, need tiers and production. Unpublished: §20.6–20.7, §21.3–21.5.
+    Step 4 (need tiers; tool bench, sewing room, smoke shed, tavern; maker role;
+    goods tools/cloth/clothes/preserves; `sim/trades.ts`, `render/trades.ts`) DONE §21.6.
+    Next is step 5, district-only materials. Unpublished: §20.6–20.7, §21.3–21.6.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

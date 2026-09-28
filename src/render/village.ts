@@ -9,6 +9,8 @@ import { WATER_Y, heightAt, tileX, tileZ, type Heap, type World } from '../sim/w
 import type { StoreParts } from './station';
 import { homeLayout, houseFloor, housePoint } from '../sim/homes';
 import { buildHouse, foundationUnder } from './house';
+import { cellarMesh, shrineMesh, tradeMesh } from './trades';
+import type { HouseSpec } from '../sim/homes';
 import { mergeStatic } from './merge';
 import type { RoofControl } from './roofs';
 import { glowTexture, makeRand } from './util';
@@ -679,7 +681,7 @@ export class VillageView {
     g.userData.ground = ground;
   }
 
-  private meshFor(kind: string, tier: number, f: Footprint, facing: number, p: number, growth: number, seed: number, glow: THREE.Mesh[]): THREE.Group {
+  private meshFor(kind: string, tier: number, f: Footprint, facing: number, p: number, growth: number, seed: number, glow: THREE.Mesh[], clad?: HouseSpec['clad']): THREE.Group {
     const { W, D } = localSize(f, facing);
     let g: THREE.Group;
     switch (kind) {
@@ -687,6 +689,9 @@ export class VillageView {
       case 'garden': g = garden(W + 0.2, D + 0.2, tier, p, growth, seed); break;
       case 'workshop': g = workshop(W, D, tier, p); break;
       case 'lantern': g = lantern(p); break;
+      case 'cellar': g = cellarMesh(W + 0.2, D + 0.2, tier, p); break;
+      case 'shrine': g = shrineMesh(W, D, tier, p, seed, glow); break;
+      case 'toolshop': case 'tailor': case 'smokehouse': case 'tavern': g = tradeMesh(kind, W, D, tier, p, (f.tx * 7349 + f.tz * 131) >>> 0, clad, glow); break; // same look as a site and when finished
       case 'annex': g = leanTo(W + 0.3, D + 0.3, p, glow); break;
       case 'jetty': {
         const len = (facing === 1 || facing === 3) ? f.w : f.d;
@@ -891,7 +896,7 @@ export class VillageView {
       live.add(id);
       const key = `${b.kind}${b.tier}:${Math.round(b.growth * 5)}`;
       this.upsert(id, key, (glow) => {
-        const g = this.meshFor(b.kind, b.tier, b.foot, b.facing, 1, b.growth, b.id, glow);
+        const g = this.meshFor(b.kind, b.tier, b.foot, b.facing, 1, b.growth, b.id, glow, b.clad);
         g.userData.buildingId = b.id;
         return g;
       });
@@ -925,13 +930,13 @@ export class VillageView {
           g.add(materialPile(p, p.foot, this.world));
           if (prog > 0.5) {
             const target = v.buildings.find((b) => b.id === p.target);
-            if (target) g.add(this.meshFor(target.kind, 1, p.foot, p.facing, (prog - 0.5) * 2 * 0.7, target.growth, target.id, glow));
+            if (target) g.add(this.meshFor(target.kind, 1, p.foot, p.facing, (prog - 0.5) * 2 * 0.7, target.growth, target.id, glow, target.clad));
           }
           return g;
         }
         if (p.kind !== 'kitchen') g.add(blueprint(p.foot, this.world));
         g.add(materialPile(p, p.foot, this.world));
-        if (p.work > 0) g.add(this.meshFor(p.kind, p.tier, p.foot, p.facing, Math.min(0.99, prog), 0.2, p.id, glow));
+        if (p.work > 0) g.add(this.meshFor(p.kind, p.tier, p.foot, p.facing, Math.min(0.99, prog), 0.2, p.id, glow, p.clad));
         return g;
       });
     }
