@@ -2403,3 +2403,23 @@ roles, food by source, stocks, unmet needs).
   from day 37, left over from 12-day seasons; it now uses the calendar.
 - **Open:** simulation time per day rises to about 390 ms at 24 people in
   year 4.
+
+### 22.9 Simulation performance at 24 people (built)
+- **Profile** (`NODE_OPTIONS=--cpu-prof`, one village over 4 years): 47% of
+  the time went to choosing tasks, mostly nearest-tile searches that found
+  nothing (planting bare woodlot within 70 tiles: 13%; foraging: 9%;
+  the nearest shore for leisure: 9%; the scout's rays: 6%), repeated at
+  every decision. Pathfinding was 18%.
+- **Fixes:**
+  - A search memo on the colony (`colony.ts#quiet/hush`, `Colony.memo`):
+    a search that found nothing isn't repeated for a while (trees and
+    planting 60 game minutes, foraging 30, scouting 120); the nearest shore
+    is found once a day. The memo is saved with the colony, so a restored
+    game continues exactly as before.
+  - A* heuristic weight 0.8 → 0.95 (most ground costs 1): paths stay close
+    to optimal and still prefer lanes, with far fewer tiles expanded.
+- **Result:** 6 villages × 4 years in 85 s (was 152 s); about 160 ms per
+  simulated day at 24 people in year 4 (was about 390). Balance unchanged
+  (all six villages meet every need at the end).
+- **Found on the way:** a house's door step could land on blocked ground.
+  Plots now require the tile outside the door to be passable.

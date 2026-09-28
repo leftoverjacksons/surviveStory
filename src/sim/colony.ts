@@ -160,7 +160,14 @@ export interface Colony {
   ledger: Record<string, number>;
   /** Daily samples and notable events, for the chronicle panel (chronicle.ts). */
   chronicle?: Chronicle;
+  /** Searches that found nothing, and the minute until which they aren't repeated (saved, so runs stay deterministic). */
+  memo?: Record<string, number>;
 }
+
+/** Has this search come up empty recently? (See `hush`.) */
+const quiet = (col: Colony, key: string) => ((col.memo ??= {})[key] ?? -1) > col.minute;
+/** A search found nothing: don't repeat it for a while. Idle people ask many times a minute. */
+const hush = (col: Colony, key: string, minutes: number) => { (col.memo ??= {})[key] = col.minute + minutes; };
 
 /** Add (or, if negative, spend) food, noting where it came from. */
 export function gainFood(col: Colony, source: string, amount: number) {
@@ -413,6 +420,7 @@ function hasWoodlot(col: Colony): boolean {
 function pickTree(col: Colony, a: Agent): Task | null {
   const c = col.community.resources;
   if (c.wood + groundWood(col) >= woodWanted(col)) return null;
+  if (quiet(col, 'tree')) return null;
   const w = col.world;
   const home = { tx: toTileX(w, w.home.x), tz: toTileZ(w, w.home.z) };
   // With a woodlot marked, cut there; otherwise nearest home. Never on sacred ground.
@@ -434,6 +442,7 @@ function pickTree(col: Colony, a: Agent): Task | null {
     // Anywhere near, then (once all that is cut) further out.
     found = findNearest(w, home.tx, home.tz, 45, (tx, tz) => ok(tx, tz, false))
       ?? findNearest(w, home.tx, home.tz, 70, (tx, tz) => ok(tx, tz, false));
+    if (!found) hush(col, 'tree', 60);
     if (found && !col.hints.has('woodlot')) {
       col.hints.add('woodlot');
       log(col.community, `${first(survivorOf(col, a.id))} is cutting wherever there's a tree. "We should mark out a woodlot, and replant what we take."`, 'info');
@@ -465,6 +474,8 @@ function pickForage(col: Colony, a: Agent): Task | null {
   const w = col.world;
   // The Wild's berries are the Folk's; only the hungry take them.
   const hungry = rationing(col) || col.community.resources.food < col.agents.length * 2;
+  const key = hungry ? 'forageH' : 'forage';
+  if (quiet(col, key)) return null;
   const found = findNearest(w, toTileX(w, a.x), toTileZ(w, a.z), 40, (tx, tz) => {
     const id = w.bushAt[idx(w, tx, tz)];
     if (id < 0) return false;
@@ -472,7 +483,7 @@ function pickForage(col: Colony, a: Agent): Task | null {
     return b.berries > 0 && b.reserved === 0 && isExplored(w, tx, tz) && !col.unreachable.has(`b${id}`)
       && w.zone[idx(w, tx, tz)] !== Zone.Field && (hungry || w.zone[idx(w, tx, tz)] !== Zone.Wild);
   });
-  if (!found) return null;
+  if (!found) { hush(col, key, 30); return null; }
   const bush = w.bushes[w.bushAt[idx(w, found.tx, found.tz)]];
   if (!setDest(col, a, tileX(w, bush.tx), tileZ(w, bush.tz), true)) {
     col.unreachable.add(`b${bush.id}`);
@@ -489,7 +500,8 @@ function pickScout(col: Colony, a: Agent): Task | null {
     col.council.omen = null;
     if (setDest(col, a, omen.x, omen.z)) return { kind: 'scout', stage: 'go', t: 0 };
   }
-  return withRng(col.community, (rng) => {
+  if (quiet(col, 'scout')) return null;
+  const t = withRng(col.community, (rng) => {
     for (let tries = 0; tries < 10; tries++) {
       const ang = rng.range(0, Math.PI * 2);
       const dx = Math.cos(ang), dz = Math.sin(ang);
@@ -505,6 +517,9 @@ function pickScout(col: Colony, a: Agent): Task | null {
     }
     return null;
   });
+  // Nothing unexplored within reach this time: look again in a couple of hours.
+  if (!t) hush(col, 'scout', 120);
+  return t;
 }
 
 /** Trees standing on a building site (or in a field) come down first. */
@@ -739,8 +754,9 @@ function pickPlant(col: Colony, a: Agent): Task | null {
   if (tile < 0) {
     // Establish new woodland on bare woodlot ground, in a loose grid.
     const home = { tx: toTileX(w, w.home.x), tz: toTileZ(w, w.home.z) };
+    if (quiet(col, 'plant')) return null;
     const f = findNearest(w, home.tx, home.tz, 70, (tx, tz) => (tx * 7 + tz * 3) % 5 === 0 && free(idx(w, tx, tz)));
-    if (!f) return null;
+    if (!f) { hush(col, 'plant', 60); return null; }
     tile = idx(w, f.tx, f.tz);
   }
   if (!setDest(col, a, tileX(w, tile % w.w), tileZ(w, (tile / w.w) | 0), true)) return null;
@@ -908,8 +924,15 @@ function pickLeisure(col: Colony, a: Agent, s: Survivor): Task | null {
   const k = habit(col, s.id * 7 + Math.floor(col.minute / 240));
   if (season !== 'winter' && col.weather !== 'rain' && k < 35) {
     const home = { tx: toTileX(w, w.home.x), tz: toTileZ(w, w.home.z) };
-    const shore = findNearest(w, home.tx, home.tz, 45, (tx, tz) => passable(w, tx, tz) && isExplored(w, tx, tz)
-      && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => w.ground[idx(w, tx + dx, tz + dz)] === Ground.Water));
+    // The nearest shore hardly moves: found once a day (-1: none).
+    const memo = (col.memo ??= {});
+    if (memo.shoreDay !== col.community.day) {
+      const f = findNearest(w, home.tx, home.tz, 45, (tx, tz) => passable(w, tx, tz) && isExplored(w, tx, tz)
+        && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => w.ground[idx(w, tx + dx, tz + dz)] === Ground.Water));
+      memo.shoreDay = col.community.day;
+      memo.shore = f ? idx(w, f.tx, f.tz) : -1;
+    }
+    const shore = memo.shore >= 0 ? { tx: memo.shore % w.w, tz: Math.floor(memo.shore / w.w) } : null;
     if (shore && setDest(col, a, tileX(w, shore.tx) + ((a.id % 3) - 1) * 0.6, tileZ(w, shore.tz))) return { kind: 'leisure', what: 'fish', stage: 'go', t: 0 };
   }
   if (season !== 'winter' && k < 60) {

@@ -16,7 +16,7 @@ import type { Building, Cost, Footprint, Project, Tier, Village } from './buildi
 import type { Rng } from './rng';
 import type { Material } from './oldworld';
 import {
-  Ground, LANE_WEAR, PATH_WEAR, heightAt, idx, inBounds, inZone, isExplored, tileX, tileZ, toTileX, toTileZ,
+  Ground, LANE_WEAR, PATH_WEAR, heightAt, idx, inBounds, inZone, isExplored, passable, tileX, tileZ, toTileX, toTileZ,
   type Point, type World,
 } from './world';
 
@@ -636,6 +636,13 @@ function tryPlot(w: World, v: Village, cand: Candidate, beds: number, rng: Rng, 
   for (let k = 0; k < 24; k++) {
     const q = housePoint(hc, yaw, ((k % 6) / 5 - 0.5) * spec.W, (Math.floor(k / 6) / 3 - 0.5) * spec.D);
     if (!tileSet.has(idx(w, toTileX(w, q.x), toTileZ(w, q.z)))) return null;
+  }
+  // …and the step outside the door (where planHome puts it) on open ground.
+  {
+    const { Z } = houseAxes(yaw);
+    const dx = toTileX(w, hc.x + Z.x * (Dh / 2 + 0.7)), dz = toTileZ(w, hc.z + Z.z * (Dh / 2 + 0.7));
+    const di = idx(w, dx, dz);
+    if (!passable(w, dx, dz) || houseTiles.includes(di)) return null;
   }
   const dist = Math.hypot(O.x - CAMP.x, O.z - CAMP.z);
   let score = Math.abs(dist - 12) * 0.35 + trees.length * 1.5 + lanes * 2 - meadow * 0.03 + cand.bonus + rng.next() * 1.5 + drop * 1.5;

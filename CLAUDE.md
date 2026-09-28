@@ -157,7 +157,9 @@ reference: Tiny Glade.
     (farmers follow need; `Survivor.roleSetDay` protects player choices), plots on any Home tile
     (`zoneCandidates`), autopilot woodlot on bare ground, chop radius 70, overdue festivals wanted.
     `soak.ts --detail` gives per-village diagnosis. NOT published.
-  - NEXT: performance at 24 people (~390 ms sim/day in year 4; rendering unmeasured).
+  - SIM PERFORMANCE §22.9 DONE: search memo (`quiet`/`hush`, `Colony.memo`, saved), A* weight 0.95;
+    ~160 ms sim/day at 24 people (was ~390). NOT published.
+  - NEXT: rendering performance at 24 people (unmeasured; people instancing if needed).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

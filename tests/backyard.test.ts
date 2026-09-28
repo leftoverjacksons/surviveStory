@@ -9,10 +9,13 @@ describe('trades in the back yard (DESIGN §21.10)', () => {
   it('a household with a house gets a trade at the back of its plot, one at most', () => {
     const col = createColony(generateWorld(5), createCommunity(5));
     col.community.resources.wood += 60; col.community.resources.scrap += 30;
-    for (let d = 0; d < 20 && !col.village.buildings.some((b) => b.kind === 'home'); d++) tick(col, 1440);
+    // A finished house whose yard has room at the back (a single person's narrow plot may not).
+    const roomy = () => col.village.buildings.filter((b) => b.kind === 'home')
+      .map((b) => col.village.plots.find((p) => p.id === b.plot)!).find((p) => backyardSite(col, p, 'tailor'));
+    for (let d = 0; d < 32 && !roomy(); d++) tick(col, 1440);
     col.village.autoPlan = false;
-    const home = col.village.buildings.find((b) => b.kind === 'home')!;
-    const plot = col.village.plots.find((p) => p.id === home.plot)!;
+    const plot = roomy()!;
+    expect(plot).toBeDefined();
     for (const b of col.village.buildings.filter((x) => x.plot === plot.id && x.kind !== 'home')) col.village.buildings.splice(col.village.buildings.indexOf(b), 1);
     col.village.projects = col.village.projects.filter((p) => p.plot !== plot.id || p.kind === 'home');
     expect(whyNotBackyard(col, undefined, 'tailor')).toMatch(/back yard/);

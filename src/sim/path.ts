@@ -66,7 +66,9 @@ export function findPath(
   const start = idx(w, sx, sz), goal = idx(w, gx, gz);
   const h = (tx: number, tz: number) => {
     const dx = Math.abs(tx - gx), dz = Math.abs(tz - gz);
-    return (dx + dz + (Math.SQRT2 - 2) * Math.min(dx, dz)) * 0.8; // admissible: min tile cost is 0.8
+    // Most ground costs 1; roads and worn lanes less. 0.95 keeps paths close to
+    // optimal (they still prefer lanes) while expanding far fewer tiles.
+    return (dx + dz + (Math.SQRT2 - 2) * Math.min(dx, dz)) * 0.95;
   };
   stamp[start] = gen; gScore[start] = 0; came[start] = -1;
   heapPush(start, h(sx, sz));
