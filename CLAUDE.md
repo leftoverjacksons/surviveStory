@@ -162,6 +162,10 @@ reference: Tiny Glade.
   - RENDER COST §22.10 DONE: `scripts/shots/perf.mjs` (calls/triangles per group); fences, Folk works,
     fairy ring merged; ghost chunks only near the Wild. 1,621 → 986 draw calls. NOT published.
     Open: survivor figures ~9k triangles each (simplify? ask the user).
+  - PACING AUDIT §22.11 DONE (measured only): `scripts/pacing.ts`, `scripts/choices.ts`. Findings: ~0.4
+    decisions/day, councils every 4 days, everything opens in week 1, tier ladder done by ~day 40,
+    council choices barely matter except Folk standing, warmth false alarm in summer, autopilot never
+    orders Folk works. Proposals A–E there await the user's choice. §22.8–22.10 still NOT published.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

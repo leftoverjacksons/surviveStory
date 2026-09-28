@@ -2445,3 +2445,65 @@ roles, food by source, stocks, unmet needs).
   8,300–9,800 triangles each (about 640 k a frame for 18 people across the
   main, x-ray and shadow passes). They could be simplified (for example
   with meshopt at ~40%), but the figures are still being iterated on.
+
+### 22.11 Pacing audit (measured; nothing changed)
+The user asked for a measured picture of what the player does before any
+first-hour guide. Two scripts:
+- `scripts/pacing.ts` (`-- [villages] [days] [--strips] [--json=…]`):
+  autopilot stands in for an attentive player. Every game hour it records
+  what the game asks (a council, an agreed build to place, a household
+  wanting a plot, someone led astray), what first becomes possible (each
+  building affordable, the timber version, a clearable district, the Folk
+  met, each Folk work affordable, Influence for each nudge), notable events
+  (the chronicle's classes), the need tier and unmet needs.
+- `scripts/choices.ts` (`-- [villages] [days]`): the same villages under
+  different council policies (the favourite; the least backed; Folk-minded;
+  village-minded; homes first), compared after N days, against a control
+  (the same favourite chosen at a different moment), which measures how
+  far a deterministic run drifts from any change at all.
+
+A game day lasts 12 real minutes at 1×, 4 at 3×, 1.5 at 8×.
+
+**Findings (8 villages × 64 days, i.e. two years):**
+1. *Decisions asked:* about 0.4 a game day, i.e. one every ~30 real minutes
+   at 1× or ~10 at 3×. Councils come exactly every 4 days (the cadence is
+   fixed in `resolveCouncil`); home petitions are 30% of all proposals.
+   50–64% of days (from Y1 summer) ask nothing and offer nothing new, but no
+   stretch exceeds 4 days, because the next council always comes.
+2. *Everything opens in the first week:* the Folk are met on day 2 (1–6),
+   all five Folk works are affordable the same day, a district is clearable
+   on day 2, the nudges by day 4, and most buildings are affordable by day 6.
+   Only the tool bench and tavern wait (day ~20). After day ~20 nothing new
+   becomes possible, except timber versions of what exists. The build menu
+   shows every building from the start.
+3. *The need ladder runs out early:* median tier 3 (Thriving, the top) from
+   the end of Y2 spring (day ~40, about 8 real hours at 1× or 2.7 at 3×);
+   from Y2 autumn no need is unmet in any village. After that the game has
+   no stated goal.
+4. *A false alarm:* "Warmth" is met only with 6+ wood in store, in any
+   season. In year 1 it fails on 34% of days, mostly spring and summer
+   (builders use wood as it arrives), so the village reads "Struggling" in
+   midsummer. Year 2: 3%.
+5. *Council choices barely matter:* population, morale, homes, buildings,
+   food and districts cleared move no more under any policy than under the
+   control (ratios 0.6–1.7× the control's drift). The one systematic lever
+   is Folk standing: Folk-minded 65.5, village-minded 51.6, least-backed
+   52.0 (favourite 60.2; drift 7.3). Caveat: under autopilot the village
+   also plans its own buildings, which dilutes build choices; in play the
+   player places everything.
+6. *Autopilot never orders Folk works,* so the Folk hill stays at level ~1
+   in every soak: that part of the game is untested by the unattended runs.
+
+**Proposals (for the user to choose):**
+- A. *Staged options:* show buildings and systems as they become relevant
+  (e.g. tavern with tier 2, dome after a cleared district, the Folk's works
+  once met) instead of all at once in week 1.
+- B. *A longer ladder, or goals beyond it:* something to strive for in
+  year 2+ (a fourth tier, projects on the scale of the district, the Folk
+  hill's growth as a stated aim).
+- C. *Councils with consequences:* convene when there is a real question
+  (not every 4 days), take home petitions out of the council (they are
+  routine), and give choices lasting, visible trade-offs.
+- D. *Seasonal warmth:* the firewood needed should rise toward winter
+  (e.g. the winter reserve in autumn and winter, a little otherwise).
+- E. *Autopilot orders Folk works,* so soaks exercise the Folk's growth.
