@@ -1,13 +1,13 @@
 import type { Colony } from '../sim/colony';
 import { dayOf, fireWood, hourOf } from '../sim/colony';
 import {
-  dayOfSeason, daysUntilWinter, seasonOf, yearOf, DAYS_PER_SEASON, SEASON_NAMES, WEATHER_NAMES,
+  dayOfSeason, daysToFullMoon, daysUntilWinter, isFullMoon, seasonOf, yearOf, DAYS_PER_SEASON, SEASON_NAMES, WEATHER_NAMES,
 } from '../sim/calendar';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
 import { FOLK_WORKS, folkNeeds, landWanted, standingWord, type FolkFocus } from '../sim/folk';
-import { FAE_UNIT, FOLK_SUITED, VEIL_COST, canAskFolk, canClear } from '../sim/haunt';
+import { FAE_UNIT, FOLK_SUITED, canAskFolk, canClear, veilCost } from '../sim/haunt';
 import type { DistrictKind } from '../sim/oldworld';
 
 const DISTRICT_BLURB: Record<DistrictKind, string> = {
@@ -230,7 +230,8 @@ export class Hud {
     const cp = $('compass');
     if (cp.textContent !== dir) cp.textContent = dir;
     const day = dayOf(this.col);
-    const season = `Year ${yearOf(day)} · ${SEASON_NAMES[seasonOf(day)]}, day ${dayOfSeason(day)} of ${DAYS_PER_SEASON} · ${WEATHER_NAMES[this.col.weather]}`;
+    const moon = isFullMoon(day) ? ' · full moon' : daysToFullMoon(day) === 1 ? ' · full moon tomorrow' : '';
+    const season = `Year ${yearOf(day)} · ${SEASON_NAMES[seasonOf(day)]}, day ${dayOfSeason(day)} of ${DAYS_PER_SEASON} · ${WEATHER_NAMES[this.col.weather]}${moon}`;
     const se = $('season');
     if (se.textContent !== season) se.textContent = season;
   }
@@ -528,7 +529,7 @@ export class Hud {
         <div class="what" style="font-size:12px">Seers (high Sight) can see and speak with what lives here, but it frightens them. Anchors (low Sight) barely feel it, and steady the others. No time passes at home while they are gone. Nobody dies in the Veil, but people can be rattled, or taken.</div>
         <div class="row">${people}</div>
         ${this.folkPicker()}
-        <div class="row"><button type="button" class="primary" data-clear="${hi}" ${why || !this.team.size ? 'disabled' : ''} title="${esc(why ?? '')}">Into the Veil${this.team.size ? ` · ${this.team.size}` : ''} · ${VEIL_COST} Influence</button>${why ? `<span class="st">${esc(why)}</span>` : ''}</div>`;
+        <div class="row"><button type="button" class="primary" data-clear="${hi}" ${why || !this.team.size ? 'disabled' : ''} title="${esc(why ?? '')}">Into the Veil${this.team.size ? ` · ${this.team.size}` : ''} · ${veilCost(col) ? `${veilCost(col)} Influence` : 'free tonight'}</button>${why ? `<span class="st">${esc(why)}</span>` : ''}</div>`;
     }
     return `<h3>${esc(d.name)}<button type="button" id="inspect-close">Close</button></h3>
       <div class="what">${esc(DISTRICT_BLURB[d.kind])}</div>

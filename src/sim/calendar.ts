@@ -1,9 +1,11 @@
 /**
- * The year: four seasons of twelve days. Day 1 is the first day of spring.
+ * The year: four seasons of eight days (twelve before DESIGN §21.9). Day 1 is the first day of spring.
  * Weather is drawn per day from the world seed, so it is deterministic.
  */
 
-export const DAYS_PER_SEASON = 12;
+export const DAYS_PER_SEASON = 8;
+/** Seasonal rates (growth per day) were tuned for twelve-day seasons; this keeps them per season. */
+export const SEASON_SCALE = 12 / DAYS_PER_SEASON;
 export const SEASONS_PER_YEAR = 4;
 export const DAYS_PER_YEAR = DAYS_PER_SEASON * SEASONS_PER_YEAR;
 
@@ -19,6 +21,14 @@ export const seasonOf = (day: number): Season => SEASONS[seasonIndex(day)];
 export const dayOfSeason = (day: number) => ((day - 1) % DAYS_PER_SEASON) + 1;
 export const yearOf = (day: number) => Math.floor((day - 1) / DAYS_PER_YEAR) + 1;
 
+/** The full moon: once a season, two-thirds of the way through. */
+export const isFullMoon = (day: number) => dayOfSeason(day) === Math.ceil(DAYS_PER_SEASON * 0.66);
+/** Days until the next full moon (0 on the day). */
+export function daysToFullMoon(day: number): number {
+  const full = Math.ceil(DAYS_PER_SEASON * 0.66), d = dayOfSeason(day);
+  return d <= full ? full - d : DAYS_PER_SEASON - d + full;
+}
+
 /** Days until the next winter begins (0 during winter). */
 export function daysUntilWinter(day: number): number {
   const d = (day - 1) % DAYS_PER_YEAR;
@@ -28,8 +38,8 @@ export function daysUntilWinter(day: number): number {
 
 /** Hours of daylight: long summer days, short winter ones. */
 export function daylightHours(dayFrac: number): number {
-  // dayFrac: fractional day number. Peak at midsummer (day 18), low at midwinter (day 42).
-  const phase = ((dayFrac - 1 - 18) / DAYS_PER_YEAR) * Math.PI * 2;
+  // dayFrac: fractional day number. Peak at midsummer, low at midwinter.
+  const phase = ((dayFrac - 1 - DAYS_PER_SEASON * 1.5) / DAYS_PER_YEAR) * Math.PI * 2;
   return 12 + Math.cos(phase) * 3.5;
 }
 
@@ -81,7 +91,8 @@ export interface SeasonLook {
  * Transitions are smooth across the season boundaries.
  */
 export function seasonLook(dayFrac: number, snowing: boolean): SeasonLook {
-  const d = ((dayFrac - 1) % DAYS_PER_YEAR + DAYS_PER_YEAR) % DAYS_PER_YEAR; // 0..48
+  // Positions below are in a 48-day year, scaled to the real one.
+  const d = (((dayFrac - 1) % DAYS_PER_YEAR + DAYS_PER_YEAR) % DAYS_PER_YEAR) * (48 / DAYS_PER_YEAR);
   const autumn = smooth(24, 29, d) * (1 - smooth(35, 38, d));
   const bare = smooth(33, 38, d) * (1 - smooth(46, 48, d)) + (d < 2 ? 1 - smooth(0, 2, d) : 0);
   const blossom = smooth(0, 2, d) * (1 - smooth(8, 12, d));

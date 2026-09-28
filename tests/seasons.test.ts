@@ -1,35 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import {
-  dayOfSeason, daysUntilWinter, daylightHours, seasonLook, seasonOf, weatherOn, DAYS_PER_YEAR,
+  dayOfSeason, daysUntilWinter, daylightHours, seasonLook, seasonOf, weatherOn, DAYS_PER_SEASON, DAYS_PER_YEAR,
 } from '../src/sim/calendar';
+
+const S = DAYS_PER_SEASON;
 import { createCommunity } from '../src/sim/community';
 import { createColony, fieldTiles, fireWood, tick, type Colony } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
 import { Crop, LANE_WEAR, PATH_WEAR, Zone, idx, paintZone, toTileX, toTileZ, zoneAllowed } from '../src/sim/world';
 
 describe('calendar', () => {
-  it('runs four seasons of twelve days', () => {
-    expect(DAYS_PER_YEAR).toBe(48);
+  it('runs four seasons of equal length', () => {
+    expect(DAYS_PER_YEAR).toBe(4 * S);
     expect(seasonOf(1)).toBe('spring');
-    expect(seasonOf(13)).toBe('summer');
-    expect(seasonOf(25)).toBe('autumn');
-    expect(seasonOf(37)).toBe('winter');
-    expect(seasonOf(49)).toBe('spring');
-    expect(dayOfSeason(14)).toBe(2);
-    expect(daysUntilWinter(1)).toBe(36);
-    expect(daysUntilWinter(40)).toBe(0);
+    expect(seasonOf(S + 1)).toBe('summer');
+    expect(seasonOf(2 * S + 1)).toBe('autumn');
+    expect(seasonOf(3 * S + 1)).toBe('winter');
+    expect(seasonOf(4 * S + 1)).toBe('spring');
+    expect(dayOfSeason(S + 2)).toBe(2);
+    expect(daysUntilWinter(1)).toBe(3 * S);
+    expect(daysUntilWinter(3 * S + 3)).toBe(0);
   });
 
   it('has long summer days and short winter ones', () => {
-    expect(daylightHours(18)).toBeGreaterThan(15);
-    expect(daylightHours(42)).toBeLessThan(9);
+    expect(daylightHours(1.5 * S + 1)).toBeGreaterThan(15);
+    expect(daylightHours(3.5 * S + 1)).toBeLessThan(9);
   });
 
   it('only snows in winter, and snow lies in winter', () => {
-    for (let d = 1; d <= 36; d++) expect(weatherOn(d, 7)).not.toBe('snow');
-    expect(seasonLook(42, false).snow).toBeGreaterThan(0.9);
-    expect(seasonLook(20, false).snow).toBe(0);
-    expect(seasonLook(30, false).autumn).toBeGreaterThan(0.9);
+    for (let d = 1; d <= 3 * S; d++) expect(weatherOn(d, 7)).not.toBe('snow');
+    expect(seasonLook(3.5 * S + 1, false).snow).toBeGreaterThan(0.9);
+    expect(seasonLook(1.6 * S, false).snow).toBe(0);
+    expect(seasonLook(2.5 * S + 1, false).autumn).toBeGreaterThan(0.9);
   });
 });
 
@@ -62,7 +64,7 @@ describe('the living year', () => {
   const sacredTrees = col.world.trees.filter((t) => col.world.zone[idx(col.world, t.tx, t.tz)] === Zone.Sacred && !t.felled).map((t) => t.id);
 
   it('farmers till and sow in spring', () => {
-    runTo(col, 10);
+    runTo(col, Math.round(S * 0.85));
     const w = col.world;
     const sown = fieldTiles(col).filter((i) => w.cropState[i] >= Crop.Growing).length;
     expect(sown).toBeGreaterThan(fieldTiles(col).length * 0.5);
@@ -70,7 +72,7 @@ describe('the living year', () => {
 
   it('crops ripen and are harvested by late autumn', () => {
     const before = col.community.resources.food;
-    runTo(col, 36);
+    runTo(col, 3 * S);
     const w = col.world;
     const ripeLeft = fieldTiles(col).filter((i) => w.cropState[i] === Crop.Ripe).length;
     expect(ripeLeft).toBeLessThan(fieldTiles(col).length * 0.3);
@@ -78,7 +80,7 @@ describe('the living year', () => {
   });
 
   it('frost clears the fields at the start of winter', () => {
-    runTo(col, 38);
+    runTo(col, 3 * S + 2);
     const w = col.world;
     expect(fieldTiles(col).every((i) => w.cropState[i] <= Crop.Tilled)).toBe(true);
   });

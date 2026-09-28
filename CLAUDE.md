@@ -18,7 +18,8 @@ reference: Tiny Glade.
 
 ## Decisions the user has made (do not relitigate)
 - Browser game, rotatable 3D isometric, large finite procedural map, real
-  time with pause, long years (4 seasons × 12 days).
+  time with pause, 4 seasons × 8 days (shortened from 12 at the user's request,
+  DESIGN §21.9; `DAYS_PER_SEASON` rescales everything).
 - The village layout is mostly the survivors' own design; the player paints
   zones (Home, Field, Woodlot, Sacred).
 - Materials improve over time, but "eras" are rejected: progress should come
@@ -115,7 +116,7 @@ reference: Tiny Glade.
     are now drawn as outlines and fenced (`sim/fields.ts`; DESIGN §17). NOT published.
   - Next: the user's playtest feedback; people instancing if needed;
     the C3 art pass.
-  - Entering the Veil costs 10 Influence (free on full moons/festivals: TO DO).
+  - Entering the Veil costs 10 Influence (free on full moons and festivals, §21.9).
   - Restoring cleared ruins BUILT (§20.4, `sim/restore.ts`, `restore` projects,
     `Building.ruin`, `Ruin.restored`, `render/ruins.ts#syncRuins`).
   - Clearing controls in the world (§20.5): click a spirit for an action menu.
@@ -130,8 +131,9 @@ reference: Tiny Glade.
     goods tools/cloth/clothes/preserves; `sim/trades.ts`, `render/trades.ts`) DONE §21.6.
     Step 5 (glass/copper/steel stripped from ruins in cleared districts; glass dome;
     `sim/rare.ts`) DONE §21.7. Step 6 (Folk orders built at night from dew and song;
-    Folk needs gate the hill's growth) DONE §21.8. Next is step 7, seasons and rebalance.
-    Unpublished: §21.7–21.8.
+    Folk needs gate the hill's growth) DONE §21.8. Step 7 (8-day seasons, full moon,
+    Veil free on full moons/festivals, rebalance) DONE §21.9. Loop v2 complete; awaiting
+    the user's playtest feedback. Unpublished: §21.7–21.9.
   - User backlog in DESIGN §20: more motives (fun, beauty, purpose), trades
     (toolmaker, tailor, cook/preserver), taverns, solar on houses. Agreed order
     in §20.3: repurpose cleared ruins → Folk together → Folk districts → §20.2.

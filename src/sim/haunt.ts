@@ -21,6 +21,7 @@ import { adjustBond, alive, bondValue, log, remember, withRng, type Survivor } f
 import { addFae, changeStanding, type FaeKind } from './folk';
 import type { District, DistrictKind, Ruin } from './oldworld';
 import { Rng } from './rng';
+import { isFullMoon } from './calendar';
 import { disturb, nurture, resonanceAt } from './veil';
 import { Ground, Zone, idx, inBounds, reveal, tileX, tileZ, toTileX, toTileZ, type World } from './world';
 
@@ -348,8 +349,11 @@ export const cheb = (a: { tx: number; tz: number }, b: { tx: number; tz: number 
 export function clearingHaunt(col: Colony, cl: Clearing): Haunt { return col.haunts[cl.haunt]; }
 export function clearingDistrict(col: Colony, cl: Clearing): District { return col.world.districts[col.haunts[cl.haunt].district]; }
 
-/** Influence it takes to open the way into the Veil (later: free on full moons and festivals). */
+/** Influence it takes to open the way into the Veil; free on the full moon and during a festival. */
 export const VEIL_COST = 10;
+export function veilCost(col: Colony): number {
+  return isFullMoon(col.community.day) || col.minute < col.council.festivalUntil ? 0 : VEIL_COST;
+}
 
 /** Can a team go in now? Returns a reason if not. */
 export function canClear(col: Colony, h: Haunt): string | null {
@@ -359,7 +363,8 @@ export function canClear(col: Colony, h: Haunt): string | null {
   if (!poi?.discovered) return 'Nobody has found it yet. Send a scout.';
   if (col.clearing) return 'A team is already in the Veil.';
   if (col.community.day < h.stirredUntil) return `The spirits there are stirred up. Wait until day ${h.stirredUntil}.`;
-  if (col.veil.influence < VEIL_COST) return `Opening the way takes ${VEIL_COST} Influence (you have ${Math.floor(col.veil.influence)}).`;
+  const cost = veilCost(col);
+  if (col.veil.influence < cost) return `Opening the way takes ${cost} Influence (you have ${Math.floor(col.veil.influence)}). It is free on the full moon and during festivals.`;
   return null;
 }
 
@@ -406,7 +411,7 @@ export function startClearing(col: Colony, hauntIdx: number, team: number[], fae
     fae.known = true;
   }
   h.attempts++;
-  col.veil.influence -= VEIL_COST;
+  col.veil.influence -= veilCost(col);
   // Walking in, they see the whole of it.
   reveal(w, d.x, d.z, HAUNT_RADIUS);
   const cl: Clearing = {

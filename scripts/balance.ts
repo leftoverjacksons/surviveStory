@@ -3,6 +3,7 @@
  * how fast Influence accumulates, and how hard winter bites.
  * Usage: npx vite-node scripts/balance.ts -- [colonies=6] [days=48] [--prepared] [--site=K]
  */
+import { DAYS_PER_SEASON, DAYS_PER_YEAR } from '../src/sim/calendar';
 import { alive, communityMorale, createCommunity } from '../src/sim/community';
 import { createColony, dayOf, tick } from '../src/sim/colony';
 import { roundField } from '../src/sim/fields';
@@ -11,7 +12,7 @@ import type { SiteKind } from '../src/sim/sites';
 import { Zone, idx, paintZone, toTileX, toTileZ, zoneAllowed, type World } from '../src/sim/world';
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-const N = Number(args[0] ?? 6), DAYS = Number(args[1] ?? 48);
+const N = Number(args[0] ?? 6), DAYS = Number(args[1] ?? DAYS_PER_YEAR);
 const prepared = process.argv.includes('--prepared');
 const siteArg = process.argv.find((a) => a.startsWith('--site='))?.slice(7) as SiteKind | undefined;
 
@@ -48,7 +49,7 @@ for (let seed = 1; seed <= N; seed++) {
   while (dayOf(col) <= DAYS) {
     for (let m = 0; m < 1440; m += 10) tick(col, 10);
     const d = dayOf(col);
-    const si = Math.floor(((d - 2 + 48) % 48) / 12);
+    const si = Math.floor(((d - 2 + DAYS_PER_YEAR) % DAYS_PER_YEAR) / DAYS_PER_SEASON);
     seasonMorale[si] += communityMorale(col.community); seasonN[si]++;
     minMor = Math.min(minMor, ...alive(col.community).map((s) => s.morale));
     if (inf100 < 0 && col.veil.influence >= 99.9) inf100 = d;

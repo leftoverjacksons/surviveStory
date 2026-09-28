@@ -1,9 +1,10 @@
 /**
  * Headless balance probe: runs whole colonies and reports how they fare.
- * Usage: npm run sim -- [colonies=12] [days=48] [--log] [--prepared]
+ * Usage: npm run sim -- [colonies=12] [days=one year] [--log] [--prepared]
  *   --prepared  paints two fields and a woodlot on day 1, as a player would.
  *   --site=K    start every colony at site K (station, chapel, motel, farm, glasshouse).
  */
+import { DAYS_PER_SEASON, DAYS_PER_YEAR } from '../src/sim/calendar';
 import { alive, communityMorale, createCommunity } from '../src/sim/community';
 import { createColony, tick, type Colony } from '../src/sim/colony';
 import { bedsTotal } from '../src/sim/buildings';
@@ -15,7 +16,7 @@ import { Zone, exploredFraction, idx, paintZone, toTileX, toTileZ, zoneAllowed, 
 
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const colonies = Number(args[0] ?? 12);
-const days = Number(args[1] ?? 48);
+const days = Number(args[1] ?? DAYS_PER_YEAR);
 const showLog = process.argv.includes('--log');
 const prepared = process.argv.includes('--prepared');
 const siteArg = process.argv.find((a) => a.startsWith('--site='))?.slice(7) as SiteKind | undefined;
@@ -67,9 +68,9 @@ for (let seed = 1; seed <= colonies; seed++) {
     const logLen = col.community.log.length;
     for (let m = 0; m < 1440; m += 5) tick(col, 5);
     if (prepared && (col.village.noPlotDay ?? -9) >= col.community.day - 1) growHome(col);
-    if (d >= 36) minFoodWinter = Math.min(minFoodWinter, col.community.resources.food);
+    if (d >= DAYS_PER_SEASON * 3) minFoodWinter = Math.min(minFoodWinter, col.community.resources.food);
     if (col.community.resources.food < 1) hungryDays++;
-    if (d === 35) foodAtWinter = col.community.resources.food;
+    if (d === DAYS_PER_SEASON * 3 - 1) foodAtWinter = col.community.resources.food;
     coldNights += col.community.log.slice(logLen).filter((l) => /bitter night|snow by the fire/.test(l.text)).length;
   }
   const c = col.community;

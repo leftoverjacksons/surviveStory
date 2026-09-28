@@ -8,7 +8,7 @@
  */
 import type { Colony } from './colony';
 import { adjustBond, alive, bondValue, log, type Survivor } from './community';
-import { dayOfSeason, seasonOf } from './calendar';
+import { DAYS_PER_SEASON, dayOfSeason, seasonOf } from './calendar';
 import { bedsTotal, hasBuilt, sharedBeds, storageCapacity, store, type SiteKind } from './buildings';
 import { householdName, householdOf, waitingHouseholds } from './homes';
 import type { Rng } from './rng';
@@ -179,7 +179,7 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
     const [name, pitch] = FESTIVALS[season];
     const low = living.reduce((n, s) => n + s.morale, 0) / pop < 60;
     out.push({
-      score: (low ? 1.8 : 1) + (dayOfSeason(day) > 5 ? 0.3 : 0),
+      score: (low ? 1.8 : 1) + (dayOfSeason(day) > DAYS_PER_SEASON / 2 ? 0.3 : 0),
       make: () => ({
         kind: 'festival', title: `Hold ${name}`, pitch, cost: { food: 15, wood: 10 },
         proposer: voice(living, (s) => (has(s, 'storyteller') ? 2 : 0) + (s.role === 'tender' ? 1 : 0) + s.stats.empathy / 5, rng, taken).id,
@@ -429,11 +429,11 @@ function applyProposal(col: Colony, p: Proposal) {
       break;
     case 'open_gates':
       col.council.gates = 'open';
-      col.council.gatesUntil = c.day + 12;
+      col.council.gatesUntil = c.day + DAYS_PER_SEASON;
       break;
     case 'close_gates':
       col.council.gates = 'closed';
-      col.council.gatesUntil = c.day + 12;
+      col.council.gatesUntil = c.day + DAYS_PER_SEASON;
       break;
     case 'offering': {
       nurture(col, w.fairyRing.x, w.fairyRing.z, 0.12, 3);
@@ -447,7 +447,7 @@ function applyProposal(col: Colony, p: Proposal) {
     case 'grove':
       if (p.request) paintZone(w, p.request.x, p.request.z, 4.5, Zone.Sacred);
       col.veil.requests = col.veil.requests.filter((q) => q !== p.request);
-      col.veil.mothBlessing = c.day + 24;
+      col.veil.mothBlessing = c.day + DAYS_PER_SEASON * 2;
       log(c, 'That night the moths came into the village in thousands, and settled on the gardens, and left before dawn. Everything growing seems to stand a little taller.', 'strange');
       break;
     case 'home':

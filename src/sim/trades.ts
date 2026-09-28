@@ -13,7 +13,7 @@
  * been going a while, unmet needs of the next tier begin to weigh.
  */
 import type { Colony } from './colony';
-import { seasonOf } from './calendar';
+import { DAYS_PER_SEASON, seasonOf } from './calendar';
 import { alive, log, type Resources } from './community';
 import { DEFS, bedsTotal, hasBuilt, type Building, type TradeKind } from './buildings';
 import type { RoleId } from './data';
@@ -136,7 +136,7 @@ export function tradesDaily(col: Colony) {
     const open = Math.min(r.preserves, n * 3 - r.food);
     r.preserves -= open;
     r.food += open;
-    const key = `jars${c.day - (c.day % 12)}`;
+    const key = `jars${c.day - (c.day % DAYS_PER_SEASON)}`;
     if (!col.hints.has(key)) {
       col.hints.add(key);
       log(c, 'The stores ran low, so the preserves came down off the shelves: smoked fish and jars of roots.', 'info');
@@ -188,7 +188,7 @@ export function needRows(col: Colony): NeedRow[] {
     { id: 'homes', tier: 2, label: 'Homes', met: homed >= 0.5, hint: 'Half the households in homes of their own.' },
     { id: 'tavern', tier: 3, label: 'Somewhere to go', met: hasBuilt(v, 'tavern'), hint: 'A tavern for the evenings.' },
     { id: 'beauty', tier: 3, label: 'Beauty', met: (hasBuilt(v, 'shrine') && lanterns >= 2) || hasBuilt(v, 'dome'), hint: 'A shrine and lanterns between the houses, or a glass dome.' },
-    { id: 'festival', tier: 3, label: 'Festivals', met: col.council.festivalUntil > 0 && sinceFestival < 24, hint: 'A festival within the last two seasons.' },
+    { id: 'festival', tier: 3, label: 'Festivals', met: col.council.festivalUntil > 0 && sinceFestival < DAYS_PER_SEASON * 2, hint: 'A festival within the last two seasons.' },
   ];
 }
 

@@ -6,6 +6,7 @@
 import { alive, log, type Community } from './community';
 import type { Site } from './sites';
 import { Rng } from './rng';
+import { DAYS_PER_SEASON, DAYS_PER_YEAR } from './calendar';
 import { chooseCladding, houseFloor, type HouseSpec, type Household, type Plot } from './homes';
 import type { Fishery } from './fishing';
 import { RESTORE } from './restore';
@@ -487,7 +488,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
     // Glasshouses come slowly: the first around day 40, then one every eight days.
     const kept = v.buildings.filter((b) => b.kind === 'home' && b.level >= 2).length;
     // …and only once the village is settled (tools, clothes, stores, homes: see trades.ts).
-    const glassOk = v.tier === 1 && com.day >= 40 + kept * 8 && (v.needTier ?? 0) >= 2;
+    const glassOk = v.tier === 1 && com.day >= Math.round(DAYS_PER_YEAR * 0.83) + kept * Math.round(DAYS_PER_SEASON * 0.66) && (v.needTier ?? 0) >= 2;
     const home = v.buildings
       .filter((b) => b.kind === 'home' && b.household && b.level < 2 && (b.level === 0 || glassOk))
       .sort((a, b) => a.level - b.level)[0];

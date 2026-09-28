@@ -2053,3 +2053,46 @@ moon and festival rule) is folded into steps 5–7.
   what their needs call for (`selfOrder`), as the village plans for itself.
 - **Debug hooks:** `__game.folkOrder(kind, x, z)`, `__game.folkWhy(x, z)`.
 - **Tests:** `tests/folkbuild.test.ts`.
+
+### 21.9 Step 7: shorter seasons, the moon, and the rebalance (built)
+- **Measured first.**
+  - At 1×, a game day is 12 real minutes (2 game minutes a second). With
+    12-day seasons a year took 9.6 hours at 1× and 72 minutes at 8×.
+  - The day length is kept (it sets how fast people move on screen);
+    seasons are shortened instead.
+  - **Seasons are now 8 days** (`DAYS_PER_SEASON`; a year of 32). That is
+    6.4 hours at 1×, 2.1 hours at 3× and 48 minutes at 8×. Changing the
+    one constant rescales everything below.
+- **Everything seasonal is derived from the calendar**
+  (`SEASON_SCALE = 12 / DAYS_PER_SEASON`):
+  - crop growth, fruit ripening and sapling growth per day (so a crop
+    still ripens within one summer);
+  - the last day for sowing (half-way through summer);
+  - the visual year (`seasonLook`: autumn colour, bare trees, blossom,
+    snow) and daylight (`daylightHours`: midsummer and midwinter), scaled
+    from a 48-day year;
+  - the council's gate policies (one season), the Moth Woman's blessing
+    (two seasons), the festival need (two seasons), the jar and ration
+    hints, and glasshouses (from about 0.83 of a year, then two-thirds of
+    a season apart).
+  - Day-based thresholds (joinery from day 8, needs weigh from day 16,
+    the council every 4 days) are left in days: days are the same length.
+- **The moon.** A full moon once a season, two-thirds of the way through
+  (`isFullMoon`, `daysToFullMoon`). It shows on the season line ("· full
+  moon", "· full moon tomorrow").
+- **The Veil is free on the full moon and during a festival**
+  (`haunt.ts#veilCost`; the district card's button says "free tonight").
+  This was a to-do from §20.
+- **Probe, one year** (48 colonies; 32 days now against 48 before):
+  - Holds: no deaths, departures, hungry days or cold nights; morale 67
+    (68 before).
+  - Less gets done in a shorter year: food at winter 122 (162), 8.3 people
+    (10.8), 3.2 homes (3.8), joinery later (1.7 joiners against 3.2).
+  - Need tier 1.7. The per-minute pace is unchanged.
+- **Probe, 1.5 years:**
+  - 10.5 people, morale 77 in the second spring;
+  - no deaths or cold nights;
+  - one colony of 48 had a single hungry day at the end of winter (its
+    stores fell to 0.7). Watch this in play.
+- **Scripts:** `npm run sim` and `npm run balance` default to one year and
+  read winter from the calendar.

@@ -10,7 +10,7 @@ import {
 } from './community';
 import type { RoleId } from './data';
 import {
-  daysUntilWinter, seasonIndex, seasonOf, weatherOn, weatherWorkFactor, DAYS_PER_SEASON, SEASON_NAMES,
+  daysUntilWinter, seasonIndex, seasonOf, weatherOn, weatherWorkFactor, DAYS_PER_SEASON, DAYS_PER_YEAR, SEASON_NAMES, SEASON_SCALE,
   type Season, type Weather,
 } from './calendar';
 import {
@@ -676,7 +676,7 @@ export function fertility(w: World, i: number): number {
 /** Sowing is only worth it early enough for the crop to ripen before frost. */
 function canSow(day: number): boolean {
   const si = seasonIndex(day), ds = ((day - 1) % DAYS_PER_SEASON) + 1;
-  return si === 0 || (si === 1 && ds <= 6);
+  return si === 0 || (si === 1 && ds <= DAYS_PER_SEASON / 2);
 }
 
 function farmActionFor(col: Colony, i: number, day: number): FarmAction | null {
@@ -2024,8 +2024,8 @@ function daily(col: Colony) {
     log(c, `${SEASON_NAMES[season]}. ${lines[season]}`, 'good');
     if (season === 'winter') for (const b of col.world.bushes) b.berries = 0;
   }
-  if (rationing(col) && !col.hints.has(`ration${dayOf(col) - (dayOf(col) - 1) % 48}`)) {
-    col.hints.add(`ration${dayOf(col) - (dayOf(col) - 1) % 48}`);
+  if (rationing(col) && !col.hints.has(`ration${dayOf(col) - (dayOf(col) - 1) % DAYS_PER_YEAR}`)) {
+    col.hints.add(`ration${dayOf(col) - (dayOf(col) - 1) % DAYS_PER_YEAR}`);
     log(c, 'The cellar is running low. Meals are cut to half rations until spring.', 'bad');
   }
   veilDaily(col, { cold, rationing: rationing(col) });
@@ -2067,7 +2067,7 @@ function dailyFields(col: Colony, lastSeason: Season, season: Season) {
     if (st === Crop.Growing && lastSeason !== 'winter') {
       const care = col.tended.has(i) ? 1.2 : 0.75;
       const land = landFactor(col, tileX(w, i % w.w), tileZ(w, (i / w.w) | 0));
-      w.cropGrowth[i] = Math.min(1, w.cropGrowth[i] + (1 / 20) * fertility(w, i) * care * rain * land);
+      w.cropGrowth[i] = Math.min(1, w.cropGrowth[i] + (SEASON_SCALE / 20) * fertility(w, i) * care * rain * land);
       if (w.cropGrowth[i] >= 1) w.cropState[i] = Crop.Ripe;
     }
   }
@@ -2090,7 +2090,7 @@ function dailyYards(col: Colony, lastSeason: Season) {
         y.growth = lastSeason === 'winter' ? 0 : Math.max(0.1, Math.min(1, y.growth + (tended ? 0.12 : -0.08)));
         y.tended = 0;
       } else if (y.kind === 'fruit' && lastSeason !== 'winter') {
-        y.growth = Math.min(1, y.growth + 1 / 30);
+        y.growth = Math.min(1, y.growth + SEASON_SCALE / 30);
         if (y.growth >= 1 && lastSeason === 'autumn') gainFood(col, 'yards', 2);
       } else if (y.kind === 'coop') {
         gainFood(col, 'yards', lastSeason === 'winter' ? 0.3 : 0.8);
@@ -2101,7 +2101,7 @@ function dailyYards(col: Colony, lastSeason: Season) {
 
 function dailyTrees(col: Colony, lastSeason: Season) {
   if (lastSeason === 'winter') return;
-  for (const t of col.world.trees) if (t.planted && !t.felled && t.growth < 1) t.growth = Math.min(1, t.growth + 1 / 24);
+  for (const t of col.world.trees) if (t.planted && !t.felled && t.growth < 1) t.growth = Math.min(1, t.growth + SEASON_SCALE / 24);
 }
 
 function dailyWear(col: Colony) {
