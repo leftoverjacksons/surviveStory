@@ -37,7 +37,7 @@ import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
-import { raiseKnowe, settleFolk } from './sim/townhouse';
+import { KNOWE_R, placeKnowe, raiseKnowe, settleFolk, whyNotKnowe } from './sim/townhouse';
 import { MyceliumView } from './render/mycelium';
 import { myceliumDaily } from './sim/mycelium';
 import { powered, whyLocked } from './sim/power';
@@ -493,6 +493,7 @@ const buildPanel = new BuildPanel(colony, (tool) => setBuild(tool));
 const tray = new Tray(colony, {
   drawPlot: (q) => setBuild({ kind: 'plot' }, q.text),
   place: (q) => { iso.target.x = q.x; iso.target.z = q.z; setBuild({ kind: 'place', site: q.kind as PlaceKind, turn: 0 }, q.text); },
+  placeKnowe: () => { const m = world.folk.mound; iso.target.x = m.x; iso.target.z = m.z; setBuild({ kind: 'knowe' }); },
   show: (q) => { select(q.by); const a = colony.agents.find((x) => x.id === q.by); if (a) { iso.target.x = a.x; iso.target.z = a.z; } },
   changed: () => hud.render(),
 });
@@ -511,6 +512,7 @@ function setBuild(tool: BuildTool | null, why = '') {
     : (why ? `${why} ` : '') + (tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
     : tool.kind === 'restore' ? 'Click a ruin in a cleared district to restore it. Esc to stop.'
     : tool.kind === 'salvage' ? 'Click a wrecked car or junk heap to strip and clear it, or a ruin in a cleared district of yours to pull it down. Esc to stop.'
+    : tool.kind === 'knowe' ? 'Choose where the new knowe rises: open ground round the Great Hill, in the Wild or on unclaimed land. Trees there are taken into the hill. Esc to stop.'
     : tool.kind === 'folk' ? `Ask the Folk for a ${FOLK_WORKS[tool.work].name.toLowerCase()}: click a spot in the Wild. They build it at night. Esc to stop.`
     : isBackyard(tool.site) ? `Click a household's plot to give them the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: it goes at the back of their yard, and one of them works it. Esc to stop.`
     : `Place the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: click to place, right-click or T to turn it. Esc to stop.`));
@@ -603,6 +605,13 @@ function placeHover(cx: number, cy: number) {
     buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (r ? (why ? `${r.name}: ${why}` : `${r.name}: becomes ${RESTORE[r.kind]!.name(r)}. Click to restore it.`) : 'Click a ruin in a cleared district to restore it. Esc to stop.'));
     return;
   }
+  if (build.kind === 'knowe') {
+    const why = colony.folk.pendingKnowe ? whyNotKnowe(colony, g.x, g.z) : 'No knowe is waiting to be raised.';
+    const R = Math.ceil(KNOWE_R);
+    placement.showFoot({ tx: toTileX(world, g.x) - R, tz: toTileZ(world, g.z) - R, w: R * 2 + 1, d: R * 2 + 1 }, 0, 1.8, !why);
+    buildPanel.hint(why ?? 'Click to raise the knowe here. Esc to stop.');
+    return;
+  }
   if (build.kind === 'folk') {
     const tx = toTileX(world, g.x), tz = toTileZ(world, g.z);
     const why = whyNotFolkWork(colony, tileX(world, tx), tileZ(world, tz));
@@ -646,6 +655,10 @@ function placeClick(cx: number, cy: number) {
     if (!r) return;
     const res = requestRestore(colony, r.id);
     if (typeof res === 'string') { buildPanel.hint(`${r.name}: ${res}`); return; }
+  } else if (build.kind === 'knowe') {
+    const res = placeKnowe(colony, g.x, g.z);
+    if (typeof res === 'string') { buildPanel.hint(res); return; }
+    log(community, `The village chose the place, and the Folk agreed: overnight ${res.name} rose beside ${world.folk.mound.name}.`, 'strange');
   } else if (build.kind === 'folk') {
     const res = orderFolkWork(colony, build.work, tileX(world, toTileX(world, g.x)), tileZ(world, toTileZ(world, g.z)));
     if (typeof res === 'string') { buildPanel.hint(res); return; }

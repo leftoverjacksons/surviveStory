@@ -11,7 +11,7 @@
  * - The player guides what they give their nights to: the woods, the
  *   village (night chores), or their own home (the mound grows).
  */
-import { KNOWES, housing, knoweCount, raiseKnowe, settleFolk, townhouseDaily, homeOf, type Knowe } from './townhouse';
+import { KNOWES, KNOWE_WAIT, housing, knoweCount, knoweDue, letFolkChoose, settleFolk, townhouseDaily, homeOf, type Knowe, type KnoweKind } from './townhouse';
 import { HAUNT_RADIUS } from './haunt';
 import { faeDaily, feel, gentryFeel, gentryView, isGentry, opinionOf, restlessTick, sway, visitTarget, weeVisit, type Restless } from './fae';
 import type { Colony } from './colony';
@@ -271,6 +271,8 @@ export interface FolkSociety {
   song: number;
   nextId: number;
   version: number;
+  /** A knowe the hill's growth has earned, waiting for the village to choose its place (DESIGN §25.6). */
+  pendingKnowe?: { kind: KnoweKind; since: number };
   /** The knowes raised round the Great Hill (townhouse.ts, DESIGN §25.3). */
   knowes?: Knowe[];
   nextKnowe?: number;
@@ -470,6 +472,11 @@ export function folkDaily(col: Colony) {
   // Their land keeps the Veil thin around the hill.
   nurture(col, m.x, m.z, 0.012, 2);
   townhouseDaily(col);
+  // A knowe nobody chose a place for: after a few days the Folk choose for themselves.
+  if (f.pendingKnowe && col.community.day - f.pendingKnowe.since >= KNOWE_WAIT) {
+    const k = letFolkChoose(col);
+    news(col, k ? `The Folk of ${m.name} stopped waiting and chose for themselves: overnight ${k.name} rose beside the hill.` : `The Folk of ${m.name} could find no room for another knowe.`, 'strange');
+  }
 
   withRng(col.community, (rng) => {
     // Growth: a friendly, healthy hill with room to spare grows. Without more land, it can't.
@@ -492,9 +499,10 @@ export function folkDaily(col: Colony) {
         f.level++;
         const kind: FaeKind = rng.pick(['hob', 'sprite', 'piper', 'hob']);
         const fae = addFae(f, w, kind, f.level);
-        const k = raiseKnowe(col);
+        const k = knoweDue(col);
         settleFolk(f);
-        news(col, !f.met ? `There are more lights around ${m.name} at dusk than there used to be${k ? ', and the ground beside it has risen into a new green hill' : ''}.`
+        if (f.pendingKnowe) news(col, `${f.met ? fae.name : 'Someone new'} has come to live at ${m.name}, and the Folk mean to raise a new knowe: ${KNOWES[f.pendingKnowe.kind].name.toLowerCase()}. Where should it rise? (Asks tray: choose, or let them.)`, 'good');
+        else news(col, !f.met ? `There are more lights around ${m.name} at dusk than there used to be${k ? ', and the ground beside it has risen into a new green hill' : ''}.`
           : k ? `${fae.name} has come to live at ${m.name}. Overnight a new hill rose beside it: ${k.name}, ${KNOWES[k.kind].name.toLowerCase()}. The Folk are growing.`
           : `${fae.name} has come to live at ${m.name}. There is no room left round the hill for another knowe.`, 'good');
         addWork(col, rng);

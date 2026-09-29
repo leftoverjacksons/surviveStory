@@ -71,8 +71,10 @@ describe('the Folk', () => {
     expect(col.village.projects.reduce((s, p) => s + p.work, 0)).toBeGreaterThan(work0);
     // With the land they have, they cannot grow past what it allows.
     col.folk.standing = 80; col.folk.level = 3; col.folk.growth = 0.9;
+    while (landWanted(col.folk) <= col.folk.land) col.folk.level++;
+    const level = col.folk.level;
     days(col, 3);
-    expect(col.folk.level).toBe(3);
+    expect(col.folk.level).toBe(level);
     expect(landWanted(col.folk)).toBeGreaterThan(col.folk.land);
   }, 60000);
 });

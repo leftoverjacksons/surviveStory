@@ -98,6 +98,19 @@ function capacity(col: Colony): { cap: Float32Array; hub: Float32Array; source: 
   for (const k of col.folk.works) if (k.built === undefined || k.built >= 1) mark(k.x, k.z, 0.9);
   // The knowes round the Great Hill: the network runs out to each, and on from there (DESIGN §25.3).
   for (const k of col.folk.knowes ?? []) mark(k.x, k.z, 0.95, true);
+  // The Folk's own roots (DESIGN §25.6): a trunk from the hill to each knowe, and from the hill along
+  // their path to the Ring, carry it whatever the ground (water and paving would break it otherwise).
+  const root = (ax: number, az: number, bx: number, bz: number, v: number) => {
+    const n = Math.max(2, Math.ceil(Math.hypot(bx - ax, bz - az) / (CELL / 2)));
+    for (let i = 0; i <= n; i++) { const t = i / n; const c = cellAt(my, w, ax + (bx - ax) * t, az + (bz - az) * t); if (c >= 0) { cap[c] = Math.max(cap[c], v); hub[c] = Math.max(hub[c], v); } }
+  };
+  for (const k of col.folk.knowes ?? []) root(m.x, m.z, k.x, k.z, 0.8);
+  const toRing = w.folk.paths[0];
+  if (toRing?.length) {
+    for (let i = 1; i < toRing.length; i++) root(toRing[i - 1].x, toRing[i - 1].z, toRing[i].x, toRing[i].z, 0.75);
+    const end = toRing[toRing.length - 1];
+    root(end.x, end.z, w.fairyRing.x, w.fairyRing.z, 0.75);
+  }
   mark(w.fairyRing.x, w.fairyRing.z, 0.9, true);
   for (const b of col.village.buildings) if (b.kind === 'shrine') mark(b.door.x, b.door.z, 0.8, true);
   mark(w.site.memorial.x, w.site.memorial.z, 0.6, true);
@@ -120,6 +133,12 @@ function capacity(col: Colony): { cap: Float32Array; hub: Float32Array; source: 
 
 /** Daily: the network grows toward what feeds it, thins where it isn't fed, and the mood is felt. */
 export function myceliumDaily(col: Colony) {
+  spread(col);
+  feel(col);
+}
+
+/** One day's growth and thinning. */
+function spread(col: Colony) {
   const my = (col.mycelium ??= createMycelium(col.world));
   const { cap, hub, source } = capacity(col);
   const { cw, ch } = my;
@@ -139,7 +158,28 @@ export function myceliumDaily(col: Colony) {
   }
   my.m = next;
   my.version++;
-  feel(col);
+}
+
+/**
+ * The network grows for some days without anyone feeling it: a new village's
+ * network has been growing since before the roads (DESIGN §25.6).
+ */
+export function growMycelium(col: Colony, days: number) {
+  for (let d = 0; d < days; d++) spread(col);
+}
+
+/** A new knowe: a trunk runs out to it from the Great Hill at once. */
+export function reachKnowe(col: Colony, x: number, z: number) {
+  const my = col.mycelium, w = col.world, m = w.folk.mound;
+  if (!my) return;
+  const d = Math.hypot(x - m.x, z - m.z);
+  const n = Math.max(2, Math.ceil(d / (CELL / 2)));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const c = cellAt(my, w, m.x + (x - m.x) * t, m.z + (z - m.z) * t);
+    if (c >= 0) my.m[c] = Math.max(my.m[c], 0.95 - 0.15 * t);
+  }
+  my.version++;
 }
 
 /** Cutting in the Wild tears it where the tree stood. */

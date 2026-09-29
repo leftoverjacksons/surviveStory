@@ -27,8 +27,9 @@ import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill, type Craf
 import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pondOf } from './fishing';
 import { highwayZ } from './worldgen';
 import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence } from './fields';
-import { breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, maybeLeadAway, type FolkSociety } from './folk';
+import { addFae, breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, maybeLeadAway, type FolkSociety } from './folk';
 import { saucersAtDusk } from './fae';
+import { foundSettlement } from './townhouse';
 import { planRestore, ruinDoor } from './restore';
 import { rareDaily, ruinToStrip, strip } from './rare';
 import { autopilotDaily } from './autopilot';
@@ -48,7 +49,7 @@ import { finishRaze } from './salvage';
 import { learnWiring, millFactor, powerDaily } from './power';
 import { APPRENTICE_AGE, TODDLER_AGE, ageWork, isAdult, isChild, lineageDaily, oldAge, settleLineage } from './lineage';
 import { DEPAVE_WORK, finishDepave, nearestDepave } from './depave';
-import { blessingGrowth, createMycelium, myceliumDaily, sever, type Mycelium } from './mycelium';
+import { blessingGrowth, createMycelium, myceliumDaily, sever, type Mycelium, growMycelium } from './mycelium';
 import { activeGathering, courtshipDaily, gatherSpot, gatheringsTick, joined, type Gathering } from './gatherings';
 import {
   Crop, Ground, LANE_WEAR, PATH_WEAR, Zone, findNearest, idx, isExplored, passable, reveal, tileX, tileZ, toTileX, toTileZ,
@@ -222,6 +223,10 @@ export function createColony(world: World, community: Community): Colony {
   };
   for (const s of community.survivors) settleLineage(community, s);
   woodyard(world); // chosen now, before any tree is felled
+  // The Folk were here first (DESIGN §25.6): two knowes round the Great Hill with a Wee band in them,
+  // and their network already grown through the Wild and out to the Ring.
+  foundSettlement(col, () => { addFae(col.folk, world, 'hob', 0); addFae(col.folk, world, 'sprite', 0); });
+  growMycelium(col, 40);
   // The first line of the story names where it starts.
   const opening = community.log.find((l) => l.day === 1 && l.tone === 'info');
   if (opening && community.day === 1) opening.text = world.site.intro;

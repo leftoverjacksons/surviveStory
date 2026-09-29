@@ -3594,3 +3594,42 @@ winter: 16 people, morale 77, 9.7 homes, the Folk hill at level 1.7.
 
 **Not yet:** the Strange; the real Folk figures (Blender, the user's);
 council emissaries in full form.
+
+### 25.6 A new village sees the Folk from day 1; you choose where knowes rise (built)
+The user, playing v38: no mycelium in a new game, and no knowes. Both were
+there by design but invisible for a long time: the network started as a
+single cell, and the hill grew about 1.7 times in two years. Their answers:
+the network should spread through the Wild and to the Ring from the start;
+a small settlement from the start; knowes still come with growth, but the
+player is asked where.
+- **The network, grown from the start:** `createColony` runs 40 days of
+  growth without effects (`mycelium.ts#growMycelium`). Across the five
+  sites it covers 95–100% of the Wild and reaches the Ring.
+- **The Folk's own roots** (in `capacity`): a trunk from the hill to each
+  knowe, and along their path from the hill to the Ring, carries the
+  network whatever the ground. These cells are hubs, so they don't thin
+  out on a long path. On the station site the Ring is 50 units away.
+- **A small settlement from the start** (`townhouse.ts#foundSettlement`): a
+  dwelling-knowe and a dew-knowe round the Great Hill, and a Wee band (a
+  hob and a sprite) living in them, 5 of the Folk in all.
+  - On the motel site there is room for only the first: the hill is ringed
+    by water, ruins and haunted districts. Clearing districts opens room
+    later (B).
+- **Where a knowe rises** (`knoweDue`, `placeKnowe`, `letFolkChoose`,
+  `whyNotKnowe`):
+  - In a player's game, a growth puts a knowe in waiting. The Asks tray
+    shows it with **Choose where** (a placement tool round the Great Hill,
+    with a reason for any bad spot) and **Let them choose**.
+  - After 3 days (`KNOWE_WAIT`) the Folk choose themselves.
+  - Autopilot and self-planning villages raise it at once.
+  - Site rules: 1 to 24 beyond the hill's edge; also keeps clear of
+    haunted districts' ruins, where the ground is dead to the mycelium.
+- **The mycelium follows:** a new knowe gets a trunk from the hill at once
+  (`reachKnowe`), and the root keeps it.
+- **Tests:** `townhouse.test.ts` (the start, the network reaching the Ring
+  and the knowes, asked placement, the Folk choosing after 3 days).
+  - Existing tests adjusted:
+    - the mycelium growth test starts from an empty network;
+    - the Folk land test raises the level until land is short;
+    - the chronicle test allows two alike lines on a day (two lanterns
+      finished).

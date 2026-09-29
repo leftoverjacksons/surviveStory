@@ -218,6 +218,9 @@ reference: Tiny Glade.
     Wee night calls → favour or mischief with real costs, iron over doors), WISPS by default + FULL FORM in moments
     (`showSelf`, `Fae.moment`; placeholder figures = ghosted survivor figures; Blender figures saved for the user),
     the RESTLESS (laid-to-rest spirits drift to the hill; every 3rd quickens a Wee one). Not yet: the Strange. Published v38.
+    §25.6 (published v39): new villages start with the mycelium grown through the Wild to the Ring (`growMycelium`, Folk roots
+    as hubs) and a settlement (dwelling + dew knowe, Wee band); a growth asks WHERE the knowe rises (Asks tray → knowe tool,
+    `placeKnowe`; the Folk choose after 3 days; autopilot at once); new knowes get a trunk at once (`reachKnowe`).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
