@@ -6,6 +6,7 @@
  * shop signs), broken open by decay and grown over. Each district is merged
  * into a handful of meshes.
  */
+import { CUT_HEIGHT } from './roofs';
 import * as THREE from 'three';
 import type { Ruin } from '../sim/oldworld';
 import { heightAt, type World } from '../sim/world';
@@ -368,7 +369,10 @@ function buildDistrict(world: World, id: number): THREE.Group {
   for (const r of world.ruins) {
     if (r.district !== id || r.razed) continue; // pulled down for salvage (salvage.ts)
     const g = buildRuin(r);
-    g.position.set(r.x, heightAt(world, r.x, r.z), r.z);
+    const y = heightAt(world, r.x, r.z);
+    g.position.set(r.x, y, r.z);
+    // Cut at knee height above its own floor (DESIGN §33); rounded so ruins on similar ground still merge together.
+    g.userData.cutAt = Math.round((y + CUT_HEIGHT) * 4) / 4;
     d.add(g);
   }
   mergeStatic(d, new Set(), true, (x, z) => heightAt(world, x, z));
