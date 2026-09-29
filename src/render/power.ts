@@ -89,3 +89,21 @@ export function turbineMesh(p: number): THREE.Group {
   g.add(blades);
   return g;
 }
+
+/** A saw pit (DESIGN §24.19): a timber-lined trench, a trestle over it, a log on the trestle and the long two-man saw. */
+export function sawpitMesh(W: number, D: number, p: number): THREE.Group {
+  const g = new THREE.Group();
+  const L = W - 0.4;
+  // The pit's timber lining, just above the ground.
+  g.add(box(L, 0.12, 0.12, mat(DARK), 0, 0.06, -0.45), box(L, 0.12, 0.12, mat(DARK), 0, 0.06, 0.45));
+  g.add(box(L - 0.2, 0.02, 0.8, mat('#2e261e'), 0, 0.02, 0));
+  if (p < 0.5) return g;
+  // Trestles at each end, and the log across them.
+  for (const x of [-L / 2 + 0.3, L / 2 - 0.3]) g.add(box(0.12, 0.8, 1.2, mat(WOOD), x, 0.4, 0));
+  if (p < 1) return g;
+  g.add(cyl(0.22, L, mat('#6a4a30'), 0, 0.98, 0, 8).rotateZ(Math.PI / 2));
+  g.add(box(0.03, 1.5, 0.22, mat(STEEL), 0.2, 0.9, 0.05));
+  // Sawn boards stacked to one side.
+  for (let k = 0; k < 4; k++) g.add(box(L * 0.8, 0.06, 0.28, mat('#b89a6a'), 0, 0.03 + k * 0.07, D / 2 - 0.2));
+  return g;
+}

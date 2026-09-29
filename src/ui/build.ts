@@ -3,7 +3,7 @@
  * Plots for homes are drawn as outlines; buildings are placed as a footprint
  * (right-click or T turns it); ruins are clicked to restore them.
  */
-import { POWER_KINDS, whyNotPower, type PowerKind } from '../sim/power';
+import { whyLocked } from '../sim/power';
 import type { Colony } from '../sim/colony';
 import { DEFS, MATERIALS, PLACEABLE, RARE, costText, tierFor, type SiteKind } from '../sim/buildings';
 import { PLOT_MIN } from '../sim/homes';
@@ -45,7 +45,7 @@ export class BuildPanel {
       // Rare salvage can't just be gathered: it has to come out of a cleared district.
       const rare = RARE.some((m) => c[m] > r[m]);
       // Power wants know-how, not an era (power.ts).
-      const locked = (POWER_KINDS as string[]).includes(kind) ? whyNotPower(this.col, kind as PowerKind) : null;
+      const locked = whyLocked(this.col, kind);
       if (locked) return `<button type="button" data-build="${kind}" disabled title="${esc(locked)}"><b>${esc(def.name[tier])}</b><span>${esc(blurb)}</span><i class="short">${esc(locked)}</i></button>`;
       return `<button type="button" data-build="${kind}"><b>${esc(def.name[tier])}</b><span>${esc(blurb)}</span><i class="${short ? 'short' : ''}">${esc(costText(c))}${rare ? ' (glass, copper and steel come from cleared districts)' : short ? ' (they\'ll gather it)' : ''}</i></button>`;
     }).join('');

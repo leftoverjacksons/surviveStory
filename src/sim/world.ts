@@ -137,6 +137,8 @@ export interface World {
   home: Point;
   campfire: Point;
   stockpile: Rect;
+  /** Where logs wait and are split (`woodyard`), once chosen. */
+  woodyard?: Yard;
   fairyRing: Point;
   /** The found structure they start in, and how the start is laid out. */
   site: Site;
@@ -310,4 +312,50 @@ export function findNearest(
     }
   }
   return null;
+}
+
+/**
+ * The woodyard (DESIGN §24.19): where felled trunks wait and the chopping block
+ * stands. Open ground beside the stockpile, clear of the fire and its bedrolls.
+ * `block` is the chopping block; trunks lie in a row starting at `pile`, each
+ * `step` further on, lying along `along` (unit vector).
+ */
+export type Yard = { block: Point; pile: Point; step: Point; along: Point };
+/** Chosen once and kept on the world (so a saved game keeps it where it was). */
+export function woodyard(w: World): Yard {
+  return (w.woodyard ??= findWoodyard(w));
+}
+
+function findWoodyard(w: World): Yard {
+  // Under no tree's canopy (an oak spreads about three tiles out from the trunk).
+  const standing = new Set<number>();
+  for (const t of w.trees) if (!t.felled) for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) standing.add((t.tz + dz) * w.w + t.tx + dx);
+  const sp = w.stockpile, cx = (sp.x0 + sp.x1) / 2, cz = (sp.z0 + sp.z1) / 2;
+  const open = (x: number, z: number) => {
+    const tx = Math.floor(x + w.w / 2), tz = Math.floor(z + w.h / 2);
+    return tx >= 0 && tz >= 0 && tx < w.w && tz < w.h && passable(w, tx, tz) && !standing.has(tz * w.w + tx);
+  };
+  // Beyond each side of the stockpile: the side's outward normal and the direction along it.
+  const sides = [
+    { n: { x: 0, z: 1 }, o: { x: cx, z: sp.z1 } }, { n: { x: 0, z: -1 }, o: { x: cx, z: sp.z0 } },
+    { n: { x: 1, z: 0 }, o: { x: sp.x1, z: cz } }, { n: { x: -1, z: 0 }, o: { x: sp.x0, z: cz } },
+  ];
+  let best: Yard | null = null, bestScore = -Infinity;
+  for (const { n, o } of sides) {
+    const t = { x: -n.z, z: n.x };
+    let free = 0;
+    for (let d = 1; d <= 4; d++) for (let a = -2; a <= 2; a++) if (open(o.x + n.x * d + t.x * a, o.z + n.z * d + t.z * a)) free++;
+    const fire = Math.hypot(o.x + n.x * 2.5 - w.campfire.x, o.z + n.z * 2.5 - w.campfire.z);
+    const score = free + Math.min(fire, 8);
+    if (score > bestScore) {
+      bestScore = score;
+      best = {
+        block: { x: o.x + n.x * 1.3 - t.x * 1.8, z: o.z + n.z * 1.3 - t.z * 1.8 },
+        pile: { x: o.x + n.x * 1.4 + t.x * 0.3, z: o.z + n.z * 1.4 + t.z * 0.3 },
+        step: { x: n.x * 0.44, z: n.z * 0.44 },
+        along: t,
+      };
+    }
+  }
+  return best!;
 }

@@ -24,8 +24,8 @@ export type FisheryKind = 'jetty' | 'fishhut' | 'netshed' | 'boat';
 export type TradeKind = 'toolshop' | 'tailor' | 'smokehouse' | 'tavern';
 export const TRADE_KINDS: TradeKind[] = ['toolshop', 'tailor', 'smokehouse', 'tavern'];
 const isTradeKind = (k: string): k is TradeKind => (TRADE_KINDS as string[]).includes(k);
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | FisheryKind | PowerKind;
-export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | TradeKind | 'upgrade' | FisheryKind | PowerKind;
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | TradeKind | FisheryKind | PowerKind;
+export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | TradeKind | 'upgrade' | FisheryKind | PowerKind;
 export const FISHERY_KINDS: FisheryKind[] = ['jetty', 'fishhut', 'netshed', 'boat'];
 export type Tier = 0 | 1;
 
@@ -180,6 +180,7 @@ export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_st
   // Power from know-how (power.ts, DESIGN §24.17).
   windmill:   { name: ['Windmill', 'Windmill'], w: 3, d: 3, cost: [c(34, 6), c(34, 6)], work: [1100, 1100] },
   solar:      { name: ['Solar array', 'Solar array'], w: 4, d: 3, cost: [c(8, 8, 0, { glass: 6, copper: 2 }), c(8, 8, 0, { glass: 6, copper: 2 })], work: [600, 600] },
+  sawpit:     { name: ['Saw pit', 'Saw pit'], w: 3, d: 2, cost: [c(12, 4), c(12, 4)], work: [420, 420] },
   turbine:    { name: ['Wind turbine', 'Wind turbine'], w: 2, d: 2, cost: [c(10, 10, 0, { steel: 3, copper: 3 }), c(10, 10, 0, { steel: 3, copper: 3 })], work: [800, 800] },
 };
 
@@ -336,7 +337,7 @@ export function storageCapacity(v: Village): number {
     + v.buildings.filter((b) => b.kind === 'fishhut').length * 50;
 }
 
-export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | TradeKind | PowerKind;
+export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | TradeKind | PowerKind;
 
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
@@ -605,6 +606,7 @@ export const PLACEABLE: { kind: SiteKind; blurb: string }[] = [
   { kind: 'smokehouse', blurb: 'At the back of a household\'s yard: one of them puts up food in smoke and jars. Preserves never spoil.' },
   { kind: 'tavern', blurb: 'Somewhere to go of an evening: company, a fiddle, something to drink.' },
   { kind: 'dome', blurb: 'A geodesic greenhouse: food all year, even in winter. Glass and steel from a cleared district.' },
+  { kind: 'sawpit', blurb: 'A pit and a trestle for a two-man saw (joiners build it). Logs are sawn into boards faster than they are split at the block, and less is wasted.' },
   { kind: 'windmill', blurb: 'Wooden sails on a timber tower (joiners build it). It grinds the grain, so every harvest goes a fifth further, and turns a small dynamo for the lights.' },
   { kind: 'solar', blurb: 'Salvaged panels on a timber rack (someone must know wiring). Power for the lights and the homes; most in summer.' },
   { kind: 'turbine', blurb: 'A homemade electric windmill of steel and copper (someone must know wiring). Power all year, most in winter.' },

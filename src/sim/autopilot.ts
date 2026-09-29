@@ -140,7 +140,14 @@ function autopilotFolk(col: Colony) {
 function autopilotRequests(col: Colony) {
   const w = col.world, v = col.village, c = col.community;
   for (const q of [...requestsOf(col)]) {
-    if (q.kind === 'work') { grantWork(col, q.id); continue; }
+    if (q.kind === 'work') {
+      // Not if it would leave the village with nobody building or nobody in the fields.
+      const by = c.survivors.find((x) => x.id === q.by);
+      const left = (r: string) => c.survivors.filter((x) => x.alive && x.role === r && x !== by).length;
+      if (by && (by.role === 'builder' || by.role === 'farmer') && left(by.role) === 0) continue;
+      grantWork(col, q.id);
+      continue;
+    }
     if (q.kind === 'plot' || fulfilled(col, q)) continue;
     const kind = q.kind;
     const tx0 = toTileX(w, q.x), tz0 = toTileZ(w, q.z);

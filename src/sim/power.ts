@@ -42,6 +42,13 @@ export function whyNotPower(col: Colony, kind: PowerKind): string | null {
   return knowers(col.community, 'wiring').length ? null : 'Nobody knows wiring yet: it is learned by stripping copper, steel and glass out of the old world.';
 }
 
+/** What know-how a build-menu kind waits on, if any (power, and the saw pit's joinery). */
+export function whyLocked(col: Colony, kind: string): string | null {
+  if ((POWER_KINDS as string[]).includes(kind)) return whyNotPower(col, kind as PowerKind);
+  if (kind === 'sawpit') return knowers(col.community, 'joinery').length ? null : 'Nobody knows joinery yet (it is learned at the workbench).';
+  return null;
+}
+
 const built = (col: Colony, kind: PowerKind) => col.village.buildings.filter((b) => b.kind === kind).length;
 
 export function powerSupply(col: Colony): number {

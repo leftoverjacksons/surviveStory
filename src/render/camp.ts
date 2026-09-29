@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Item } from '../sim/colony';
 import type { Community } from '../sim/community';
 import { bedSpot } from '../sim/sites';
-import { heightAt, type World } from '../sim/world';
+import { heightAt, woodyard, type World } from '../sim/world';
 import { CLOTH } from './people';
 import { glowTexture, lambert, calmFlicker } from './util';
 
@@ -24,6 +24,10 @@ export class Camp {
   private groundLogs = new Map<number, THREE.Group>();
   private logGeo = new THREE.CylinderGeometry(0.12, 0.12, 1.2, 7).rotateZ(Math.PI / 2);
   private logMat = lambert('#6a4a30');
+  /** A whole trunk, felled and not yet split (DESIGN §24.19). */
+  private trunkGeo = new THREE.CylinderGeometry(0.2, 0.26, 3.2, 8).rotateZ(Math.PI / 2);
+  private unsplit!: THREE.InstancedMesh;
+  private yard: ReturnType<typeof woodyard>;
 
   constructor(private world: World) {
     const pit = new THREE.Group();
@@ -81,6 +85,27 @@ export class Camp {
       }
     }
     this.group.add(rack);
+    // The chopping block, beside the rack, where logs are split; and the unsplit trunks lying by it.
+    const block = new THREE.Group();
+    const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.5, 9), lambert('#7a5a3a'));
+    stump.position.y = 0.25;
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.29, 0.02, 9), lambert('#c8a878'));
+    top.position.y = 0.51;
+    const haft = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.05), lambert('#8a6a48'));
+    haft.position.set(0.08, 0.72, 0); haft.rotation.z = 0.5;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.04), lambert('#6a6e70'));
+    head.position.set(-0.04, 0.53, 0);
+    block.add(stump, top, haft, head);
+    const yard = woodyard(world);
+    block.position.set(yard.block.x, heightAt(world, yard.block.x, yard.block.z), yard.block.z);
+    block.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = o.receiveShadow = true; });
+    this.group.add(block);
+    this.yard = yard;
+    this.unsplit = new THREE.InstancedMesh(this.trunkGeo, lambert('#5e4630'), 12);
+    this.unsplit.count = 0;
+    this.unsplit.castShadow = this.unsplit.receiveShadow = true;
+    this.unsplit.frustumCulled = false;
+    this.group.add(this.unsplit);
     this.pileLogs = new THREE.InstancedMesh(this.logGeo, this.logMat, 90);
     this.pileLogs.count = 0;
     this.pileFood = new THREE.InstancedMesh(new THREE.BoxGeometry(0.6, 0.45, 0.6).translate(0, 0.225, 0), lambert('#7b6243'), 40);
@@ -138,15 +163,32 @@ export class Camp {
     this.pileFood.count = crates;
     this.pileFood.instanceMatrix.needsUpdate = true;
 
-    // Wood lying on the ground where trees fell.
+    // Logs waiting to be split: trunks laid side by side behind the chopping block, a few stacked.
+    const trunks = Math.min(12, Math.ceil((c.resources.logs ?? 0) / 6));
+    for (let i = 0; i < trunks; i++) {
+      const layer = i < 6 ? 0 : 1, k = i % 6, y = this.yard;
+      const x = y.pile.x + y.step.x * (k + layer * 0.5), z = y.pile.z + y.step.z * (k + layer * 0.5);
+      m.makeRotationY(-Math.atan2(y.along.z, y.along.x) + ((i * 0.37) % 0.12));
+      m.setPosition(x, heightAt(this.world, x, z) + 0.24 + layer * 0.38, z);
+      this.unsplit.setMatrixAt(i, m);
+    }
+    this.unsplit.count = trunks;
+    this.unsplit.instanceMatrix.needsUpdate = true;
+
+    // Timber lying on the ground where trees fell: a whole trunk (log), or split wood.
     const live = new Set(items.map((i) => i.id));
     for (const [id, g] of this.groundLogs) if (!live.has(id)) { this.group.remove(g); this.groundLogs.delete(id); }
     for (const it of items) {
-      if (it.kind !== 'wood') continue;
+      if (it.kind !== 'wood' && it.kind !== 'log') continue;
       let g = this.groundLogs.get(it.id);
       if (!g) {
         g = new THREE.Group();
-        for (let k = 0; k < 3; k++) {
+        if (it.kind === 'log') {
+          const l = new THREE.Mesh(this.trunkGeo, this.logMat);
+          l.position.y = 0.24;
+          l.castShadow = true;
+          g.add(l);
+        } else for (let k = 0; k < 3; k++) {
           const l = new THREE.Mesh(this.logGeo, this.logMat);
           l.position.set(0, 0.12 + (k === 2 ? 0.2 : 0), (k === 2 ? 0 : k === 0 ? -0.13 : 0.13));
           l.castShadow = true;
@@ -157,7 +199,7 @@ export class Camp {
         this.groundLogs.set(it.id, g);
         this.group.add(g);
       }
-      g.children[2].visible = it.amount > 6;
+      if (g.children[2]) g.children[2].visible = it.amount > 6;
     }
   }
 

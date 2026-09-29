@@ -52,6 +52,7 @@ import { activeGathering, courtshipDaily, gatherSpot, gatheringsTick, joined, ty
 import {
   Crop, Ground, LANE_WEAR, PATH_WEAR, Zone, findNearest, idx, isExplored, passable, reveal, tileX, tileZ, toTileX, toTileZ,
   type Heap, type Point, type Tree, type World,
+  woodyard,
 } from './world';
 
 export const MIN_PER_DAY = 1440;
@@ -61,7 +62,7 @@ export const FIRE_WOOD_PER_DAY = 2;  // the fire; more in winter (see fireWood)
 export const START_MINUTE = 7 * 60; // day 1, 07:00
 
 export type Anim = 'idle' | 'walk' | 'chop' | 'build' | 'carry' | 'forage' | 'sleep' | 'sit' | 'eat' | 'look' | 'fish' | 'dance' | 'play' | 'cheer';
-export type ItemKind = 'wood' | 'food' | 'scrap' | 'glimmer' | 'glass' | 'copper' | 'steel';
+export type ItemKind = 'wood' | 'log' | 'food' | 'scrap' | 'glimmer' | 'glass' | 'copper' | 'steel';
 export const MAX_POP = 24;
 
 export interface Needs { food: number; rest: number; social: number } // 0..100, 100 = satisfied
@@ -74,6 +75,7 @@ export type Task =
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern' | 'water'; building: number }
   | { kind: 'dismantle'; building: number; stage: 'go' | 'work' }
+  | { kind: 'split'; stage: 'go' | 'work'; t: number; done: number }
   | { kind: 'raze'; ruin: number; stage: 'go' | 'work' }
   | { kind: 'depave'; tile: number; stage: 'go' | 'work'; t: number }
   | { kind: 'gather'; g: number; stage: 'go' | 'be'; slot: number; ate?: boolean }
@@ -216,6 +218,7 @@ export function createColony(world: World, community: Community): Colony {
     veil: createVeil(world), council: createCouncil(), folk: createFolk(world), haunts: createHaunts(world), clearing: null, taken: [], ledger: {}, gatherings: [], mycelium: createMycelium(world),
   };
   for (const s of community.survivors) settleLineage(community, s);
+  woodyard(world); // chosen now, before any tree is felled
   // The first line of the story names where it starts.
   const opening = community.log.find((l) => l.day === 1 && l.tone === 'info');
   if (opening && community.day === 1) opening.text = world.site.intro;
@@ -413,8 +416,9 @@ function checkDiscoveries(col: Colony, s: Survivor) {
 }
 
 // ---------- choosing work ----------
+/** Wood on its way: lying about, and logs waiting to be split (DESIGN §24.19). */
 function groundWood(col: Colony) {
-  return col.items.reduce((sum, it) => sum + (it.kind === 'wood' ? it.amount : 0), 0);
+  return col.items.reduce((sum, it) => sum + (it.kind === 'wood' || it.kind === 'log' ? it.amount : 0), 0) + (col.community.resources.logs ?? 0);
 }
 
 /** Firewood the village burns per day: the fire, plus heating occupied buildings in the cold. */
@@ -941,6 +945,22 @@ function pickDismantle(col: Colony, a: Agent): Task | null {
   return null;
 }
 
+/** Minutes to split one wood's worth of log: at the chopping block, or quicker at a saw pit (which also wastes less). */
+const SPLIT_BLOCK = 1.0, SPLIT_SAW = 0.6, SAW_YIELD = 1.2;
+const sawpit = (col: Colony) => col.village.buildings.find((b) => b.kind === 'sawpit');
+
+/** Split hauled logs into wood (DESIGN §24.19): at the chopping block by the stockpile, or at a saw pit. */
+function pickSplit(col: Colony, a: Agent): Task | null {
+  if ((col.community.resources.logs ?? 0) < 1) return null;
+  const pit = sawpit(col);
+  const room = pit ? 3 : 2;
+  if (col.agents.filter((o) => o !== a && o.task?.kind === 'split').length >= room) return null;
+  const y = woodyard(col.world), k = (a.id % 3) - 1;
+  const at = pit ? pit.door : { x: y.block.x - y.along.x * 0.7 + y.step.x * k * 1.6, z: y.block.z - y.along.z * 0.7 + y.step.z * k * 1.6 };
+  if (!setDest(col, a, at.x, at.z)) return null;
+  return { kind: 'split', stage: 'go', t: 0, done: 0 };
+}
+
 /** Pull down a ruin the player marked for salvage (salvage.ts): at most three to a ruin. */
 function pickRaze(col: Colony, a: Agent): Task | null {
   for (const z of col.village.razes ?? []) {
@@ -1176,6 +1196,11 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
   let t: Task | null = null;
   // Children don't work: they play, near home or on the green (lineage.ts).
   if (s.age < APPRENTICE_AGE) return pickPlay(col, a, s);
+  // The woodpile's nearly gone and there are logs waiting: whoever's free splits some first.
+  if (res.wood < fireWood(col, seasonNow(col)) * 2 && (res.logs ?? 0) >= 1) {
+    const sp = pickSplit(col, a);
+    if (sp) return sp;
+  }
   // A council rest day: no work, just company.
   if (col.minute < col.council.restUntil) {
     const seat = seatOf(col, a);
@@ -1199,7 +1224,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     case 'builder':
       // All hands to the woodpile: no building for now (a council commitment).
       if (committed(col, 'all_hands')) { t = pickTree(col, a) ?? pickForage(col, a) ?? pickHaul(col, a); break; }
-      t = pickHaul(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
+      t = pickHaul(col, a) ?? pickSplit(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
         ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickBuild(col, a)
         ?? pickDismantle(col, a) ?? pickRaze(col, a) ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
@@ -1237,7 +1262,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     }
   }
   // Anyone at a loose end brings in a ripe harvest or lends a hand on a building site.
-  if (!t && s.role !== 'rest') t = pickFarm(col, a, 'harvest') ?? pickBuild(col, a) ?? pursue(col, a, s) ?? pickYard(col, a, s);
+  if (!t && s.role !== 'rest') t = pickFarm(col, a, 'harvest') ?? pickBuild(col, a) ?? pickSplit(col, a) ?? pursue(col, a, s) ?? pickYard(col, a, s);
   return t ?? pickLeisure(col, a, s) ?? pickWander(col, a);
 }
 
@@ -1312,7 +1337,8 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         disturb(col, tp.x, tp.z, (w.zone[ti] === Zone.Woodlot ? 0.012 : 0.03) * (nearRing ? 2 : 1));
         const len = Math.hypot(tp.x - a.x, tp.z - a.z) || 1;
         col.events.push({ type: 'felled', tree: tree.id, dirX: (tp.x - a.x) / len, dirZ: (tp.z - a.z) / len });
-        col.items.push({ id: col.nextItemId++, kind: 'wood', amount: Math.round(3 + tree.size * 5), x: tp.x, z: tp.z, reserved: 0 });
+        // A felled tree lies as a log, to be hauled and split before it is wood (DESIGN §24.19).
+        col.items.push({ id: col.nextItemId++, kind: 'log', amount: Math.round(3 + tree.size * 5), x: tp.x, z: tp.z, reserved: 0 });
         endTask(col, a);
       }
       return;
@@ -1335,7 +1361,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       }
       a.anim = 'carry'; a.activity = `Hauling ${a.carry?.kind ?? 'goods'} to the stockpile`;
       if (walk(col, a, dt)) {
-        if (a.carry) res[a.carry.kind] += a.carry.amount;
+        if (a.carry) { if (a.carry.kind === 'log') res.logs = (res.logs ?? 0) + a.carry.amount; else res[a.carry.kind] += a.carry.amount; }
         a.carry = null;
         endTask(col, a);
       }
@@ -1484,6 +1510,24 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       td.work += dt * workRate(s, 'builder', col);
       a.activity = `${td.moving ? 'Taking apart' : 'Taking down'} ${b.name.toLowerCase()} · ${Math.min(99, Math.round((td.work / td.need) * 100))}%`;
       if (td.work >= td.need) { finishTakedown(col, td); endTask(col, a); }
+      return;
+    }
+    case 'split': {
+      const logs = res.logs ?? 0;
+      if (logs < 1 && t.stage === 'work') return endTask(col, a);
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = sawpit(col) ? 'Off to the saw pit' : 'Off to the chopping block';
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      const pit = sawpit(col);
+      a.anim = 'chop';
+      a.activity = pit ? 'Sawing logs into boards at the saw pit' : 'Splitting logs at the chopping block';
+      t.t += dt * workRate(s, 'builder', col);
+      t.done += dt;
+      const per = pit ? SPLIT_SAW : SPLIT_BLOCK;
+      while (t.t >= per && (res.logs ?? 0) >= 1) { t.t -= per; res.logs = (res.logs ?? 0) - 1; res.wood += pit ? SAW_YIELD : 1; }
+      if (t.done >= 45 || (res.logs ?? 0) < 1) endTask(col, a);
       return;
     }
     case 'raze': {
@@ -2538,6 +2582,15 @@ function rebalanceWork(col: Colony) {
   // Judge the surplus in spring, once winter has eaten into it (a summer store is
   // always high just before it's needed), or any time it is far beyond use.
   const season = seasonOf(c.day);
+  // Nobody left building (people moved to other work): someone goes back to the sites.
+  if (count('builder') === 0 && living.length >= 3) {
+    const s = free.filter((x) => x.role !== 'farmer' && x.role !== 'rest').sort((a, b) => knack(a) - knack(b))[0];
+    if (s) {
+      s.role = 'builder';
+      log(c, `${s.name.split(' ')[0]} took up the building work: nobody else was, and the woodpile was going down.`, 'info');
+      return;
+    }
+  }
   const surplus = c.day > DAYS_PER_YEAR && ((season === 'spring' && perHead > STORE_PER_HEAD * 1.4) || perHead > STORE_PER_HEAD * 2.4);
   if (surplus && count('farmer') > 2) {
     const s = free.filter((x) => x.role === 'farmer').sort((a, b) => knack(a) - knack(b))[0];

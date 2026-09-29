@@ -58,6 +58,7 @@ function migrate(col: Colony) {
   col.community.logCount ??= col.community.log.length;
   col.requests ??= [];
   col.gatherings ??= [];
+  col.community.resources.logs ??= 0;
   for (const s of col.community.survivors) settleLineage(col.community, s);
   col.mycelium ??= createMycelium(col.world);
   if (!col.folk.chambers) {

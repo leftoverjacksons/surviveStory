@@ -80,6 +80,8 @@ export interface Resources {
   tools: number;
   clothes: number;
   preserves: number;
+  /** Timber felled and hauled but not yet split into wood (DESIGN §24.19). */
+  logs?: number;
   /** Rare salvage from cleared districts (DESIGN §21.7). */
   glass: number;
   copper: number;

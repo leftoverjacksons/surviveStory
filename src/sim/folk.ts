@@ -507,7 +507,7 @@ function chore(col: Colony, fae: Fae, rng: Rng): string | null {
   const r = col.community.resources;
   const item = col.items.find((it) => !it.reserved);
   if (item && rng.chance(0.5)) {
-    r[item.kind] += item.amount;
+    if (item.kind === 'log') r.logs = (r.logs ?? 0) + item.amount; else r[item.kind] += item.amount;
     col.items = col.items.filter((it) => it !== item);
     return `the ${item.kind} left lying out was stacked in the stores`;
   }

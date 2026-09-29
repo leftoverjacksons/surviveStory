@@ -39,7 +39,7 @@ import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
 import { digChamber } from './sim/townhouse';
 import { MyceliumView } from './render/mycelium';
-import { POWER_KINDS, powered, whyNotPower, type PowerKind } from './sim/power';
+import { powered, whyLocked } from './sim/power';
 import { markHeap, razeRuin, razeYield, whyNotRaze } from './sim/salvage';
 import { cancelProject, keepStanding, placeKindOf, takeDown } from './sim/dismantle';
 import { markDepave } from './sim/depave';
@@ -655,7 +655,7 @@ function placeClick(cx: number, cy: number) {
     if (colony.village.priority === build.site) colony.village.priority = undefined;
   } else {
     // Power wants know-how (power.ts): joiners for a windmill, someone who knows wiring for panels and turbines.
-    const locked = (POWER_KINDS as string[]).includes(build.site) ? whyNotPower(colony, build.site as PowerKind) : null;
+    const locked = whyLocked(colony, build.site);
     if (locked) { buildPanel.hint(locked); return; }
     const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
     const res = placeProject(world, colony.village, community, build.site, foot, facing);

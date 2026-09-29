@@ -334,7 +334,7 @@ export class People {
     r.torso.scale.y = 1 + Math.sin(ph * 1.6) * 0.02;
     r.axe.visible = false;
     r.rod.visible = a.anim === 'fish';
-    r.log.visible = a.carry?.kind === 'wood';
+    r.log.visible = a.carry?.kind === 'wood' || a.carry?.kind === 'log';
     r.basket.visible = a.carry?.kind === 'food' || a.carry?.kind === 'glimmer' || a.anim === 'forage';
     r.sheet.visible = a.carry?.kind === 'scrap' || a.carry?.kind === 'glass' || a.carry?.kind === 'copper' || a.carry?.kind === 'steel';
 
@@ -346,7 +346,7 @@ export class People {
         const s = Math.sin(ph * 9);
         r.hipL.rotation.x = s * 0.55; r.hipR.rotation.x = -s * 0.55;
         r.body.position.y = Math.abs(Math.cos(ph * 9)) * 0.05;
-        if (a.carry?.kind === 'wood' || a.carry?.kind === 'scrap') {
+        if (a.carry?.kind === 'wood' || a.carry?.kind === 'log' || a.carry?.kind === 'scrap') {
           r.armL.rotation.set(-2.6, 0, 0.3); r.armR.rotation.set(-2.6, 0, -0.3);
         } else if (a.carry?.kind === 'food') {
           r.armL.rotation.x = -1.1; r.armR.rotation.x = -1.1;
@@ -448,7 +448,7 @@ export class People {
     r.body.rotation.set(0, 0, 0);
     r.axe.visible = false;
     r.rod.visible = a.anim === 'fish';
-    r.log.visible = a.carry?.kind === 'wood';
+    r.log.visible = a.carry?.kind === 'wood' || a.carry?.kind === 'log';
     r.basket.visible = a.carry?.kind === 'food' || a.carry?.kind === 'glimmer' || a.anim === 'forage';
     r.sheet.visible = a.carry?.kind === 'scrap' || a.carry?.kind === 'glass' || a.carry?.kind === 'copper' || a.carry?.kind === 'steel';
     const moving = a.pathI < a.path.length;

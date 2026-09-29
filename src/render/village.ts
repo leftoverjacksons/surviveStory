@@ -10,7 +10,7 @@ import type { StoreParts } from './station';
 import { homeLayout, houseFloor, housePoint } from '../sim/homes';
 import { buildHouse, foundationUnder } from './house';
 import { cellarMesh, domeMesh, shrineMesh, tradeMesh } from './trades';
-import { solarMesh, turbineMesh, windmillMesh } from './power';
+import { sawpitMesh, solarMesh, turbineMesh, windmillMesh } from './power';
 import type { HouseSpec } from '../sim/homes';
 import { mergeStatic } from './merge';
 import type { RoofControl } from './roofs';
@@ -698,6 +698,7 @@ export class VillageView {
       case 'windmill': g = windmillMesh(p, seed); break;
       case 'solar': g = solarMesh(W, D, p); break;
       case 'turbine': g = turbineMesh(p); break;
+      case 'sawpit': g = sawpitMesh(W, D, p); break;
       case 'jetty': {
         const len = (facing === 1 || facing === 3) ? f.w : f.d;
         g = jetty(len, tier, p);

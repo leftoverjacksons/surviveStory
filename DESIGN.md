@@ -3295,3 +3295,44 @@ The user's backlog (§23.2): "junk cars selectable for stripping and removal
   only in districts the village has cleared. The push to take territory.
 - **Not yet:** electric carts from junk cars (they need wiring and a
   hauling effect); horses and wagons.
+
+### 24.19 Backlog: timber handling (built)
+The user's backlog (§23.2), after Manor Lords: "felled trees lie as logs
+to be moved, cut up and processed (a chopping block or saw pit) before
+they are wood".
+- **Logs:** a felled tree drops one trunk (`Item.kind 'log'`, 3 + 5 ×
+  size), drawn as a single long trunk. It is hauled to the woodyard and
+  kept apart from wood (`resources.logs`). The Folk's night chores bring
+  logs in as logs.
+- **The woodyard** (`world.ts#woodyard`): open ground beside the
+  stockpile, chosen away from the fire's bedrolls and outside any tree's
+  canopy. Unsplit trunks lie there in a row (one per 6 logs, up to 12),
+  beside a chopping block with an axe in it.
+- **Splitting** (the `split` task, `colony.ts#pickSplit`): 1 minute per
+  wood at the block, at most 2 at once.
+  - Builders split after hauling.
+  - Anyone at a loose end splits before helping on the sites.
+  - When the woodpile is below two days' firewood, whoever is free splits
+    first.
+- **The saw pit** (build menu, needs joinery): a timber-lined trench
+  with a trestle, a log and the two-man saw. With one built, splitting
+  happens there, 3 at once, 0.6 minutes per unit and 1.2 wood per unit
+  of log.
+- Wood already on its way (lying logs, hauled logs) counts towards "enough
+  wood", so woodcutters don't over-cut while the logs wait.
+- **Fix found by the soak:** role requests could leave a village with no
+  builders (both asked to attune; autopilot granted it). Then nobody cut
+  wood: seed 3 sat at 0 wood for 18 days.
+  - Autopilot no longer grants a change that leaves nobody building or
+    farming.
+  - `rebalanceWork` puts someone back on the sites when nobody builds.
+- **Soak** (8 villages, 1 year, against the code before this change), in
+  winter:
+
+  | Measure | Before | After |
+  |---|---|---|
+  | Population | 7.1 | 8.9 |
+  | Homes | 4.1 | 4.6 |
+  | Wood | 22.4 | 19.9 |
+  | Unmet warmth (snapshots) | 15 | 9 |
+  | Stalled projects | 4 | 0 |
