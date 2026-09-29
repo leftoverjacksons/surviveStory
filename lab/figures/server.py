@@ -246,7 +246,11 @@ class H(BaseHTTPRequestHandler):
                 file = os.path.basename(b['file'])
                 for p in [os.path.join(LIB, file), os.path.join(LIB, file.replace('.glb', '.png'))] + ([os.path.join(GAME, file)] if b.get('game') else []):
                     if os.path.exists(p): os.remove(p)
-                with open(os.path.join(LIB, 'library.json'), 'w') as f: json.dump([e for e in library() if e['file'] != file], f, indent=1)
+                rest = [e for e in library() if e['file'] != file]  # read before opening for writing (which empties the file)
+                with open(os.path.join(LIB, 'library.json'), 'w') as f: json.dump(rest, f, indent=1)
+                for m in figures():  # the source figure is no longer in the library (or the game)
+                    if m.get('library') == file:
+                        write_meta(m['id'], library=None, **({'game': None} if b.get('game') else {}))
                 return self.send(200, {'ok': True})
             self.send(404, {'error': 'not found'})
         except Exception as e:

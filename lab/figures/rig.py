@@ -239,6 +239,7 @@ def colour(v):
         if v.co.z > neck_z: return front.sample(front.top_of(v.co))
     return front.sample(v.co)
 cols = [colour(v) for v in ob.data.vertices]
+raw = [list(c) for c in cols]  # unsmoothed: the slots' final colours come from these
 
 # Neighbours on the mesh, for smoothing colours before clustering and labels after.
 nbr = [[] for _ in ob.data.vertices]
@@ -265,13 +266,19 @@ for _ in range(SMOOTH):
         votes = [lab[i]] + [lab[n] for n in nbr[i]]
         new[i] = max(set(votes), key=votes.count)
     lab = new
+# Each slot's colour: the median of its unsmoothed samples (smoothing is for grouping only;
+# averages drift towards neighbouring regions, e.g. a white shirt towards hair).
+for k in range(K):
+    m = [raw[i] for i in range(len(raw)) if lab[i] == k]
+    if m: cent[k] = [sorted(c[j] for c in m)[len(m) // 2] for j in range(3)]
 
 # Name the clusters by where they sit: skin = the front of the face,
 # hair = the top of the head, boot = the feet; the rest is clothing.
 zs = {k: [ob.data.vertices[i].co for i in range(len(cols)) if lab[i] == k] for k in range(K)}
 def share(k, pred):
     return sum(1 for p in zs[k] if pred(p)) / max(1, len(zs[k]))
-face = lambda p: p.z > TOP * 0.84 and p.z < TOP * 0.93 and p.y < 0
+# The face: front-centre of the lower head (above the neck, below the fringe).
+face = lambda p: neck_z + 0.2 * (TOP - neck_z) < p.z < neck_z + 0.5 * (TOP - neck_z) and abs(p.x) < 0.045 and p.y < 0
 top = lambda p: p.z > TOP * 0.93
 feet = lambda p: p.z < TOP * 0.07
 names = {}
