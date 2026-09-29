@@ -56,6 +56,12 @@ export interface Survivor {
   /** Walking out with, and since when. */
   courting?: number;
   courtingSince?: number;
+  /** Lineage (lineage.ts): birth day (age follows the calendar), family name, parents, those who raised them, a birth due. */
+  born?: number;
+  family?: string;
+  parents?: number[];
+  guardians?: number[];
+  expecting?: number;
 }
 
 export type BondKind = 'stranger' | 'friend' | 'close' | 'rival';

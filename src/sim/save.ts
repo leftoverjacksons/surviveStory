@@ -15,6 +15,7 @@ import type { Colony } from './colony';
 import { benchSpot } from './homes';
 import { digChamber, firstChambers } from './townhouse';
 import { createMycelium } from './mycelium';
+import { settleLineage } from './lineage';
 
 export const SAVE_VERSION = 1;
 
@@ -57,6 +58,7 @@ function migrate(col: Colony) {
   col.community.logCount ??= col.community.log.length;
   col.requests ??= [];
   col.gatherings ??= [];
+  for (const s of col.community.survivors) settleLineage(col.community, s);
   col.mycelium ??= createMycelium(col.world);
   if (!col.folk.chambers) {
     // A hill that grew before the townhouse (DESIGN §24.9): one chamber for each growth.

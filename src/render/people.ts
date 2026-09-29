@@ -10,7 +10,14 @@ export const CLOTH = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4
 const SKIN = ['#e0b896', '#c99a74', '#a8764f', '#7d5537', '#f0cfb0'];
 const HAIR = ['#2a1d14', '#5a3b22', '#8a8070', '#1a1a1a', '#a0522d'];
 
+/** A child's height by age in metres (about 0.75 m at one, 1.6 m at sixteen). */
+const heightAtAge = (age: number) => Math.min(1.62, 0.75 + 0.055 * Math.max(1, age));
+/** What a rig was built for: grown people never change; children change every year. */
+const lookOf = (s: Survivor) => (s.age >= 16 ? 'grown' : `age${s.age}`);
+
 interface Rig {
+  /** Which figure and size it was built for (a child's is rebuilt as they grow). */
+  look?: string;
   root: THREE.Group;      // world position + facing
   body: THREE.Group;      // pose offsets (sitting, lying)
   torso: THREE.Mesh;
@@ -98,6 +105,7 @@ export class People {
   private build(s: Survivor): Rig {
     const rig = this.buildFigure(s);
     if (this.kit) this.fitModel(rig, s, this.kit);
+    rig.look = lookOf(s);
     return rig;
   }
 
@@ -105,10 +113,15 @@ export class People {
   private fitModel(r: Rig, s: Survivor, kit: CharacterKit) {
     // Outfit by the survivor's id; within an outfit, colours by their own seed.
     const female = s.id % 2 === 1;
-    const grown = kit.outfits.filter((o) => !o.child);
-    const pool = grown.filter((o) => o.female === female);
-    const outfit = (pool.length ? pool : grown)[Math.floor(s.id / 2) % (pool.length || grown.length)];
-    const ch = makeCharacter(outfit, { skin: s.id * 7 + 3, hair: s.id * 5 + 1, hue: (s.hue * 0.137) % 1, tall: 0.94 + ((s.id * 37) % 11) / 100 }, this.modelMat);
+    // Children under thirteen wear the child build (DESIGN §24.14); everyone is sized by age.
+    const kid = s.age < 13;
+    const kind = kit.outfits.filter((o) => o.child === kid);
+    const byKind = kind.length ? kind : kit.outfits.filter((o) => !o.child);
+    const pool = byKind.filter((o) => o.female === female || o.child);
+    const outfit = (pool.length ? pool : byKind)[Math.floor(s.id / 2) % (pool.length || byKind.length)];
+    const grownTall = 0.94 + ((s.id * 37) % 11) / 100;
+    const tall = s.age >= 16 ? grownTall : Math.min(grownTall, heightAtAge(s.age) / (kid && kind.length ? 1.7 * 0.74 : 1.7));
+    const ch = makeCharacter(outfit, { skin: s.id * 7 + 3, hair: s.id * 5 + 1, hue: (s.hue * 0.137) % 1, tall }, this.modelMat);
     ch.mesh.castShadow = true;
     ch.mesh.receiveShadow = true;
     ch.mesh.layers.set(1);
@@ -228,6 +241,11 @@ export class People {
   sync(survivors: Survivor[], agents: Agent[]) {
     for (const s of survivors) this.survivors.set(s.id, s);
     const living = new Set(agents.map((a) => a.id));
+    // Grown a year (or out of the child build): build them again at their new size.
+    for (const s of survivors) {
+      const r = this.rigs.get(s.id);
+      if (r && r.fade === 0 && r.look !== lookOf(s)) { this.group.remove(r.root); this.rigs.delete(s.id); }
+    }
     for (const s of survivors) {
       if (living.has(s.id) && !this.rigs.has(s.id)) {
         const r = this.build(s);

@@ -86,7 +86,7 @@ export function autopilotDaily(col: Colony) {
 function autopilotClear(col: Colony) {
   const v = col.village, c = col.community;
   if (c.day - (v.autoClearDay ?? 0) < DAYS_PER_SEASON || col.clearing) return;
-  const living = alive(c).filter((s) => s.hp >= s.maxHp * 0.6 && s.griefDays <= 0);
+  const living = alive(c).filter((s) => s.age >= 16 && s.hp >= s.maxHp * 0.6 && s.griefDays <= 0);
   if (living.length < 6 || communityMorale(c) < 55) return;
   const home = col.world.campfire;
   const options = col.haunts.map((h, i) => ({ h, i, d: col.world.districts[h.district] }))

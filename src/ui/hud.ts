@@ -3,6 +3,7 @@ import { dayOf, fireWood, hourOf } from '../sim/colony';
 import {
   dayOfSeason, daysToFullMoon, daysUntilWinter, isFullMoon, seasonOf, yearOf, DAYS_PER_SEASON, SEASON_NAMES, WEATHER_NAMES,
 } from '../sim/calendar';
+import { childrenOf, familyOf, parentsOf } from '../sim/lineage';
 import { placeKindOf, whyNotCancel, whyNotTakeDown } from '../sim/dismantle';
 import { nextGathering } from '../sim/gatherings';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
@@ -611,10 +612,10 @@ export class Hud {
       if (this.teamFor !== id) {
         // Suggest two who see and two who don't: seers to read the spirits, anchors to hold.
         this.teamFor = id;
-        const by = [...alive(col.community)].sort((a, b) => b.sight - a.sight);
+        const by = alive(col.community).filter((s) => s.age >= 16).sort((a, b) => b.sight - a.sight);
         this.team = new Set([by[0], by[1], by[by.length - 1], by[by.length - 2]].filter(Boolean).map((s) => s.id));
       }
-      const people = alive(col.community).map((s) => {
+      const people = alive(col.community).filter((s) => s.age >= 16).map((s) => {
         const tag = s.sight >= 40 ? 'Seer' : s.sight < 30 ? 'Anchor' : '';
         return `<button type="button" data-pick="${s.id}" aria-pressed="${this.team.has(s.id)}" title="Sight ${Math.round(s.sight)} · morale ${Math.round(s.morale)}">${esc(s.name.split(' ')[0])}${tag ? ` · ${tag}` : ''}</button>`;
       }).join('');
@@ -904,10 +905,19 @@ export class Hud {
       close.length ? `Close to <em>${esc(close.join(', '))}</em>` : '',
       rivals.length ? `At odds with <em>${esc(rivals.join(', '))}</em>` : '',
     ].filter(Boolean).join(' · ');
+    // Lineage (DESIGN §24.15): family, parents, children, a child on the way.
+    const fam = s.family ? familyOf(c, s.family) : null;
+    const parents = parentsOf(c, s), kids = childrenOf(c, s);
+    const kin = [
+      fam ? `Of the <em>${esc(s.family!)}</em> family${fam.known ? ` (${esc(fam.known)})` : ''}` : '',
+      parents.length ? `${s.parents ? 'Child of' : 'Taken in by'} <em>${esc(parents.map((p) => p.name.split(' ')[0] + (p.alive ? '' : ' †')).join(' and '))}</em>` : '',
+      kids.length ? `${kids.length === 1 ? 'A child' : 'Children'}: <em>${esc(kids.map((k) => k.name.split(' ')[0] + (k.alive ? '' : ' †')).join(', '))}</em>` : '',
+      s.expecting !== undefined ? `Expecting a child, around day ${s.expecting}` : '',
+    ].filter(Boolean).join(' · ');
     const bar = (key: string, cls: string) => `<div class="bar ${cls}" data-bar="${key}"><i style="width:0%"></i></div>`;
     return `<div class="card ${s.griefDays > 0 ? 'grieving' : ''} ${s.id === this.selected ? 'selected' : ''}" data-id="${s.id}">
       <div class="row"><span class="name">${esc(s.name)}</span>
-        <select data-id="${s.id}" aria-label="Role for ${esc(s.name)}">${roles}</select></div>
+        ${s.age < 12 ? `<span class="bg">${s.age < 3 ? 'A baby' : 'A child'}</span>` : `<select data-id="${s.id}" aria-label="Role for ${esc(s.name)}">${roles}</select>`}</div>
       <div class="activity"></div>
       <div class="bg">${s.age}, ${esc(s.background)}</div>
       <div class="chips">${traits}${psi}${grief}</div>
@@ -919,6 +929,7 @@ export class Hud {
       <div class="needs">
         <div>FOOD${bar('food', 'need')}</div><div>REST${bar('rest', 'need')}</div><div>COMPANY${bar('social', 'need')}</div>
       </div>
+      ${kin ? `<div class="bonds">${kin}</div>` : ''}
       ${bonds ? `<div class="bonds">${bonds}</div>` : ''}
       <div class="bonds home"></div>
     </div>`;

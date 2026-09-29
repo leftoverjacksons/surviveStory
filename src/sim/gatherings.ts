@@ -183,7 +183,7 @@ export function gatherSpot(col: Colony, g: Gathering, s: Survivor, k: number, n:
 
 /** Choose who plays for the dance: storytellers first, then whoever the evening falls to. */
 function choosePlayers(col: Colony, g: Gathering) {
-  const here = g.attended.map((id) => who(col, id)).filter((s): s is Survivor => !!s && s.alive && !g.couple?.includes(s.id));
+  const here = g.attended.map((id) => who(col, id)).filter((s): s is Survivor => !!s && s.alive && s.age >= 12 && !g.couple?.includes(s.id));
   here.sort((a, b) => (b.traits.includes('storyteller') ? 1 : 0) - (a.traits.includes('storyteller') ? 1 : 0)
     || hash(a.id, g.id) - hash(b.id, g.id));
   g.players = here.slice(0, here.length >= 8 ? 2 : here.length >= 3 ? 1 : 0).map((s) => s.id);

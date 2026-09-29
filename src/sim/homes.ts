@@ -249,7 +249,9 @@ export function householdsDaily(col: Colony) {
     if (!p.done && p.kind === 'home' && p.household && !v.households.some((h) => h.id === p.household)) p.household = 0;
   }
 
-  const unattached = () => living.filter((s) => !householdOf(v, s.id));
+  // Only the grown set up house; children stay in their parents' household (lineage.ts).
+  const grown = living.filter((s) => s.age >= 16);
+  const unattached = () => grown.filter((s) => !householdOf(v, s.id));
   // Close pairs set up house together, best bond first. People living (or
   // waiting to live) alone are still open to it.
   const alone = (s: Survivor) => {
@@ -258,7 +260,7 @@ export function householdsDaily(col: Colony) {
     return h.members.length === 1 && !h.home && !v.projects.some((p) => !p.done && p.household === h.id);
   };
   if (c.day >= 3) {
-    const loose = living.filter(alone);
+    const loose = grown.filter(alone);
     const pairs: [Survivor, Survivor, number][] = [];
     for (let i = 0; i < loose.length; i++) for (let j = i + 1; j < loose.length; j++) {
       const b = bondValue(c, loose[i].id, loose[j].id);
@@ -293,7 +295,7 @@ export function householdsDaily(col: Colony) {
     // After a while, people with nobody to pair with set up on their own.
     for (const s of unattached()) {
       if (c.day - (s.arrived ?? 1) < SINGLE_AFTER) continue;
-      if (living.some((o) => o !== s && !householdOf(v, o.id) && bondValue(c, s.id, o.id) >= PAIR_BOND - 10)) continue;
+      if (grown.some((o) => o !== s && !householdOf(v, o.id) && bondValue(c, s.id, o.id) >= PAIR_BOND - 10)) continue;
       v.households.push({ id: v.nextId++, members: [s.id], home: 0, since: c.day, petitioned: 0 });
       log(c, `${firstName(s)} wants a place of their own, even a small one.`, 'info');
     }

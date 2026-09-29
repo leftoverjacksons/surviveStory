@@ -3148,3 +3148,56 @@ offence.
 - **For the user to judge:** the lineup preview (adults and children).
   Further realism would need tapering (waist narrower than chest), less
   of a gap between arms and body, and hands.
+
+### 24.15 Growing up, growing old, and families (built)
+- **Age follows the calendar** (`sim/lineage.ts`): `Survivor.born`, one
+  year per 32-day year, as the user asked (no speed-up). Arrivals and old
+  saves get a birth day consistent with their age.
+- **Families:** everyone carries a family name (`Survivor.family`, from a
+  list, per seed). Children are named "Given Family". The person card
+  shows "Of the Finch family" and what the family is becoming known for,
+  once it has three or more members:
+  - the Sight (average ≥ 45);
+  - skilled hands (two or more joiners or net-menders);
+  - being one of the old families (five or more members).
+
+  The card also shows parents (or those who took the child in), children
+  (with † for the dead), and a child on the way.
+- **Births:** a married couple in one household with a home (2+ beds),
+  under 4 children, food ≥ 4 a head and average morale ≥ 45 may expect a
+  child. The chance is 1.6% a day, less for each child they already have.
+  The pregnancy lasts 24 days. The one who carries follows the renderer's
+  convention (odd ids are drawn as women; ages 18–44).
+  - Other couples (same sex under that convention, or past bearing, one
+    partner under 60) may take in a **foundling** from the green, aged
+    3–8, at 60% of the rate.
+  - At most one new pregnancy or foundling a day in the village; none at
+    30 people or more (arrivals stop at 24, so the village's own can grow
+    past it).
+  - A child inherits stats (the parents' mean ± 2), sometimes one parent's
+    trait, and 60% of their Sight plus a little. They have a bond of 70
+    with their parents and 40 with siblings.
+- **Childhood:**
+  - babies (0–2) stay at home, fed;
+  - children (3–11) don't work: they play near home or on the green in
+    short hops, with other children when there are any, and come to
+    festivals and suppers;
+  - at 12 they take a parent's work at half pace (`ageWork`);
+  - at 16 they come of age.
+
+  The old work at 0.7 from 68, and die of old age from about 70 (a daily
+  chance of (age − 68) × 0.12%).
+- **Children are kept out of adult things:** setting up house, leaving,
+  work changes, clearing teams (card and autopilot), and playing at
+  gatherings (under 12).
+- **Drawn:**
+  - the child build under 13, the adult build from 13;
+  - height by age (0.75 m at 1 year to 1.6 m at 16);
+  - the figure is rebuilt each year while they grow.
+- **Measured** (`scripts/lineage.ts`, 4 villages × 4 years): 0–6
+  children by year 4, mostly foundlings at first (the founders are
+  mostly older); village-born adults will marry later. A slow build, as
+  asked.
+- **Next:** the family tree panel and heirs (homes passing to children),
+  then crossing between the peoples (§24.6), with hybrid children at most
+  5–10% of children.
