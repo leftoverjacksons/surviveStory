@@ -947,6 +947,23 @@ function startHomeOn(col: Colony, h: Household, plot: Plot, houseTiles: number[]
   return proj;
 }
 
+/**
+ * A plot the player drew in answer to a household's ask: it is theirs at
+ * once, and the house is started (whatever else is being built). Returns
+ * why not, or null.
+ */
+export function homeForAsker(col: Colony, householdId: number, plot: Plot): string | null {
+  const v = col.village, c = col.community;
+  const h = v.households.find((x) => x.id === householdId);
+  if (!h || h.home || v.plots.some((p) => p.household === h.id)) return 'They already have a place.';
+  if (plot.household) return 'That plot is taken.';
+  const site = houseSite(col.world, plot, new Set(plot.tiles));
+  if (!site) return 'There is no room for a house on that plot.';
+  startHomeOn(col, h, plot, site.houseTiles, site.trees);
+  log(c, `${householdName(c, h)} walked the plot you pegged out for them, and liked it. They start on the house tomorrow.`, 'good');
+  return null;
+}
+
 /** With the player planning: a waiting household takes an empty plot that was drawn for them. */
 function homeOnDrawnPlot(col: Colony): Project | null {
   const v = col.village, c = col.community, w = col.world;

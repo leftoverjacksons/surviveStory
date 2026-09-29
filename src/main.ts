@@ -26,9 +26,10 @@ import { PlacementView } from './render/placement';
 import { DEFS, canPlace, completeProject, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
 import { FOLK_WORKS, addFae, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
-import { claimPlot, outlinePlot, plotFailAt } from './sim/homes';
+import { claimPlot, homeForAsker, outlinePlot, plotFailAt } from './sim/homes';
 import { KeepOut } from './render/keepout';
 import { Tray } from './ui/tray';
+import { dropAnsweredHomes } from './sim/requests';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
 import { playTurn } from './sim/clearbot';
@@ -457,8 +458,12 @@ function closeDraft() {
       const plan = outlinePlot(world, colony.village, draft.slice(), rng);
       if (typeof plan === 'string') { keepOut.markFail(plotFailAt); buildPanel.hint(`${plan} (Marked in yellow.) Keep clicking corners, or Esc to start again.`); return; }
       const plot = claimPlot(colony, plan, rng);
-      log(community, `A plot is pegged out: ${plot.tiles.length} squares, the house to stand near the front. It waits for a household.`, 'good');
+      // Drawn in answer to a household's ask: it is theirs, and their ask is answered.
+      const why = plotFor ? homeForAsker(colony, plotFor, plot) : 'none';
+      if (why) log(community, `A plot is pegged out: ${plot.tiles.length} squares, the house to stand near the front. It waits for a household.`, 'good');
       replan(colony);
+      dropAnsweredHomes(colony);
+      tray.render();
     }
     clearDraft();
     setBuild(null);
@@ -514,7 +519,7 @@ scene.add(placement.group);
 const buildPanel = new BuildPanel(colony, (tool) => setBuild(tool));
 /** The request tray: everyday asks, answered whenever (DESIGN §23.4). */
 const tray = new Tray(colony, {
-  drawPlot: (q) => setBuild({ kind: 'plot' }, q.text),
+  drawPlot: (q) => { setBuild({ kind: 'plot' }, q.text); plotFor = q.household ?? 0; },
   place: (q) => { iso.target.x = q.x; iso.target.z = q.z; setBuild({ kind: 'place', site: q.kind as PlaceKind, turn: 0 }, q.text); },
   placeKnowe: () => { const m = world.folk.mound; iso.target.x = m.x; iso.target.z = m.z; setBuild({ kind: 'knowe' }); },
   show: (q) => { select(q.by); const a = colony.agents.find((x) => x.id === q.by); if (a) { iso.target.x = a.x; iso.target.z = a.z; } },
@@ -522,7 +527,10 @@ const tray = new Tray(colony, {
 });
 /** Drawing an outline: a field, or a plot for a home. */
 function drafting() { return zoneTool === 'field' || build?.kind === 'plot'; }
+/** The household a plot is being drawn for (from their ask in the tray), or 0. */
+let plotFor = 0;
 function setBuild(tool: BuildTool | null, why = '') {
+  plotFor = 0;
   if (tool) { setZoneTool(null); setOmen(false); hud.inspect(null); }
   else if (resumeAfterBuild) { resumeAfterBuild = false; resumeAfterCouncil(); }
   build = tool;
@@ -1314,6 +1322,7 @@ function frame() {
     trees.syncPlanted();
     lightPeopleLayer(scene);
     hud.render();
+    dropAnsweredHomes(colony);
     tray.render();
     chronicle.render();
   }

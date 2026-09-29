@@ -237,6 +237,9 @@ reference: Tiny Glade.
     §30 BUILT (published v42): WRECKS right-click card (strip/leave/tow to yard/tow elsewhere/stop), emptied wrecks
     vanish and free their tiles (`clearHeap`, `heapTiles`), TOWING (`towHeap`, `tow` task, `Heap.tow`, `yardSpot`;
     the nearest free people come). The station car is now a normal wreck. Next: electric carts, parts with provenance.
+    §31 FIXES (not published): a plot drawn from a home ask goes to that household at once and the ask clears
+    (`homeForAsker`, `dropAnsweredHomes`); cutaway cuts each village building at its own floor (`cutMaterialFor`).
+    Ruins still cut at y = 1.15.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

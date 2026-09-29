@@ -13,7 +13,7 @@ import { cellarMesh, domeMesh, shrineMesh, tradeMesh } from './trades';
 import { hearthMesh, sawpitMesh, solarMesh, turbineMesh, windmillMesh } from './power';
 import type { HouseSpec } from '../sim/homes';
 import { mergeStatic } from './merge';
-import type { RoofControl } from './roofs';
+import { CUT_HEIGHT, cutMaterialFor, type RoofControl } from './roofs';
 import { glowTexture, makeRand } from './util';
 
 import { BULB, GHOST, GLOW, box, cyl, mat, smooth } from './kit';
@@ -803,6 +803,8 @@ export class VillageView {
 
   /** Hand roofs and building materials to the roof control. */
   private register(root: THREE.Object3D) {
+    // Cut at knee height above this building's own floor (its group stands at its floor, DESIGN §31).
+    const cutAt = root.position.y + CUT_HEIGHT;
     root.traverse((o) => {
       if (o.userData.roofGroup) { this.roofs.addRoof(o); return; }
       const m = o as THREE.Mesh;
@@ -810,7 +812,11 @@ export class VillageView {
       const mm = m.material as THREE.Material;
       let inBuilding = false;
       for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.building) { inBuilding = true; break; }
-      if (inBuilding && mm !== GHOST && mm.blending !== THREE.AdditiveBlending) this.roofs.addCutMaterial(mm);
+      if (inBuilding && mm !== GHOST && mm.blending !== THREE.AdditiveBlending && !Array.isArray(m.material)) {
+        const cm = cutMaterialFor(mm, cutAt);
+        m.material = cm;
+        this.roofs.addCutMaterial(cm);
+      }
       // Anything above wall height on a building is roof.
       if (o.parent?.userData.building && o.position.y > 2.25) this.roofs.addRoof(o);
     });

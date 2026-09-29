@@ -3861,3 +3861,38 @@ right-click card for wrecks, visible stripping, and towing.
   - electric carts from junk cars;
   - parts with provenance (batteries to the grid, tyres, windscreen glass);
   - the autopilot never tows.
+
+### §31. Playtest fixes after v42
+
+The user's notes after playing v42.
+- **"When people ask me for a house and I say OK, it makes me plot it out,
+  but the ask doesn't go away."**
+  - Two causes:
+    - asks were settled only once a day (`requestsDaily`);
+    - a drawn plot waited for the next planning pass to be matched to a
+      waiting household, and at most two homes were started at a time.
+  - Now a plot drawn from a household's ask (*Draw a plot* in the tray;
+    `main.ts#plotFor`) is theirs at once, and their house is started
+    (`homes.ts#homeForAsker`).
+  - Answered home asks leave the tray on the next UI refresh
+    (`requests.ts#dropAnsweredHomes`), however the plot was matched.
+  - A plot drawn from the build menu still goes to whoever is first in
+    line.
+  - Test: `tests/requests.test.ts` ("a plot drawn from a household's ask
+    …").
+- **"When I cut the roofs, buildings up on foundations: you see through the
+  foundations, not inside their main floor."**
+  - The cutaway sliced everything at one world height (y = 1.15). A
+    building raised on a foundation, or standing on higher ground, was cut
+    below its floor.
+  - Now each village building is cut at 1.15 above its own floor (its
+    group stands at its floor).
+  - Materials are shared, so a building on a different floor height gets
+    copies of its materials that cut at that height (`roofs.ts#cutMaterialFor`,
+    shared per 5 cm of height).
+  - Checked on seed 7 at day 25: the highest-floored house, on stone
+    footings with steps, shows its bed, table and stove.
+  - **Not yet:** old-world ruins, restored houses included. They are merged
+    into one mesh per district, so they still cut at y = 1.15, and a ruin
+    on high ground may cut badly. Fixing them needs a per-vertex cut height
+    in the shader.
