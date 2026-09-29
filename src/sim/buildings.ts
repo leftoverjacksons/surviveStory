@@ -10,7 +10,7 @@ import { alive, log, type Community } from './community';
 import type { Site } from './sites';
 import { Rng } from './rng';
 import { DAYS_PER_SEASON, DAYS_PER_YEAR } from './calendar';
-import { chooseCladding, houseFloor, type HouseSpec, type Household, type Plot } from './homes';
+import { chooseCladding, houseFloor, plotForRuin, type HouseSpec, type Household, type Plot } from './homes';
 import type { Fishery } from './fishing';
 import { RESTORE } from './restore';
 import {
@@ -522,7 +522,7 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
     // …and only once the village is settled (tools, clothes, stores, homes: see trades.ts).
     const glassOk = v.tier === 1 && com.day >= Math.round(DAYS_PER_YEAR * 0.83) + kept * Math.round(DAYS_PER_SEASON * 0.66) && (v.needTier ?? 0) >= 2;
     const home = v.buildings
-      .filter((b) => b.kind === 'home' && b.household && b.level < 2 && (b.level === 0 || glassOk))
+      .filter((b) => b.kind === 'home' && b.ruin === undefined && b.household && b.level < 2 && (b.level === 0 || glassOk))
       .sort((a, b) => a.level - b.level)[0];
     const cost = home ? HOME_UPGRADE_COST(home.level) : null;
     // Wood must be on hand; scrap is fetched for it (salvage follows demand).
@@ -707,6 +707,11 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
         id: v.nextId++, kind: def.as, tier: 0, foot: p.foot, facing: 0, door: { ...p.door! }, inside: { ...p.inside! },
         beds: def.beds ?? 0, level: 0, tended: 0, growth: 0.6, name: p.name, ruin: r.id, capacity: def.capacity,
       };
+      if (def.as === 'home') {
+        // A home again: a plot and yard around it; a household waiting for a home moves in (homes.ts).
+        const plot = plotForRuin(w, v, r, def.beds ?? 3);
+        b.plot = plot.id; b.household = 0; b.yaw = r.yaw;
+      }
       v.buildings.push(b);
       // Someone who came home from the Veil to this very house moves back in.
       const d = w.districts[r.district];

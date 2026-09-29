@@ -23,7 +23,7 @@ import { ClearingView } from './render/clearing';
 import { ClearingMenu, ClearingPanel, spiritLabel } from './ui/clearing';
 import { BuildPanel, type BuildTool } from './ui/build';
 import { PlacementView } from './render/placement';
-import { DEFS, canPlace, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
+import { DEFS, canPlace, completeProject, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
 import { FOLK_WORKS, addFae, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
 import { claimPlot, outlinePlot, plotFailAt } from './sim/homes';
@@ -32,7 +32,7 @@ import { Tray } from './ui/tray';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
 import { playTurn } from './sim/clearbot';
-import { act as veilAct, endTurn, finish, giveDistrict, moveUnit, reachable, startClearing, teamReading, type Clearing } from './sim/haunt';
+import { HAUNT_RADIUS, act as veilAct, endTurn, finish, giveDistrict, moveUnit, reachable, startClearing, teamReading, type Clearing } from './sim/haunt';
 import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
@@ -1337,6 +1337,25 @@ const veilDebug = {
     const r = startClearing(colony, hi, team.slice(0, withFolk ? 3 : 4), withFolk ? colony.folk.beings.find((b) => b.kind === 'elder')?.id : undefined);
     if (typeof r !== 'string') enterVeil(r);
     return r;
+  },
+  /** Clear the nearest district with a house, restore the house and finish it (DESIGN §24.16). Returns the ruin. */
+  restoreHome() {
+    const w = world, v = colony.village;
+    const houses = w.ruins.filter((r) => RESTORE[r.kind]?.as === 'home').sort((a, b) => Math.hypot(a.x - w.campfire.x, a.z - w.campfire.z) - Math.hypot(b.x - w.campfire.x, b.z - w.campfire.z));
+    for (const r of houses) {
+      const d = w.districts[r.district], h = colony.haunts.find((x) => x.district === d.id)!;
+      reveal(w, d.x, d.z, HAUNT_RADIUS + 4);
+      h.state = 'cleared';
+      w.haunted?.fill(0);
+      w.zoneVersion++;
+      if (!h.owner) giveDistrict(colony, d.id, 'village');
+      const p = requestRestore(colony, r.id);
+      if (typeof p === 'string') continue;
+      completeProject(w, v, colony.community, p);
+      syncScene();
+      return r;
+    }
+    return null;
   },
   /** Mark paving to be broken up (DESIGN §24.12). */
   depave: (x: number, z: number, r: number) => markDepave(world, x, z, r, true),

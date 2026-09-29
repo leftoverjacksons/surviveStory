@@ -3216,3 +3216,27 @@ offence.
   held back in v35; the simulation and the data are unchanged. They will
   come back in another form (a family tree panel) once the cause is
   understood.
+
+### 24.16 Backlog: restored houses are homes; toadstools on the mycelium (built)
+- **Restored houses are homes again** (the user's insistence, §23.2).
+  Restoring a house, terrace or farmhouse (`RESTORE` `as: 'home'`) now
+  makes a `home`, not a shared bunkhouse. `homes.ts#plotForRuin` gives it a
+  plot in the ruin's own frame: a 1.5-tile front strip, the ruin itself,
+  and a yard about 7 tiles deep behind, 1.5 tiles either side, leaving out
+  other plots, water and other ruins' walls. `planYard` lays out beds,
+  woodpile, bench, fence, fruit tree, coop and washing line. A household
+  waiting for a home moves in (the existing empty-home rule: "They kept
+  the old name over the door"). The house is still drawn by the old
+  world's renderer; the yard, fence and string lights come from the plot
+  like any other home. Beds and seats use the ruin's real size. Restored
+  homes aren't offered the glasshouse upgrade. The card says "A house of
+  the old world, patched up and lived in again". The autopilot's restore
+  scoring prefers houses while households wait.
+- **Toadstools along the mycelium** (`render/mycelium.ts`), visible to
+  everyone without the Veil view: up to 4 per 4-tile cell where the
+  network is at least 0.45, on soil only (not paving, water, walls,
+  fields or trunks). Caps are red under a friendly hill, violet-grey
+  under a soured one, and pale in between. Two instanced meshes; rebuilt
+  when the network changes (daily).
+- **Debug:** `__game.restoreHome()` clears the nearest district with a
+  house, restores the house and finishes it.

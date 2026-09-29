@@ -536,7 +536,7 @@ export class Hud {
       const build = (b as Building).tier === 1 ? 'Timber' : 'Salvage';
       if (b.kind === 'home') {
         const plot = col.village.plots.find((p) => p.id === b.plot);
-        facts.push(['State', ['A salvage shack', 'Patched up', 'Well kept: glasshouse and solar panels'][b.level] ?? '']);
+        facts.push(['State', (b as Building).ruin !== undefined ? 'A house of the old world, patched up and lived in again' : ['A salvage shack', 'Patched up', 'Well kept: glasshouse and solar panels'][b.level] ?? '']);
         if (plot?.house.clad?.length) facts.push(['Built from', cap(plot.house.clad.join(', '))]);
       } else if (b.kind !== 'store' && b.kind !== 'kitchen' && b.kind !== 'lantern') facts.push(['Built from', build]);
       html = `<h3>${esc(cap(b.name))}<button type="button" id="inspect-close">Close</button></h3>

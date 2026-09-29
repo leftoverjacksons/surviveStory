@@ -15,7 +15,7 @@ import { inBounds, passable, toTileX, toTileZ, type Point, type World } from './
 import { findPath } from './path';
 
 export interface RestoreDef {
-  as: Extract<BuildingKind, 'hut' | 'workshop' | 'cellar' | 'shrine' | 'garden'>;
+  as: Extract<BuildingKind, 'home' | 'hut' | 'workshop' | 'cellar' | 'shrine' | 'garden'>;
   /** What it becomes, given the ruin. */
   name: (r: Ruin) => string;
   cost: Cost;
@@ -28,9 +28,10 @@ export interface RestoreDef {
 const c = (wood: number, scrap: number, glimmer = 0): Cost => ({ wood, scrap, glimmer, glass: 0, copper: 0, steel: 0 });
 
 export const RESTORE: Partial<Record<RuinKind, RestoreDef>> = {
-  house: { as: 'hut', name: (r) => `${r.name}, lived in again`, cost: c(8, 3), work: 700, beds: 3 },
-  terrace: { as: 'hut', name: (r) => `${r.name}, lived in again`, cost: c(8, 3), work: 700, beds: 3 },
-  farmhouse: { as: 'hut', name: (r) => `${r.name}, lived in again`, cost: c(10, 3), work: 800, beds: 4 },
+  // Houses become homes again, with a household, a yard and the lights (DESIGN §24.16).
+  house: { as: 'home', name: (r) => `${r.name}, lived in again`, cost: c(8, 3), work: 700, beds: 3 },
+  terrace: { as: 'home', name: (r) => `${r.name}, lived in again`, cost: c(8, 3), work: 700, beds: 3 },
+  farmhouse: { as: 'home', name: (r) => `${r.name}, lived in again`, cost: c(10, 3), work: 800, beds: 4 },
   garage: { as: 'workshop', name: (r) => `a workbench in ${r.name}`, cost: c(4, 2), work: 360 },
   shed: { as: 'workshop', name: (r) => `a workbench in ${r.name}`, cost: c(4, 2), work: 360 },
   shop: { as: 'cellar', name: (r) => `stores in ${r.name}`, cost: c(6, 2), work: 420, capacity: 90 },
@@ -90,7 +91,8 @@ export function planRestore(col: Colony, lead: string, newProject: (p: Omit<Proj
   const score = (r: Ruin): number => {
     const d = RESTORE[r.kind]!;
     let s = 1;
-    if (d.as === 'hut' && bedsTotal(v) < pop + 2) s += 6;
+    if ((d.as === 'hut' || d.as === 'home') && bedsTotal(v) < pop + 2) s += 6;
+    if (d.as === 'home' && v.households.some((h) => !h.home)) s += 4;
     if (d.as === 'cellar' && col.community.resources.food > storageCapacity(v) * 0.7) s += 5;
     if (d.as === 'workshop' && !has('workshop')) s += 4;
     if (d.as === 'shrine' && !has('shrine')) s += 3;

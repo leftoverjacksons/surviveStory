@@ -880,6 +880,8 @@ export class VillageView {
 
     for (const b of v.buildings) {
       if (b.kind === 'store') continue;
+      // A restored ruin (a home again, too) is drawn by the old world's renderer.
+      if (b.ruin !== undefined) continue;
       if (b.kind === 'home') {
         const id = `b${b.id}`;
         live.add(id);

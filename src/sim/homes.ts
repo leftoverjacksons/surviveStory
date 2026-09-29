@@ -966,3 +966,48 @@ function homeOnDrawnPlot(col: Colony): Project | null {
   log(c, `${householdName(c, h)} walked the plot you pegged out, and liked it. They start on the house tomorrow.`, 'good');
   return proj;
 }
+
+// ---------- restored houses as homes (DESIGN §24.16) ----------
+
+/**
+ * A plot around a restored house of the old world: a strip of front garden,
+ * the house itself, and a yard behind it, laid out like any other plot so
+ * the household gets beds, a bench, a fence and the lights. Tiles already
+ * in another plot, water, and other ruins' walls are left out.
+ */
+export function plotForRuin(w: World, v: Village, r: { x: number; z: number; w: number; d: number; h: number; yaw: number }, beds: number): Plot {
+  const cs = Math.cos(r.yaw), sn = Math.sin(r.yaw);
+  const world = (lx: number, lz: number): Point => ({ x: r.x + lx * cs + lz * sn, z: r.z - lx * sn + lz * cs });
+  const FRONT = 1.5, YARD = 7, SIDE = 1.5;
+  const origin = world(0, r.d / 2 + FRONT);
+  // Along the frontage (the ruin's local +x), and back from the street (its local -z).
+  const t = { x: cs, z: -sn }, n = { x: -sn, z: -cs };
+  const W = r.w + SIDE * 2, D = FRONT + r.d + YARD;
+  const corners = [add(origin, t, -W / 2), add(origin, t, W / 2), add(add(origin, t, W / 2), n, D), add(add(origin, t, -W / 2), n, D)];
+  const inRuin = (p: Point) => {
+    const dx = p.x - r.x, dz = p.z - r.z;
+    const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;
+    return Math.abs(lx) <= r.w / 2 + 0.5 && Math.abs(lz) <= r.d / 2 + 0.5;
+  };
+  const tiles: number[] = [];
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const c of corners) { x0 = Math.min(x0, c.x); x1 = Math.max(x1, c.x); z0 = Math.min(z0, c.z); z1 = Math.max(z1, c.z); }
+  for (let tz = toTileZ(w, z0); tz <= toTileZ(w, z1); tz++) for (let tx = toTileX(w, x0); tx <= toTileX(w, x1); tx++) {
+    if (!inBounds(w, tx, tz)) continue;
+    const p = { x: tileX(w, tx), z: tileZ(w, tz) };
+    if (!pointInPoly(p, corners)) continue;
+    const i = idx(w, tx, tz);
+    if (v.plotAt[i] || w.ground[i] === Ground.Water) continue;
+    if (w.blocked[i] && !inRuin(p)) continue;
+    tiles.push(i);
+  }
+  const house: HouseSpec = { W: r.w, D: r.d, wall: r.h, ridge: 'along', pitch: 0.6, wing: null, porch: false, chimney: 1, beds, seed: Math.round(r.x * 31 + r.z * 17) };
+  const plot: Plot = {
+    id: v.nextId++, household: 0, origin, t, n, corners, tiles, house,
+    hc: { x: r.x, z: r.z }, yaw: r.yaw, yard: [],
+  };
+  plot.yard = planYard(plot, new Set());
+  v.plots.push(plot);
+  for (const i of tiles) v.plotAt[i] = plot.id;
+  return plot;
+}
