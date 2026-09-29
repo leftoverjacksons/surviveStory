@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   footCenter, footFloor, type Footprint, type Project, type Village,
 } from '../sim/buildings';
-import { CAR } from '../sim/layout';
+import { heapPos } from '../sim/salvage';
 import type { Site } from '../sim/sites';
 import type { Building } from '../sim/buildings';
 import { WATER_Y, heightAt, tileX, tileZ, type Heap, type World } from '../sim/world';
@@ -1045,7 +1045,7 @@ const PILE_TONES: Record<string, string[]> = {
 
 export class HeapsView {
   group = new THREE.Group();
-  private views = new Map<number, { g: THREE.Group; cabin?: THREE.Object3D; parts: THREE.Object3D[]; last: number }>();
+  private views = new Map<number, { g: THREE.Group; cabin?: THREE.Object3D; parts: THREE.Object3D[]; last: number; at?: string }>();
 
   /** Heaps from world generation; later ones (caches) are added as they appear. */
   private initial: number;
@@ -1053,8 +1053,6 @@ export class HeapsView {
   constructor(private world: World) {
     this.initial = world.heaps.length;
     for (const h of world.heaps) {
-      // The station's own car is already modelled with the station.
-      if (world.site.kind === 'station' && h.kind === 'car' && Math.hypot(tileX(world, h.tx) - CAR.x, tileZ(world, h.tz) - CAR.z) < 1.5) continue;
       const v = h.kind === 'car' ? this.car(h) : this.pile(h);
       this.views.set(h.id, v);
       this.group.add(v.g);
@@ -1162,7 +1160,17 @@ export class HeapsView {
         this.group.add(nv.g);
       }
       const v = this.views.get(h.id);
-      if (!v || v.last === h.scrap) continue;
+      if (!v) continue;
+      // Emptied: the shell was hauled off with the last load (salvage.ts#clearHeap).
+      v.g.visible = h.scrap > 0;
+      // Towed: it moves along as they push (salvage.ts#heapPos).
+      const at = `${h.tx},${h.tz},${h.tow ? h.tow.work : -1}`;
+      if (at !== v.at) {
+        v.at = at;
+        const p = heapPos(this.world, h);
+        v.g.position.set(p.x, heightAt(this.world, p.x, p.z) - (h.kind === 'car' ? 0.06 : 0), p.z);
+      }
+      if (v.last === h.scrap) continue;
       v.last = h.scrap;
       const frac = h.scrap / h.max;
       const keep = Math.ceil(v.parts.length * frac);

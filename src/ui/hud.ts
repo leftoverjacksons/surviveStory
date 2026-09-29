@@ -85,6 +85,8 @@ export interface HudActions {
   onMoveCamp(which: 'fire' | 'stockpile'): void;
   onKeep(building: number): void;
   onCallOff(project: number): void;
+  /** A wreck or junk heap (DESIGN §30): strip it (or stop), tow it to the yard or somewhere chosen, stop towing. */
+  onHeap(heap: number, what: 'strip' | 'unstrip' | 'yard' | 'tow' | 'stoptow'): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -110,7 +112,7 @@ export class Hud {
   /** The council that last opened by itself (each new one opens, and the game waits). */
   private councilSeen = -1;
   private loreOpen = false;
-  private inspecting: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile' } | null = null;
+  private inspecting: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile'; heap?: number } | null = null;
   /** The team being chosen for a clearing. */
   private team = new Set<number>();
   private teamFor = -1;
@@ -190,6 +192,8 @@ export class Hud {
       if (go && !go.disabled) act.onClear(Number(go.dataset.clear), [...this.team], this.fae ?? undefined);
       const give = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-give]');
       if (give) act.onGive(Number(give.dataset.district), give.dataset.give as 'village' | 'folk' | 'shared');
+      const hp = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-heap-act]');
+      if (hp) act.onHeap(Number(hp.dataset.heap), hp.dataset.heapAct as 'strip' | 'unstrip' | 'yard' | 'tow' | 'stoptow');
       const rp = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-repair]');
       if (rp && !rp.disabled) {
         const b = this.col.village.buildings.find((x) => x.id === Number(rp.dataset.repair));
@@ -485,10 +489,14 @@ export class Hud {
 
   setVeilView(on: boolean) { this.veilView = on; }
 
-  inspect(target: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile' } | null) {
+  inspect(target: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile'; heap?: number } | null) {
     this.inspecting = target;
+    this.heapNote = '';
     this.renderInspect();
   }
+  /** A one-line answer shown on the open card (why a request couldn't be done). */
+  note(text: string) { this.heapNote = text; this.renderInspect(); }
+  private heapNote = '';
 
   private renderInspect() {
     const el = $('inspect');
@@ -574,6 +582,9 @@ export class Hud {
         <div class="what">${fire ? 'Where the village gathers of an evening, sleeps if it has no roof, and holds its festivals. Plots and lanes are laid out from it.' : 'Where wood and food are stacked, and logs are split at the chopping block beside it.'}</div>
         <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
         <div class="row" style="margin-top:8px"><button type="button" data-camp-move="${t.camp}" title="${fire ? 'Carry the fire somewhere else: open ground, clear of buildings.' : 'Carry the stacks somewhere else: open ground, clear of the fire and buildings.'}">Move</button></div>`;
+    } else if (t.heap !== undefined) {
+      html = this.heapCard(t.heap);
+      if (!html) { this.inspecting = null; el.hidden = true; return; }
     } else if (t.folk) {
       html = this.folkCard();
     } else if (t.district !== undefined) {
@@ -616,6 +627,37 @@ export class Hud {
     return `<div class="row" style="margin-top:8px">${repair}${btn('down', old ? 'Pull down' : 'Take down', old ? 'Click again: pull it down' : 'Click again: take it down', whyDown,
       old ? 'Builders pull it down for the salvage in its walls; the ground is freed.' : `Builders dismantle it; half of what it was made of comes back.${lived ? ' The family waits first in line for a new plot.' : ''}`)}
       ${old ? '' : btn('move', 'Move', 'Click again: move it', whyMove, b.kind === 'home' ? 'Builders take it apart and keep every piece; draw the family a new plot and it goes up there.' : 'Builders take it apart and keep every piece; then place it again wherever you like.')}</div>`;
+  }
+
+  /** A wreck or junk heap (DESIGN §30): what's in it, and what to do with it. */
+  private heapCard(id: number): string {
+    const col = this.col, w = col.world, h = w.heaps[id];
+    if (!h || h.scrap <= 0) return '';
+    const car = h.kind === 'car';
+    const from = h.source !== undefined ? w.ruins[h.source]?.name : undefined;
+    const what = h.material ?? (car ? 'car panels' : 'odds and ends');
+    const facts: [string, string][] = [
+      ['Scrap left', `${h.scrap} of ${h.max}`],
+      ['What it is', `${cap(what)}${from ? `, from ${from}` : car ? ', off the old road' : ''}`],
+    ];
+    if (car) facts.push(['Also', 'Seat cloth, when it is stripped']);
+    const stripping = col.agents.filter((a) => a.task?.kind === 'salvage' && (a.task as { heap: number }).heap === id).length;
+    const pushing = col.agents.filter((a) => a.task?.kind === 'tow' && (a.task as { heap: number }).heap === id).length;
+    let state = h.marked ? 'Marked: stripped first, until it is gone' : 'Left for now (stripped when the stores run short of scrap)';
+    if (h.tow) state = `Being pushed to its new place · ${Math.round((h.tow.work / h.tow.need) * 100)}%${pushing ? ` (${pushing} pushing)` : ' (waiting for builders)'}`;
+    facts.push(['State', state]);
+    if (stripping) facts.push(['Now', `${stripping} stripping it`]);
+    const b = (act: string, label: string, tip: string) => `<button type="button" data-heap="${id}" data-heap-act="${act}" title="${esc(tip)}">${esc(label)}</button>`;
+    const row = h.tow
+      ? b('stoptow', 'Stop pushing', 'Leave it where it has got to (or back where it was, if that spot is taken).')
+      : `${h.marked ? b('unstrip', 'Leave it', 'Stop stripping it first; it is taken only when scrap runs short.') : b('strip', 'Strip it', 'Builders strip it first, until it is gone and its ground is clear.')}
+        ${b('yard', 'Tow to the yard', 'Push it beside the stockpile: out of the way, and stripped close to home.')}
+        ${b('tow', 'Tow elsewhere…', 'Choose where to push it (within 60).')}`;
+    return `<h3>${car ? 'A wrecked car' : 'A junk heap'}<button type="button" id="inspect-close">Close</button></h3>
+      <div class="what">${car ? 'Rusting where it stopped. Wheels, doors and bonnet come off first, the cabin last; the shell goes with the last load.' : 'What fell out of the old world, heaped up. Picked through a load at a time.'}</div>
+      <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
+      <div class="row" style="margin-top:8px">${row}</div>
+      ${this.heapNote ? `<div class="what" style="margin-top:6px">${esc(this.heapNote)}</div>` : ''}`;
   }
 
   private callOffRow(p: Project): string {

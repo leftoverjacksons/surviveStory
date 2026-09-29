@@ -9,7 +9,7 @@ import { DEFS, MATERIALS, PLACEABLE, RARE, costText, tierFor, type SiteKind } fr
 import { PLOT_MIN } from '../sim/homes';
 import { FOLK_WORKS, type FolkWorkKind } from '../sim/folk';
 
-export type BuildTool = { kind: 'plot' } | { kind: 'restore' } | { kind: 'salvage' } | { kind: 'knowe' } | { kind: 'fire' } | { kind: 'stockpile' } | { kind: 'place'; site: SiteKind; turn: number } | { kind: 'folk'; work: FolkWorkKind };
+export type BuildTool = { kind: 'plot' } | { kind: 'restore' } | { kind: 'salvage' } | { kind: 'knowe' } | { kind: 'fire' } | { kind: 'stockpile' } | { kind: 'tow'; heap: number } | { kind: 'place'; site: SiteKind; turn: number } | { kind: 'folk'; work: FolkWorkKind };
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 

@@ -42,7 +42,7 @@ import { atFire, atStockpile, moveFire, moveStockpile, stockpileAt, whyNotFire, 
 import { MyceliumView } from './render/mycelium';
 import { myceliumDaily } from './sim/mycelium';
 import { powered, whyLocked } from './sim/power';
-import { markHeap, razeRuin, razeYield, whyNotRaze } from './sim/salvage';
+import { markHeap, razeRuin, razeYield, stopTow, towHeap, whyNotRaze, whyNotTow, yardSpot } from './sim/salvage';
 import { cancelProject, keepStanding, placeKindOf, pullDownShelter, takeDown } from './sim/dismantle';
 import { markDepave } from './sim/depave';
 import { TownhouseView } from './render/townhouse';
@@ -339,6 +339,19 @@ const hud = new Hud(colony, {
   },
   onKeep(id) { keepStanding(colony, id); hud.render(); },
   onMoveCamp(which) { setBuild({ kind: which }); },
+  onHeap(id, what) {
+    const h = world.heaps[id];
+    if (!h) return;
+    if (what === 'strip' || what === 'unstrip') markHeap(colony, h, what === 'strip');
+    else if (what === 'stoptow') stopTow(colony, h);
+    else if (what === 'tow') { setBuild({ kind: 'tow', heap: id }); return; }
+    else if (what === 'yard') {
+      const at = yardSpot(colony, h);
+      const why = at ? towHeap(colony, h, at.x, at.z) : 'There is no room beside the stockpile for it.';
+      if (why) { hud.note(why); return; }
+    }
+    hud.render();
+  },
   onCallOff(id) {
     const p = colony.village.projects.find((x) => x.id === id);
     if (p && !cancelProject(colony, p)) { hud.inspect(null); syncScene(); }
@@ -522,6 +535,7 @@ function setBuild(tool: BuildTool | null, why = '') {
     : (why ? `${why} ` : '') + (tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
     : tool.kind === 'restore' ? 'Click a ruin in a cleared district to restore it. Esc to stop.'
     : tool.kind === 'salvage' ? 'Click a wrecked car or junk heap to strip and clear it, or a ruin in a cleared district of yours to pull it down. Esc to stop.'
+    : tool.kind === 'tow' ? 'Choose where to push the wreck: open ground, clear of plots, fields and trees, within 60 of where it stands. Esc to stop.'
     : tool.kind === 'fire' ? 'Choose where the fire goes: open ground, clear of buildings and the stockpile, with room round it for the seats and bedrolls. Esc to stop.'
     : tool.kind === 'stockpile' ? 'Choose where the stockpile goes: open ground, clear of the fire and buildings. Esc to stop.'
     : tool.kind === 'knowe' ? 'Choose where the new knowe rises: open ground round the Great Hill, in the Wild or on unclaimed land. Trees there are taken into the hill. Esc to stop.'
@@ -617,6 +631,13 @@ function placeHover(cx: number, cy: number) {
     buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (r ? (why ? `${r.name}: ${why}` : `${r.name}: becomes ${RESTORE[r.kind]!.name(r)}. Click to restore it.`) : 'Click a ruin in a cleared district to restore it. Esc to stop.'));
     return;
   }
+  if (build.kind === 'tow') {
+    const h = world.heaps[build.heap];
+    const why = h ? whyNotTow(colony, h, g.x, g.z) : 'It is gone.';
+    placement.showFoot({ tx: toTileX(world, g.x) - (h?.kind === 'car' ? 1 : 0), tz: toTileZ(world, g.z) - (h?.kind === 'car' ? 1 : 0), w: h?.kind === 'car' ? 3 : 1, d: h?.kind === 'car' ? 3 : 1 }, 0, 0.6, !why);
+    buildPanel.hint(why ?? 'Click to push it here. Esc to stop.');
+    return;
+  }
   if (build.kind === 'fire' || build.kind === 'stockpile') {
     const fire = build.kind === 'fire';
     const why = fire ? whyNotFire(colony, g.x, g.z) : whyNotStockpile(colony, g.x, g.z);
@@ -681,6 +702,10 @@ function placeClick(cx: number, cy: number) {
     if (!r) return;
     const res = requestRestore(colony, r.id);
     if (typeof res === 'string') { buildPanel.hint(`${r.name}: ${res}`); return; }
+  } else if (build.kind === 'tow') {
+    const h = world.heaps[build.heap];
+    const why = h ? towHeap(colony, h, g.x, g.z) : 'It is gone.';
+    if (why) { buildPanel.hint(why); return; }
   } else if (build.kind === 'fire' || build.kind === 'stockpile') {
     const why = build.kind === 'fire' ? moveFire(colony, g.x, g.z) : moveStockpile(colony, g.x, g.z);
     if (why) { buildPanel.hint(why); return; }
@@ -928,6 +953,14 @@ function inspectCampAt(clientX: number, clientY: number): boolean {
   if (atStockpile(colony, g.x, g.z)) { hud.inspect({ camp: 'stockpile' }); return true; }
   return false;
 }
+/** A wreck or junk heap under the pointer (right-click: its card, DESIGN §30). */
+function inspectHeapAt(clientX: number, clientY: number): boolean {
+  const g = groundAt(clientX, clientY);
+  const h = g ? heapAtPoint(g.x, g.z) : null;
+  if (!h) return false;
+  hud.inspect({ heap: h.id });
+  return true;
+}
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, sx: e.clientX, sy: e.clientY });
@@ -996,7 +1029,7 @@ canvas.addEventListener('pointerup', (e) => {
   }
   if (!p || Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 6) return;
   // A right-click on a building opens its card, where it can be taken down or moved (DESIGN §24.13).
-  if (p.button === 2) { if (!inspectBuildingAt(e.clientX, e.clientY)) inspectCampAt(e.clientX, e.clientY); return; }
+  if (p.button === 2) { if (!inspectBuildingAt(e.clientX, e.clientY) && !inspectCampAt(e.clientX, e.clientY)) inspectHeapAt(e.clientX, e.clientY); return; }
   if (p.button !== 0) return;
   // A click: try to select a survivor.
   const r = canvas.getBoundingClientRect();
@@ -1431,6 +1464,16 @@ const veilDebug = {
     return r;
   },
   /** Clear the nearest district with a house, restore the house and finish it (DESIGN §24.16). Returns the ruin. */
+  /** Tow the wreck nearest the fire to the yard (DESIGN §30); returns its id, and opens its card. */
+  towNearest() {
+    const c = world.campfire;
+    const h = world.heaps.filter((x) => x.kind === 'car' && x.scrap > 0 && !x.tow).sort((a, b) => Math.hypot(tileX(world, a.tx) - c.x, tileZ(world, a.tz) - c.z) - Math.hypot(tileX(world, b.tx) - c.x, tileZ(world, b.tz) - c.z))[0];
+    if (!h) return null;
+    const at = yardSpot(colony, h);
+    if (at) towHeap(colony, h, at.x, at.z);
+    hud.inspect({ heap: h.id });
+    return h.id;
+  },
   /** Pull the found shelter down at once, and (with a point) raise a commons hall near it, built (DESIGN §29). */
   pullDown(x?: number, z?: number) {
     const st = colony.village.buildings.find((b) => b.kind === 'store')!;

@@ -45,7 +45,7 @@ import {
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
 import { finishTakedown } from './dismantle';
-import { finishRaze } from './salvage';
+import { clearHeap, finishRaze, finishTow, heapPos } from './salvage';
 import { learnWiring, millFactor, powerDaily } from './power';
 import { APPRENTICE_AGE, TODDLER_AGE, ageWork, isAdult, isChild, lineageDaily, oldAge, settleLineage } from './lineage';
 import { DEPAVE_WORK, finishDepave, nearestDepave } from './depave';
@@ -77,6 +77,7 @@ export type Task =
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern' | 'water'; building: number }
   | { kind: 'dismantle'; building: number; stage: 'go' | 'work' }
+  | { kind: 'tow'; heap: number; stage: 'go' | 'work' }
   | { kind: 'split'; stage: 'go' | 'work'; t: number; done: number }
   | { kind: 'raze'; ruin: number; stage: 'go' | 'work' }
   | { kind: 'depave'; tile: number; stage: 'go' | 'work'; t: number }
@@ -671,7 +672,7 @@ function pickSalvage(col: Colony, a: Agent): Task | null {
     const w = col.world;
     let mk: Heap | null = null, md = Infinity;
     for (const h of w.heaps) {
-      if (!h.marked || h.scrap <= 0 || h.reserved || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
+      if (!h.marked || h.scrap <= 0 || h.reserved || h.tow || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
       const d = Math.hypot(tileX(w, h.tx) - a.x, tileZ(w, h.tz) - a.z);
       if (d < md) { mk = h; md = d; }
     }
@@ -683,7 +684,7 @@ function pickSalvage(col: Colony, a: Agent): Task | null {
   const w = col.world;
   let best = null, bestD = Infinity;
   for (const h of w.heaps) {
-    if (h.scrap <= 0 || h.reserved || !isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`)) continue;
+    if (h.scrap <= 0 || h.reserved || h.tow || !isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`)) continue;
     if (heapHaunted(col, h.tx, h.tz)) continue; // nobody will go that close to what lives there
     const d = Math.hypot(tileX(w, h.tx) - a.x, tileZ(w, h.tz) - a.z);
     if (d < bestD && d < 95) { best = h; bestD = d; }
@@ -692,7 +693,7 @@ function pickSalvage(col: Colony, a: Agent): Task | null {
   if (!best) {
     const c = w.campfire;
     for (const h of w.heaps) {
-      if (h.scrap <= 0 || h.reserved || isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
+      if (h.scrap <= 0 || h.reserved || h.tow || isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
       const d = Math.hypot(tileX(w, h.tx) - c.x, tileZ(w, h.tz) - c.z);
       if (d < bestD && d < 45) { best = h; bestD = d; }
     }
@@ -951,6 +952,18 @@ function pickDismantle(col: Colony, a: Agent): Task | null {
     if (!b) continue;
     if (col.agents.filter((o) => o !== a && o.task?.kind === 'dismantle' && o.task.building === b.id).length >= (b.kind === 'store' ? 4 : 2)) continue;
     if (setDest(col, a, b.door.x, b.door.z, true)) return { kind: 'dismantle', building: b.id, stage: 'go' };
+  }
+  return null;
+}
+
+/** Push a wreck the player asked to be towed (salvage.ts): up to three to a wreck. */
+function pickTow(col: Colony, a: Agent): Task | null {
+  const w = col.world;
+  for (const h of w.heaps) {
+    if (!h.tow || h.scrap <= 0) continue;
+    if (col.agents.filter((o) => o !== a && o.task?.kind === 'tow' && o.task.heap === h.id).length >= 3) continue;
+    const p = heapPos(w, h);
+    if (setDest(col, a, p.x, p.z, true)) return { kind: 'tow', heap: h.id, stage: 'go' };
   }
   return null;
 }
@@ -1234,12 +1247,18 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
       return t;
     }
   }
+  // A wreck the player asked to be pushed: whoever's free lends a shoulder, up to three to a wreck (DESIGN §30).
+  if (s.role !== 'rest' && col.world.heaps.some((x) => x.tow)) {
+    const tw = pickTow(col, a);
+    if (tw) return tw;
+  }
   switch (s.role) {
     case 'builder':
       // All hands to the woodpile: no building for now (a council commitment).
       if (committed(col, 'all_hands')) { t = pickTree(col, a) ?? pickForage(col, a) ?? pickHaul(col, a); break; }
+      // A wreck the player asked to be pushed comes before new building: it is a short, explicit order (DESIGN §30).
       t = pickHaul(col, a) ?? pickSplit(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
-        ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickBuild(col, a)
+        ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickTow(col, a) ?? pickBuild(col, a)
         ?? pickDismantle(col, a) ?? pickRaze(col, a) ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
     case 'farmer':
@@ -1525,6 +1544,27 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       td.work += dt * workRate(s, 'builder', col);
       a.activity = `${td.moving ? 'Taking apart' : 'Taking down'} ${b.name.toLowerCase()} · ${Math.min(99, Math.round((td.work / td.need) * 100))}%`;
       if (td.work >= td.need) { finishTakedown(col, td); endTask(col, a); }
+      return;
+    }
+    case 'tow': {
+      const h = w.heaps[t.heap];
+      if (!h?.tow || h.scrap <= 0) return endTask(col, a);
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = h.kind === 'car' ? 'Going to push a wreck' : 'Going to shift a junk heap';
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      // Pushing: they move along with it.
+      h.tow.work += dt * workRate(s, 'builder', col);
+      const p = heapPos(w, h), to = { x: tileX(w, h.tow.tx), z: tileZ(w, h.tow.tz) };
+      const dx = to.x - p.x, dz = to.z - p.z, L = Math.hypot(dx, dz) || 1;
+      const side = ((a.id % 3) - 1) * 0.7;
+      a.x = p.x - (dx / L) * (h.kind === 'car' ? 2.4 : 1.2) - (dz / L) * side;
+      a.z = p.z - (dz / L) * (h.kind === 'car' ? 2.4 : 1.2) + (dx / L) * side;
+      face(a, p);
+      a.anim = 'build';
+      a.activity = `${h.kind === 'car' ? 'Pushing a wreck' : 'Shifting a junk heap'} · ${Math.min(99, Math.round((h.tow.work / h.tow.need) * 100))}%`;
+      if (h.tow.work >= h.tow.need) { finishTow(col, h); endTask(col, a); }
       return;
     }
     case 'split': {
@@ -2043,6 +2083,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
           const take = Math.min(6, h.scrap);
           h.scrap -= take;
           noteSalvage(col, s, h, take);
+          if (h.scrap <= 0) clearHeap(col, h); // the last of it goes, shell and all
           disturb(col, tileX(w, h.tx), tileZ(w, h.tz), 0.015);
           h.reserved = 0;
           a.carry = { kind: 'scrap', amount: take };

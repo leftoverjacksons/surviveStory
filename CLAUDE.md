@@ -234,6 +234,9 @@ reference: Tiny Glade.
     §29 BUILT (not published): the found shelter can be repaired from its card, pulled down (`Building.gone`,
     `pullDownShelter`) or "moved" (a Commons hall, `DEFS.hall`, `hallOf`); homes offer Improve. The Great Hill
     sits 42–60 from the fire (buffer), knowes keep `KNOWE_KEEP_OFF` from it.
+    §30 BUILT (not published): WRECKS right-click card (strip/leave/tow to yard/tow elsewhere/stop), emptied wrecks
+    vanish and free their tiles (`clearHeap`, `heapTiles`), TOWING (`towHeap`, `tow` task, `Heap.tow`, `yardSpot`;
+    the nearest free people come). The station car is now a normal wreck. Next: electric carts, parts with provenance.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

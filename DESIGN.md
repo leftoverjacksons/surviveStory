@@ -3809,3 +3809,55 @@ that gap at all is a choice".
   - the hall's own interior furniture (it seats people, but the table is
     not drawn inside);
   - moving the site's wrecks.
+
+### §30. Wrecks: a card, stripping seen, towing
+
+The user, after §29, agreed to three pieces of the car backlog: a
+right-click card for wrecks, visible stripping, and towing.
+- **Card** (right-click a wrecked car or junk heap; `hud.ts#heapCard`):
+  - It shows the scrap left of the total, what it is and where it came
+    from, and whether it is marked, being stripped (and by how many), or
+    being pushed (percent, and how many are pushing).
+  - Buttons: *Strip it* / *Leave it* (the existing `markHeap`), *Tow to
+    the yard*, *Tow elsewhere…* (the `tow` placement tool, with its reason
+    shown on hover), and *Stop pushing*.
+- **Stripping seen:**
+  - Wheels, doors and bonnet go first and the cabin last. This was already
+    drawn (`HeapsView.sync`).
+  - New: at 0 scrap the shell goes with the last load (`salvage.ts#clearHeap`).
+    The view is hidden and the tiles it blocked (a car's three along its
+    length, `heapTiles`) are freed. Before this, an emptied wreck kept
+    blocking and stayed drawn.
+- **Towing** (`towHeap`, `whyNotTow`, `yardSpot`, `stopTow`, `finishTow`;
+  the `tow` task):
+  - Refused:
+    - more than 60 away;
+    - onto water, blocked tiles, trees, plots, fields or the Folk's land;
+    - unexplored ground;
+    - a wreck already being pushed.
+  - Work: 60 + 5 × distance minutes for a car, 40 + 3 × distance for a
+    heap.
+  - Up to three push it. Whoever is free joins, not only builders, before
+    new building. When the order is given, the two nearest people at
+    interruptible work (foraging, company, tending, leisure, yard work,
+    salvage, scrounging, gardening; not carrying) put it down and come.
+  - The wreck slides along as they push (`heapPos`), and they move with it.
+    When it arrives, its old ground is freed and its new ground blocked.
+  - Stopped part way, it stays where it has got to, or goes back if that
+    spot is taken.
+  - *The yard* is the nearest open spot 4–16 from the stockpile, with a
+    tile of room all round and 6 clear of the fire.
+- **The station's forecourt car** is no longer baked into the station mesh.
+  It is drawn with the other wrecks, so it can be stripped and towed like
+  them (it looks like a generic wreck now).
+- **Checked:**
+  - Seed 5 (station), in the browser: ordered at 09:00, the forecourt car
+    was beside the stockpile by 13:00.
+  - `tests/wrecks.test.ts`: tiles, clearing at 0, a tow to the yard,
+    refusals, stopping.
+  - 185 tests pass, and a 3-village one-year soak raised no flags.
+  - Debug hook: `__game.towNearest()`.
+- **Not yet:**
+  - electric carts from junk cars;
+  - parts with provenance (batteries to the grid, tyres, windscreen glass);
+  - the autopilot never tows.
