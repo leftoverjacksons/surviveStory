@@ -55,7 +55,8 @@ export interface Haunt {
   spirits: Spirit[];
   /** unknown: never been close; sensed: scouts felt it; cleared: settled or given. */
   state: 'unknown' | 'sensed' | 'cleared';
-  owner: null | 'village' | 'folk';
+  /** Who has it: the village, the Folk, or both (a shared street: the village builds, the Folk make their works). */
+  owner: null | 'village' | 'folk' | 'shared';
   /** Day before which the spirits are too stirred up for another attempt. */
   stirredUntil: number;
   attempts: number;
@@ -817,7 +818,7 @@ function applyClearing(col: Colony, cl: Clearing) {
 }
 
 /** After a clearing, who the district goes to. */
-export function giveDistrict(col: Colony, districtId: number, to: 'village' | 'folk') {
+export function giveDistrict(col: Colony, districtId: number, to: 'village' | 'folk' | 'shared') {
   const h = hauntOf(col, districtId);
   if (!h || h.state !== 'cleared' || h.owner) return;
   h.owner = to;
@@ -833,7 +834,7 @@ export function giveDistrict(col: Colony, districtId: number, to: 'village' | 'f
       const g = w.ground[i];
       if (g === Ground.Water || w.explored[i] <= 128) continue;
       // Paving is left to crack and green over; the Folk take it as it is.
-      if (g === Ground.Asphalt || g === Ground.Concrete) { if (!w.blocked[i]) w.ground[i] = Ground.Grass; }
+      if (g === Ground.Asphalt || g === Ground.Concrete) { if (!w.blocked[i]) { w.ground[i] = Ground.Grass; w.groundVersion = (w.groundVersion ?? 0) + 1; } }
       w.zone[i] = Zone.Wild;
       n++;
     }
@@ -842,6 +843,9 @@ export function giveDistrict(col: Colony, districtId: number, to: 'village' | 'f
     log(col.community, suited
       ? `${d.name} was left to the Folk. By the next full moon there were lights among the ruins, and the paving had started to green.`
       : `${d.name} was left to the Folk. They took it politely; it isn't the kind of place they love, but they'll make something of it.`, 'good');
+  } else if (to === 'shared') {
+    changeStanding(col, suited ? 8 : 5);
+    log(col.community, `${d.name} is to be shared: the village may build and garden there, and the Folk may make their works among the gardens. It will be slower for both, and the land between them will be glad of it.`, 'good');
   } else {
     log(col.community, suited
       ? `${d.name} is the village's now. The Folk would have liked it; they said nothing.`

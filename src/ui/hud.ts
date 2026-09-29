@@ -53,7 +53,7 @@ const BUILDING_INFO: Record<string, string> = {
   boat: 'A rowing boat. Out in the middle is where the big ones are: a third more catch, except in winter.',
 };
 
-export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'fishing' | 'wild' | 'erase';
+export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'fishing' | 'wild' | 'depave' | 'erase';
 
 export interface HudActions {
   onKill(id: number): void;
@@ -73,7 +73,7 @@ export interface HudActions {
   onOmen(): void;
   onFolkFocus(focus: FolkFocus): void;
   onClear(haunt: number, team: number[], fae?: number): void;
-  onGive(district: number, to: 'village' | 'folk'): void;
+  onGive(district: number, to: 'village' | 'folk' | 'shared'): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -174,7 +174,7 @@ export class Hud {
       const go = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-clear]');
       if (go && !go.disabled) act.onClear(Number(go.dataset.clear), [...this.team], this.fae ?? undefined);
       const give = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-give]');
-      if (give) act.onGive(Number(give.dataset.district), give.dataset.give as 'village' | 'folk');
+      if (give) act.onGive(Number(give.dataset.district), give.dataset.give as 'village' | 'folk' | 'shared');
     });
     $('council-open').addEventListener('click', () => { this.councilOpen = true; this.councilKey = ''; this.renderCouncil(); });
     $('council').addEventListener('click', (e) => {
@@ -546,7 +546,7 @@ export class Hud {
     const known = h.spirits.filter((s) => s.known >= 1);
     const unknownN = h.spirits.length - known.length;
     if (h.state === 'unknown') facts.push(['What lives here', 'Nobody has been close enough to feel it.']);
-    else if (h.state === 'cleared') facts.push(['State', h.owner === 'folk' ? 'Quiet, and left to the Folk.' : h.owner === 'village' ? 'Quiet, and the village\'s.' : 'Quiet. Who should have it?']);
+    else if (h.state === 'cleared') facts.push(['State', h.owner === 'folk' ? 'Quiet, and left to the Folk.' : h.owner === 'shared' ? 'Quiet, and shared between the village and the Folk.' : h.owner === 'village' ? 'Quiet, and the village\'s.' : 'Quiet. Who should have it?']);
     else {
       facts.push(['What lives here', [...known.map((s) => `${cap(s.name)}${s.fate !== 'present' ? ` (${s.fate === 'rested' ? 'at rest' : s.fate === 'unravelled' ? 'unravelled' : s.fate === 'banished' ? 'banished' : s.fate === 'invited' ? 'came home' : 'with the Folk'})` : ''}`), unknownN ? `${unknownN} ${unknownN === 1 ? 'presence' : 'presences'} nobody has made out yet` : ''].filter(Boolean).join('; ')]);
       facts.push(['Effect', 'Nothing can be zoned here; salvage near them is left alone.']);
@@ -559,7 +559,8 @@ export class Hud {
     if (h.state === 'cleared' && !h.owner) {
       body = `<div class="h" style="margin-top:8px">Who should have it</div><div class="row">
         <button type="button" data-give="village" data-district="${id}">The village</button>
-        <button type="button" data-give="folk" data-district="${id}">The Folk</button></div>`;
+        <button type="button" data-give="folk" data-district="${id}" title="Left to the Wild: the paving greens over, the hill can grow toward it, and their mycelium runs strong through it.">The Folk</button>
+        <button type="button" data-give="shared" data-district="${id}" title="A shared street: the village may build, garden and restore there, and the Folk may make their works among the gardens. Slower for both; their mycelium runs strong through it.">Share it</button></div>`;
     } else if (h.state !== 'cleared') {
       const why = canClear(col, h);
       if (this.teamFor !== id) {

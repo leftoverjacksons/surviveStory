@@ -39,6 +39,7 @@ import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
 import { digChamber } from './sim/townhouse';
 import { MyceliumView } from './render/mycelium';
+import { markDepave } from './sim/depave';
 import { TownhouseView } from './render/townhouse';
 import { GatheringView } from './render/gathering';
 import { PlotsView } from './render/plots';
@@ -134,6 +135,7 @@ worldUniforms.uResTex.value = resonance.texture;
 worldUniforms.uFogSize.value = world.w;
 
 const terrainGroup = buildTerrain(world);
+let lastGround = 0;
 terrainGroup.name = 'terrain';
 scene.add(terrainGroup);
 const station = buildSite(world.site);
@@ -369,7 +371,7 @@ function setOmen(on: boolean) {
 }
 
 let zoneTool: ZoneTool | null = null;
-const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, fishing: Zone.Fishing, wild: Zone.Wild, erase: Zone.None };
+const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, fishing: Zone.Fishing, wild: Zone.Wild, depave: Zone.None, erase: Zone.None };
 function setZoneTool(mode: ZoneTool | null) {
   zoneTool = mode;
   if (mode && build) setBuild(null);
@@ -613,7 +615,11 @@ function paintAt(clientX: number, clientY: number) {
   const r = canvas.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, iso.camera);
-  if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) paintZone(world, hitPoint.x, hitPoint.z, 2.5, ZONE_OF[zoneTool] as never);
+  if (!raycaster.ray.intersectPlane(groundPlane, hitPoint)) return;
+  // Depave marks paving to be broken up (DESIGN §24.12); Erase also unmarks it.
+  if (zoneTool === 'depave') { markDepave(world, hitPoint.x, hitPoint.z, 2.5, true); return; }
+  if (zoneTool === 'erase') markDepave(world, hitPoint.x, hitPoint.z, 2.5, false);
+  paintZone(world, hitPoint.x, hitPoint.z, 2.5, ZONE_OF[zoneTool] as never);
 }
 
 function setSpeed(level: number) {
@@ -1108,6 +1114,7 @@ function frame() {
   for (const a of colony.agents) if (a.indoors && a.inside) occupied.add(a.inside);
   plotsView.update(t, sky.night);
   gatheringView.sync(colony);
+  if (t - lastGround > 2) { lastGround = t; terrainGroup.userData.refreshGround?.(); }
   gatheringView.update(t, sky.night);
   RESTORED_GLOW.opacity = sky.night > 0.3 ? sky.night * 0.9 : 0;
   grade.uniforms.uNight.value = sky.night;
@@ -1291,6 +1298,8 @@ const veilDebug = {
     if (typeof r !== 'string') enterVeil(r);
     return r;
   },
+  /** Mark paving to be broken up (DESIGN §24.12). */
+  depave: (x: number, z: number, r: number) => markDepave(world, x, z, r, true),
   /** Grow the hill n times, each with its chamber (DESIGN §24.9). */
   dig(n = 1) { for (let i = 0; i < n; i++) { colony.folk.level++; addFae(colony.folk, colony.world, 'hob', colony.folk.level); digChamber(colony); } },
   /** Put a gathering on (DESIGN §24.8): 'festival', 'folk_festival', or 'wedding' (the two closest free adults). */

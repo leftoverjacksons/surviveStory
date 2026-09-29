@@ -12,6 +12,7 @@
  *   village (night chores), or their own home (the mound grows).
  */
 import { CHAMBERS, chamberCount, digChamber, firstChambers, townhouseDaily, type Chamber } from './townhouse';
+import { HAUNT_RADIUS } from './haunt';
 import type { Colony } from './colony';
 import { alive, log, remember, withRng, type Survivor } from './community';
 import type { Rng } from './rng';
@@ -540,13 +541,18 @@ export function folkNeeds(col: Colony): FolkNeed[] {
 }
 
 /** Where an order could go: in the Wild, off their paths, clear of trees and other works. */
+const v = (col: Colony) => col.village;
+
 export function whyNotFolkWork(col: Colony, x: number, z: number): string | null {
   const w = col.world, f = col.folk;
   if (!f.met) return 'Nobody has met the Folk yet.';
   const tx = toTileX(w, x), tz = toTileZ(w, z);
   if (!inBounds(w, tx, tz)) return 'Off the map.';
   const i = idx(w, tx, tz);
-  if (w.zone[i] !== Zone.Wild) return 'The Folk only build in the Wild.';
+  // In a shared district (DESIGN §24.12) they may build among the gardens, not only in the Wild.
+  const shared = col.haunts.some((h) => h.owner === 'shared' && Math.hypot(w.districts[h.district].x - x, w.districts[h.district].z - z) <= HAUNT_RADIUS);
+  if (w.zone[i] !== Zone.Wild && !shared) return 'The Folk only build in the Wild, or in a district shared with them.';
+  if (shared && (w.zone[i] === Zone.Field || v(col).plotAt[i] || w.ground[i] === Ground.Water)) return 'Not on a field, a plot or water.';
   if (w.folk.path[i]) return 'Not on their paths.';
   if (w.blocked[i] || w.treeAt[i] >= 0) return 'Something is in the way.';
   if (Math.hypot(x - w.folk.mound.x, z - w.folk.mound.z) < w.folk.mound.r + 0.8) return 'Too close to the hill.';

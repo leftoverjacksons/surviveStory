@@ -111,6 +111,12 @@ export interface World {
   /** Fences, gates and garden beds for walking (hedges.ts): 0 none, 1 fence, 2 gate, 3 bed. */
   hedge?: Uint8Array;
   hedgeVersion?: number;
+  /** Paving marked to be broken up (depave.ts), how many squares are waiting, and how many are done. */
+  depave?: Uint8Array;
+  depaveCount?: number;
+  depaved?: number;
+  /** Bumped when a square's ground changes (paving broken up): the terrain redraws. */
+  groundVersion?: number;
   /** How well each tile is remembered as a path (0..1): kept up through the seasons (colony.ts#dailyWear). */
   pathMemory?: Float32Array;
   /** Gates the village wore through its fences, where people kept crossing (hedges.ts). */

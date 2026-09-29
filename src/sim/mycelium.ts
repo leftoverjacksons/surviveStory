@@ -102,7 +102,7 @@ function capacity(col: Colony): { cap: Float32Array; hub: Float32Array; source: 
   // Uncleared districts are dead ground. Cleared, they carry it over their paving:
   // moderately if the village took them, strongly if they were given to the Folk.
   for (const h of col.haunts) {
-    const carry = h.state !== 'cleared' ? 0 : h.owner === 'folk' ? 0.8 : 0.4;
+    const carry = h.state !== 'cleared' ? 0 : h.owner === 'folk' || h.owner === 'shared' ? 0.8 : 0.4;
     for (const r of w.ruins) {
       if (r.district !== h.district) continue;
       const rr = Math.max(r.w, r.d) / 2 + 3;

@@ -42,6 +42,7 @@ import {
 } from './veil';
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
+import { DEPAVE_WORK, finishDepave, nearestDepave } from './depave';
 import { blessingGrowth, createMycelium, myceliumDaily, sever, type Mycelium } from './mycelium';
 import { activeGathering, courtshipDaily, gatherSpot, gatheringsTick, joined, type Gathering } from './gatherings';
 import {
@@ -68,6 +69,7 @@ export type Task =
   | { kind: 'eat'; stage: 'go' | 'eat'; t: number; place: MealPlace; building: number }
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern' | 'water'; building: number }
+  | { kind: 'depave'; tile: number; stage: 'go' | 'work'; t: number }
   | { kind: 'gather'; g: number; stage: 'go' | 'be'; slot: number; ate?: boolean }
   | { kind: 'craft'; building: number; stage: 'go' | 'work'; t: number }
   | { kind: 'strip'; ruin: number; stage: 'go' | 'work' | 'deliver'; t: number }
@@ -908,6 +910,17 @@ function yardSpot(plot: Plot, i: number, a: Agent): Point {
   return plotPoint(plot, y.u + side, y.v - y.d / 2 - 0.5);
 }
 
+/** Break up a square of marked paving (depave.ts): the nearest one nobody else is on. */
+function pickDepave(col: Colony, a: Agent): Task | null {
+  const w = col.world;
+  if (!(w.depaveCount! > 0) || quiet(col, `depave${a.id}`)) return null;
+  const i = nearestDepave(col, a.x, a.z);
+  if (i < 0) { hush(col, `depave${a.id}`, 60); return null; }
+  if (!setDest(col, a, tileX(w, i % w.w), tileZ(w, Math.floor(i / w.w)))) { hush(col, `depave${a.id}`, 30); return null; }
+  col.claims.set(i, a.id);
+  return { kind: 'depave', tile: i, stage: 'go', t: 0 };
+}
+
 /** Home improvements: build the next yard feature, or tend the vegetable beds. */
 /** Fence a field that is in use: one person at a time walks the outline, building as they go. */
 function pickFence(col: Colony, a: Agent): Task | null {
@@ -1121,10 +1134,10 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
       if (committed(col, 'all_hands')) { t = pickTree(col, a) ?? pickForage(col, a) ?? pickHaul(col, a); break; }
       t = pickHaul(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
         ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickBuild(col, a)
-        ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
+        ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
     case 'farmer':
-      t = pickFarm(col, a) ?? pickGarden(col, a) ?? pickFence(col, a) ?? pickForage(col, a) ?? pickHaul(col, a);
+      t = pickFarm(col, a) ?? pickGarden(col, a) ?? pickFence(col, a) ?? pickForage(col, a) ?? pickDepave(col, a) ?? pickHaul(col, a);
       if (!fieldTiles(col).length && seasonNow(col) === 'spring' && !col.hints.has('field')) {
         col.hints.add('field');
         log(col.community, `${first(s)} keeps looking at the meadow. "We could plant here, if someone marked out a field."`, 'info');
@@ -1175,6 +1188,7 @@ function deliver(col: Colony, a: Agent): boolean {
 
 function endTask(col: Colony, a: Agent) {
   const t = a.task;
+  if (t?.kind === 'depave' && col.claims.get(t.tile) === a.id) col.claims.delete(t.tile);
   if (t?.kind === 'supply') {
     // Undo an unfinished delivery: return what was carried, free the promise.
     const p = projectById(col, t.project);
@@ -1386,6 +1400,21 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         a.needs.social = Math.min(100, a.needs.social + dt * ((t.place === 'hall' || t.place === 'tavern' ? 25 : mates.length ? 20 : 6) / 60));
       }
       if (!isEvening(hourOf(col))) endTask(col, a);
+      return;
+    }
+    case 'depave': {
+      const i = t.tile;
+      if (!w.depave?.[i]) { col.claims.delete(i); return endTask(col, a); }
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = 'Going to break up the old paving';
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      face(a, { x: tileX(w, i % w.w) + 0.3, z: tileZ(w, Math.floor(i / w.w)) + 0.3 });
+      a.anim = 'build';
+      t.t += dt * workRate(s, 'builder', col);
+      a.activity = `Breaking up the old paving · ${Math.min(99, Math.round((t.t / DEPAVE_WORK) * 100))}%`;
+      if (t.t >= DEPAVE_WORK) { finishDepave(col, i); col.claims.delete(i); endTask(col, a); }
       return;
     }
     case 'gather': {

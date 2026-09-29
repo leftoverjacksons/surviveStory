@@ -45,7 +45,7 @@ export const RESTORE: Partial<Record<RuinKind, RestoreDef>> = {
 export function restorable(col: Colony): Ruin[] {
   const w = col.world, v = col.village;
   const planned = new Set(v.projects.filter((p) => !p.done && p.kind === 'restore').map((p) => p.ruin));
-  const ours = new Set(col.haunts.filter((h) => h.state === 'cleared' && h.owner === 'village').map((h) => h.district));
+  const ours = new Set(col.haunts.filter((h) => h.state === 'cleared' && (h.owner === 'village' || h.owner === 'shared')).map((h) => h.district));
   return w.ruins.filter((r) => ours.has(r.district) && !r.restored && !planned.has(r.id) && RESTORE[r.kind] && reachableRuin(w, r));
 }
 

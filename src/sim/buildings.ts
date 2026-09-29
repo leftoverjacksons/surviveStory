@@ -256,7 +256,7 @@ export function footprintFree(w: World, v: Village, f: Footprint, margin: number
       if (w.fieldAt?.[i] > 0) return { ok: false, trees, why: 'That is a field.' };
       const g = w.ground[i];
       if (g === Ground.Water) return { ok: false, trees, why: 'That is water.' };
-      if (g === Ground.Asphalt || g === Ground.Concrete) return { ok: false, trees, why: 'That is road or old paving.' };
+      if (g === Ground.Asphalt || g === Ground.Concrete) return { ok: false, trees, why: 'That is road or old paving. (Break it up first: the Depave brush.)' };
       if (v.plotAt[i]) return { ok: false, trees, why: 'That is someone\'s plot.' };
       if (w.folk?.path[i]) return { ok: false, trees, why: 'That is a Folk path.' };
       if (w.blocked[i] || w.bushAt[i] >= 0) return { ok: false, trees, why: 'Something is in the way.' };

@@ -822,7 +822,7 @@ export function plotTileWhy(w: World, v: Village, tx: number, tz: number, others
   const p = { x: tileX(w, tx), z: tileZ(w, tz) };
   const g = w.ground[i], sp = w.stockpile, CAMP = w.campfire;
   if (g === Ground.Water) return { why: 'That runs into the water.', kind: 'hard' };
-  if (g === Ground.Asphalt || g === Ground.Concrete) return { why: 'That runs over a road or old paving.', kind: 'hard' };
+  if (g === Ground.Asphalt || g === Ground.Concrete) return { why: 'That runs over a road or old paving. (Break it up first: the Depave brush.)', kind: 'hard' };
   if (w.haunted?.[i]) return { why: 'Something still lives there. Clear the district first.', kind: 'haunted' };
   if (w.zone[i] === 6 /* Zone.Wild */ || w.folk?.path[i]) return { why: 'That is the Folk\'s land.', kind: 'folk' };
   if (w.fieldAt?.[i] > 0) return { why: 'That runs over a field.', kind: 'hard' };

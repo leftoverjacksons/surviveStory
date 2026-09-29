@@ -158,6 +158,7 @@
   .zone button[aria-pressed="true"] { background: var(--ink); color: #0b1210; border-color: var(--ink); font-weight: 700; }
   .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
   .sw.home { background: #ffe88c; } .sw.field { background: #f09632; } .sw.woodlot { background: #6ed75a; } .sw.sacred { background: #c382ff; } .sw.fishing { background: #5abee6; } .sw.wild { background: #50c8aa; }
+  .sw.depave { background: repeating-linear-gradient(45deg, #c8783c 0 3px, #5a5750 3px 6px); }
   /* winter readiness */
   #winter { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
   #winter .h { font: 11px var(--f-mono); text-transform: uppercase; letter-spacing: 0.09em; color: var(--ink-dim); }
@@ -453,7 +454,8 @@
     <button data-zone="sacred" type="button" title="Sacred ground: never cut, never built on" aria-pressed="false"><i class="sw sacred"></i>Sacred</button>
     <button data-zone="fishing" type="button" title="Fishing grounds: mark a pond's shore for a jetty, hut and fishers" aria-pressed="false"><i class="sw fishing"></i>Fishing</button>
     <button data-zone="wild" type="button" title="The Wild: land given to the Folk. Nobody cuts or builds there. Their hill grows only while they have room; taking land back sours them." aria-pressed="false"><i class="sw wild"></i>Wild</button>
-    <button data-zone="erase" type="button" title="Erase any zone" aria-pressed="false">Erase</button>
+    <button data-zone="depave" type="button" title="Break up paving: mark old roads, car parks and slabs, and builders break them up a square at a time. The soil under them can then be zoned, planted and built on. The rubble gives a little scrap." aria-pressed="false"><i class="sw depave"></i>Depave</button>
+    <button data-zone="erase" type="button" title="Erase any zone (and any paving marked to be broken up)" aria-pressed="false">Erase</button>
   </div>
   <div class="grp">
     <button id="roof-btn" type="button" title="Look inside: roofs shown, hidden, or walls cut away (R)">Roofs: shown</button>

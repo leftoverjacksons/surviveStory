@@ -48,6 +48,8 @@ export const ZONE_COLORS: Record<number, [number, number, number]> = {
 };
 
 const HAUNTED: [number, number, number] = [120, 80, 170];
+/** Paving marked to be broken up (depave.ts). */
+const DEPAVE: [number, number, number] = [210, 120, 60];
 
 export class ZoneTexture {
   texture: THREE.DataTexture;
@@ -68,7 +70,7 @@ export class ZoneTexture {
     for (let i = 0; i < w.zone.length; i++) {
       // Fields are drawn by their own outline and fence, not the tile grid.
       // Haunted ground shows its edge, so it's clear where nothing can be zoned.
-      const c = w.zone[i] === Zone.Field ? undefined : ZONE_COLORS[w.zone[i]] ?? (w.haunted?.[i] ? HAUNTED : undefined);
+      const c = w.depave?.[i] ? DEPAVE : w.zone[i] === Zone.Field ? undefined : ZONE_COLORS[w.zone[i]] ?? (w.haunted?.[i] ? HAUNTED : undefined);
       if (c) { d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
       else d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = d[i * 4 + 3] = 0;
     }
@@ -186,24 +188,28 @@ export function buildTerrain(w: World): THREE.Group {
   };
   const c = new THREE.Color(), acc = new THREE.Color();
   const S = w.w + 1;
-  for (let i = 0; i < pos.count; i++) {
-    // PlaneGeometry rows run from -z to +z after rotation, matching our corner grid.
-    const vx = i % S, vz = Math.floor(i / S);
-    pos.setY(i, w.heights[vz * S + vx]);
-    acc.setRGB(0, 0, 0);
-    let n = 0;
-    for (const [dx, dz] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) {
-      const tx = vx + dx, tz = vz + dz;
-      if (tx < 0 || tz < 0 || tx >= w.w || tz >= w.h) continue;
-      acc.add(palette[w.ground[idx(w, tx, tz)]]);
-      n++;
+  // Vertex colours from the four tiles round each corner; heights only on the first pass.
+  const paint = (first: boolean) => {
+    for (let i = 0; i < pos.count; i++) {
+      // PlaneGeometry rows run from -z to +z after rotation, matching our corner grid.
+      const vx = i % S, vz = Math.floor(i / S);
+      if (first) pos.setY(i, w.heights[vz * S + vx]);
+      acc.setRGB(0, 0, 0);
+      let n = 0;
+      for (const [dx, dz] of [[0, 0], [-1, 0], [0, -1], [-1, -1]]) {
+        const tx = vx + dx, tz = vz + dz;
+        if (tx < 0 || tz < 0 || tx >= w.w || tz >= w.h) continue;
+        acc.add(palette[w.ground[idx(w, tx, tz)]]);
+        n++;
+      }
+      acc.multiplyScalar(1 / Math.max(n, 1));
+      const x = vx - w.w / 2, z = vz - w.h / 2;
+      const var1 = fbm(x * 0.15, z * 0.15, 3, 3) - 0.5;
+      c.copy(acc).offsetHSL(var1 * 0.03, var1 * 0.1, var1 * 0.08);
+      colors.set([c.r, c.g, c.b], i * 3);
     }
-    acc.multiplyScalar(1 / Math.max(n, 1));
-    const x = vx - w.w / 2, z = vz - w.h / 2;
-    const var1 = fbm(x * 0.15, z * 0.15, 3, 3) - 0.5;
-    c.copy(acc).offsetHSL(var1 * 0.03, var1 * 0.1, var1 * 0.08);
-    colors.set([c.r, c.g, c.b], i * 3);
-  }
+  };
+  paint(true);
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
   const ground = new THREE.Mesh(geo, enhance(new THREE.MeshLambertMaterial({ vertexColors: true }), { zone: true, season: 'ground' }));
@@ -213,8 +219,19 @@ export function buildTerrain(w: World): THREE.Group {
   // --- paved overlays ---
   const asphalt = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(99, '#3b3e3a', 0.85) }), { zone: true, season: 'ground', surface: 'paving' });
   const concrete = enhance(new THREE.MeshLambertMaterial({ map: asphaltTexture(42, '#77756b', 0.6) }), { zone: true, season: 'ground', surface: 'paving' });
-  group.add(tileOverlay(w, Ground.Asphalt, 0.03, asphalt));
-  group.add(tileOverlay(w, Ground.Concrete, 0.04, concrete));
+  let overlays = [tileOverlay(w, Ground.Asphalt, 0.03, asphalt), tileOverlay(w, Ground.Concrete, 0.04, concrete)];
+  group.add(...overlays);
+  // Paving broken up (DESIGN §24.12) or greened over: recolour the ground and redraw the paving.
+  let groundVersion = w.groundVersion ?? 0;
+  group.userData.refreshGround = () => {
+    if ((w.groundVersion ?? 0) === groundVersion) return;
+    groundVersion = w.groundVersion ?? 0;
+    paint(false);
+    (geo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+    for (const o of overlays) { group.remove(o); o.geometry.dispose(); }
+    overlays = [tileOverlay(w, Ground.Asphalt, 0.03, asphalt), tileOverlay(w, Ground.Concrete, 0.04, concrete)];
+    group.add(...overlays);
+  };
 
   // --- water ---
   const water = new THREE.Mesh(

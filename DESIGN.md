@@ -3057,3 +3057,38 @@ offence.
 - **Order kept:** cleared districts (§24.4) → move and deconstruct →
   figures and children with lineage → crossing between the peoples →
   staging (A) → B.
+
+### 24.12 Cleared districts become places, step 1: depaving and sharing (built)
+- **Measured first** (3 seeds, the nearest district cleared and given to
+  the village):
+  - 37–62% of a district's squares are paving (car parks, roads, slabs);
+  - plots, fields, woodlots, the Wild and buildings all refused paving;
+  - the rest is ruins (blocked) and the walkway margin around them.
+
+  So the missing piece was ground, not rules. The village already had
+  zoning, restoring ruins and stripping rare salvage there.
+- **The Depave brush** (zone bar; `sim/depave.ts`). It marks explored,
+  unblocked paving outside haunted ground; the marks show orange-hatched
+  on the zone overlay, and Erase unmarks. Builders (after their building
+  work) and farmers (when idle) break it up: 40 minutes a square, the
+  `depave` task, with tile claims released if interrupted. The square
+  becomes Grass, and every 4th square gives 1 scrap. It works anywhere,
+  including the starting site's own car park.
+- **Messages:** refusals on paving now say "(Break it up first: the
+  Depave brush.)".
+- **The terrain redraws** when ground changes (`world.groundVersion`;
+  `terrain.ts` `userData.refreshGround`, at most every 2 s). This also
+  fixes a latent bug: a district given to the Folk "greened over" in the
+  simulation but not on screen.
+- **Share it** is a third choice for a cleared district
+  (`owner: 'shared'`):
+  - the village may build, garden and restore there;
+  - the Folk may make their works there outside the Wild (not on fields,
+    plots or water);
+  - the mycelium carries 0.8 there, as in a Folk district;
+  - standing +5 (+8 where the district suits the Folk).
+- **Not yet built for §24.4:**
+  - a second hearth or green for a far hamlet;
+  - ghost lights over ruins given to the Folk;
+  - the autopilot using the brush;
+  - the council asking about a district, rather than the district card.
