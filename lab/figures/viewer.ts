@@ -91,6 +91,9 @@ const entries = [...byName(GAME).filter(([n]) => SHOW_GAME.includes(n)), ...byNa
 const outfits = (await Promise.all(entries.map(([n, u]) => outfit(n, u)))).filter((o): o is Outfit => !!o);
 const adultH = outfits.filter((o) => SHOW_GAME.includes(o.name) && !o.child).map((o) => o.height)[0] ?? 1.7;
 for (const o of outfits) if (o.child) o.height = adultH;
+// ?raw: keep a generated figure's own colours (its clothing slots are not re-hued).
+const RAW = new URLSearchParams(location.search).has('raw');
+if (RAW) for (const o of outfits) if (!SHOW_GAME.includes(o.name)) o.slots = o.slots.map((s) => (/^cloth/.test(s) ? `pack_${s}` : s));
 const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const chars = outfits.map((o, i) => {
   const c = makeCharacter(o, { skin: i, hair: i + 2, hue: 0.08 + i * 0.21, tall: o.child ? 0.74 : 1 }, mat);
@@ -108,19 +111,18 @@ play();
 console.log('figures:', outfits.map((o) => `${o.name} (${o.slots.join(', ')})`).join('; '));
 
 function resize() {
-  const k = ui.pixel.checked ? 3 : 1;
   canvas.classList.toggle('pixel', ui.pixel.checked);
   renderer.setPixelRatio(ui.pixel.checked ? 1 / 3 : Math.min(2, devicePixelRatio));
   renderer.setSize(innerWidth, innerHeight, false);
   const a = innerWidth / innerHeight, h = VIEW / 2;
   Object.assign(cam, { left: -h * a, right: h * a, top: h, bottom: -h });
   cam.updateProjectionMatrix();
-  void k;
 }
 addEventListener('resize', resize);
 ui.pixel.onchange = resize;
 resize();
 
+const look = new THREE.Vector3(0, 0.9, 0);
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
@@ -128,10 +130,12 @@ renderer.setAnimationLoop(() => {
   const z = Number(ui.zoom.value);
   ui.zv.textContent = z.toFixed(2);
   const d = 80, horiz = Math.cos(PITCH) * d;
-  cam.position.set(Math.sin(yaw) * horiz, 0.9 + Math.sin(PITCH) * d, Math.cos(yaw) * horiz);
-  cam.lookAt(0, 0.9, 0);
+  cam.position.set(look.x + Math.sin(yaw) * horiz, look.y + Math.sin(PITCH) * d, look.z + Math.cos(yaw) * horiz);
+  cam.lookAt(look);
   if (cam.zoom !== z) { cam.zoom = z; cam.updateProjectionMatrix(); }
   for (const c of chars) c.mixer.update(dt);
   renderer.render(scene, cam);
 });
-Object.assign(window, { __lab: { chars, outfits, cam } });
+/** Centre the camera on figure i (debug and screenshots). */
+const focus = (i: number) => look.set(chars[i].root.position.x, 0.9, 0);
+Object.assign(window, { __lab: { chars, outfits, cam, look, focus, mixers: chars.map((c) => c.mixer) } });

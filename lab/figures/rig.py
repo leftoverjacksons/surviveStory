@@ -2,7 +2,7 @@
 Lab (not part of the game): rig a generated character mesh onto the game's
 survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 
-    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--tris 3000] [--k 6] [--preview <png>]
+    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--tris 3000] [--k 5] [--smooth 4] [--preview <png>]
 
 (with Blender's Python module: `pip install bpy`).
 
@@ -28,7 +28,8 @@ def opt(name, default):
     return type(default)(argv[argv.index(name) + 1]) if name in argv else default
 MESH, IMAGE, OUT = argv[0], argv[1], argv[2]
 TRIS = opt('--tris', 3000)
-K = opt('--k', 6)
+K = opt('--k', 5)
+SMOOTH = opt('--smooth', 4)  # neighbour passes over colours and over cluster labels
 PREVIEW = opt('--preview', '')
 VOXEL = opt('--voxel', 0.012)
 TOP = 1.69  # Head bone tip in the game's skeleton
@@ -203,7 +204,24 @@ def sample(p):
             i = yy * W + xx
             if alpha[i] > 0.5: return px[i * 4:i * 4 + 3]
     return (0.5, 0.5, 0.5)
-cols = [sample(v.co) for v in ob.data.vertices]
+def top_of(p):
+    """The silhouette's top in this image column: hair (or hat) for the back of the head."""
+    u = (p.x - lo.x) / (hi.x - lo.x)
+    x = int(ix0 + u * (ix1 - ix0))
+    for y in range(iy1, iy0, -1):
+        if alpha[y * W + x] > 0.5: return Vector((p.x, p.y, lo.z + (y - 12 - iy0) / (iy1 - iy0) * (hi.z - lo.z)))
+    return p
+neck_z = J['neck'][2] * (hi.z - lo.z) / TOP
+# The front view can't see the back: the back of the head takes the colour at the top of the head.
+cols = [sample(top_of(v.co) if v.normal.y > 0.25 and v.co.z > neck_z else v.co) for v in ob.data.vertices]
+
+# Neighbours on the mesh, for smoothing colours before clustering and labels after.
+nbr = [[] for _ in ob.data.vertices]
+for e in ob.data.edges:
+    a, b = e.vertices
+    nbr[a].append(b); nbr[b].append(a)
+for _ in range(SMOOTH):
+    cols = [[(cols[i][j] * 2 + sum(cols[n][j] for n in nbr[i])) / (2 + len(nbr[i])) for j in range(3)] for i in range(len(cols))]
 
 # k-means (deterministic seeding: spread along luminance).
 cs = sorted(cols, key=lambda c: sum(c))
@@ -215,6 +233,13 @@ for _ in range(20):
     for k in range(K):
         m = [cols[i] for i in range(len(cols)) if lab[i] == k]
         if m: cent[k] = [sum(c[j] for c in m) / len(m) for j in range(3)]
+# Majority filter: specks of one colour inside another join their surroundings.
+for _ in range(SMOOTH):
+    new = lab[:]
+    for i in range(len(lab)):
+        votes = [lab[i]] + [lab[n] for n in nbr[i]]
+        new[i] = max(set(votes), key=votes.count)
+    lab = new
 
 # Name the clusters by where they sit: skin = the front of the face,
 # hair = the top of the head, boot = the feet; the rest is clothing.
@@ -235,11 +260,14 @@ for k in range(K):
     if k not in names:
         names[k] = f'cloth_{n}'; n += 1
 mats = []
+# Image pixels are sRGB; glTF base colours (and the game's slot colours) are linear.
+lin = lambda c: c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 for k in range(K):
+    c = [lin(x) for x in cent[k]]
     mt = bpy.data.materials.new(names[k])
-    mt.diffuse_color = (*cent[k], 1)
+    mt.diffuse_color = (*c, 1)
     mt.use_nodes = True
-    mt.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (*cent[k], 1)
+    mt.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (*c, 1)
     ob.data.materials.append(mt); mats.append(mt)
 for p in ob.data.polygons:
     votes = [lab[i] for i in p.vertices]
