@@ -5,6 +5,7 @@
  */
 import type { PowerKind } from './power';
 import type { Takedown } from './dismantle';
+import type { Raze } from './salvage';
 import { autoBackyard, isBackyard } from './backyard';
 import type { Colony } from './colony';
 import { alive, log, type Community } from './community';
@@ -146,6 +147,8 @@ export interface Village {
   autoPlan?: boolean;
   /** Buildings being taken down or moved (dismantle.ts). */
   takedowns?: Takedown[];
+  /** Ruins being pulled down for salvage (salvage.ts). */
+  razes?: Raze[];
 }
 
 interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]; work: [number, number]; beds?: [number, number] }

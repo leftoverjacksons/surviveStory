@@ -40,6 +40,8 @@ export interface Ruin {
   tone: number;
   /** Patched up and in use again (see restore.ts). */
   restored?: boolean;
+  /** Pulled down for salvage (salvage.ts): gone, its ground free. */
+  razed?: boolean;
   /** Rare salvage already stripped out of it (see rare.ts). */
   stripped?: number;
 }

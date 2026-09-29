@@ -43,6 +43,7 @@ import {
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
 import { finishTakedown } from './dismantle';
+import { finishRaze } from './salvage';
 import { learnWiring, millFactor, powerDaily } from './power';
 import { APPRENTICE_AGE, TODDLER_AGE, ageWork, isAdult, isChild, lineageDaily, oldAge, settleLineage } from './lineage';
 import { DEPAVE_WORK, finishDepave, nearestDepave } from './depave';
@@ -73,6 +74,7 @@ export type Task =
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern' | 'water'; building: number }
   | { kind: 'dismantle'; building: number; stage: 'go' | 'work' }
+  | { kind: 'raze'; ruin: number; stage: 'go' | 'work' }
   | { kind: 'depave'; tile: number; stage: 'go' | 'work'; t: number }
   | { kind: 'gather'; g: number; stage: 'go' | 'be'; slot: number; ate?: boolean }
   | { kind: 'craft'; building: number; stage: 'go' | 'work'; t: number }
@@ -650,6 +652,17 @@ function noteSalvage(col: Colony, s: Survivor, h: Heap, take: number) {
 
 function pickSalvage(col: Colony, a: Agent): Task | null {
   const res = col.community.resources;
+  // Wrecks the player marked are stripped first, whatever the stores hold (salvage.ts).
+  {
+    const w = col.world;
+    let mk: Heap | null = null, md = Infinity;
+    for (const h of w.heaps) {
+      if (!h.marked || h.scrap <= 0 || h.reserved || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
+      const d = Math.hypot(tileX(w, h.tx) - a.x, tileZ(w, h.tz) - a.z);
+      if (d < md) { mk = h; md = d; }
+    }
+    if (mk && setDest(col, a, tileX(w, mk.tx), tileZ(w, mk.tz), true)) { mk.reserved = a.id; return { kind: 'salvage', heap: mk.id, stage: 'go', t: 0 }; }
+  }
   const trade = tradeDemand(col);
   const need = activeProjects(col).reduce((n, p) => n + outstanding(p, 'scrap'), 0) + trade.scrap;
   if (res.scrap >= need + 4 && trade.cloth <= 0) return null;
@@ -928,6 +941,18 @@ function pickDismantle(col: Colony, a: Agent): Task | null {
   return null;
 }
 
+/** Pull down a ruin the player marked for salvage (salvage.ts): at most three to a ruin. */
+function pickRaze(col: Colony, a: Agent): Task | null {
+  for (const z of col.village.razes ?? []) {
+    const r = col.world.ruins[z.ruin];
+    if (!r || r.razed) continue;
+    if (col.agents.filter((o) => o !== a && o.task?.kind === 'raze' && o.task.ruin === r.id).length >= 3) continue;
+    const d = ruinDoor(col.world, r);
+    if (setDest(col, a, d.x, d.z, true)) return { kind: 'raze', ruin: r.id, stage: 'go' };
+  }
+  return null;
+}
+
 /** Break up a square of marked paving (depave.ts): the nearest one nobody else is on. */
 function pickDepave(col: Colony, a: Agent): Task | null {
   const w = col.world;
@@ -1176,7 +1201,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
       if (committed(col, 'all_hands')) { t = pickTree(col, a) ?? pickForage(col, a) ?? pickHaul(col, a); break; }
       t = pickHaul(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
         ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickBuild(col, a)
-        ?? pickDismantle(col, a) ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
+        ?? pickDismantle(col, a) ?? pickRaze(col, a) ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
     case 'farmer':
       t = pickFarm(col, a) ?? pickGarden(col, a) ?? pickFence(col, a) ?? pickForage(col, a) ?? pickDepave(col, a) ?? pickHaul(col, a);
@@ -1459,6 +1484,23 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       td.work += dt * workRate(s, 'builder', col);
       a.activity = `${td.moving ? 'Taking apart' : 'Taking down'} ${b.name.toLowerCase()} · ${Math.min(99, Math.round((td.work / td.need) * 100))}%`;
       if (td.work >= td.need) { finishTakedown(col, td); endTask(col, a); }
+      return;
+    }
+    case 'raze': {
+      const z = (col.village.razes ?? []).find((x) => x.ruin === t.ruin);
+      const r = w.ruins[t.ruin];
+      if (!z || !r || r.razed) return endTask(col, a);
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = `Going to pull down ${r.name}`;
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      face(a, r);
+      a.anim = hourOf(col) % 1 < 0.5 ? 'build' : 'chop';
+      z.work += dt * workRate(s, 'builder', col);
+      learnWiring(col, s, dt * 0.0004); // there is cable in every wall
+      a.activity = `Pulling down ${r.name} · ${Math.min(99, Math.round((z.work / z.need) * 100))}%`;
+      if (z.work >= z.need) { finishRaze(col, z); endTask(col, a); }
       return;
     }
     case 'depave': {

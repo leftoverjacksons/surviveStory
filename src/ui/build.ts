@@ -9,7 +9,7 @@ import { DEFS, MATERIALS, PLACEABLE, RARE, costText, tierFor, type SiteKind } fr
 import { PLOT_MIN } from '../sim/homes';
 import { FOLK_WORKS, type FolkWorkKind } from '../sim/folk';
 
-export type BuildTool = { kind: 'plot' } | { kind: 'restore' } | { kind: 'place'; site: SiteKind; turn: number } | { kind: 'folk'; work: FolkWorkKind };
+export type BuildTool = { kind: 'plot' } | { kind: 'restore' } | { kind: 'salvage' } | { kind: 'place'; site: SiteKind; turn: number } | { kind: 'folk'; work: FolkWorkKind };
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
@@ -25,7 +25,7 @@ export class BuildPanel {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-build]');
       if (!b) return;
       const k = b.dataset.build!;
-      const tool: BuildTool = k === 'plot' ? { kind: 'plot' } : k === 'restore' ? { kind: 'restore' }
+      const tool: BuildTool = k === 'plot' ? { kind: 'plot' } : k === 'restore' ? { kind: 'restore' } : k === 'salvage' ? { kind: 'salvage' }
         : k.startsWith('folk:') ? { kind: 'folk', work: k.slice(5) as FolkWorkKind } : { kind: 'place', site: k as SiteKind, turn: 0 };
       this.close();
       this.onPick(tool);
@@ -53,6 +53,7 @@ export class BuildPanel {
       <button type="button" data-build="plot"><b>Plot for a home</b><span>Click the corners of a plot (at least ${PLOT_MIN} squares). A household without a home builds on it: the house near the front, a yard behind.</span></button>
       ${rows}
       <button type="button" data-build="restore"><b>Restore a ruin</b><span>Click a building of the old world in a cleared district to patch it up and use it again.</span></button>
+      <button type="button" data-build="salvage"><b>Strip and clear</b><span>Click a wrecked car or a junk heap: it is stripped for scrap first and cleared away. Click a ruin in a cleared district of yours: it is pulled down for a great deal of scrap, and the ground freed.</span></button>
       <h3 class="folk">Ask the Folk <small>built at night, in the Wild, from their dew and song (${Math.floor(this.col.folk.dew)} · ${Math.floor(this.col.folk.song)})</small></h3>
       ${(Object.keys(FOLK_WORKS) as FolkWorkKind[]).map((k) => {
         const d = FOLK_WORKS[k], f = this.col.folk;

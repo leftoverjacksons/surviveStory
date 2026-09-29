@@ -57,7 +57,7 @@ export function rareOf(r: Ruin): { mat: RareMat; what: string; left: number } | 
 /** Can this ruin be stripped now? */
 export function strippable(col: Colony, r: Ruin): boolean {
   const y = rareOf(r);
-  if (!y || y.left <= 0 || r.restored) return false;
+  if (!y || y.left <= 0 || r.restored || r.razed) return false;
   const h = col.haunts.find((x) => x.district === r.district);
   if (!h || h.state !== 'cleared' || h.owner === 'folk') return false;
   return !col.village.projects.some((p) => !p.done && p.kind === 'restore' && p.ruin === r.id);

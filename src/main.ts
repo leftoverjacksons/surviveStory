@@ -40,6 +40,7 @@ import { scheduleGathering } from './sim/gatherings';
 import { digChamber } from './sim/townhouse';
 import { MyceliumView } from './render/mycelium';
 import { POWER_KINDS, powered, whyNotPower, type PowerKind } from './sim/power';
+import { markHeap, razeRuin, razeYield, whyNotRaze } from './sim/salvage';
 import { cancelProject, keepStanding, placeKindOf, takeDown } from './sim/dismantle';
 import { markDepave } from './sim/depave';
 import { TownhouseView } from './render/townhouse';
@@ -508,6 +509,7 @@ function setBuild(tool: BuildTool | null, why = '') {
   buildPanel.hint(!tool ? null
     : (why ? `${why} ` : '') + (tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
     : tool.kind === 'restore' ? 'Click a ruin in a cleared district to restore it. Esc to stop.'
+    : tool.kind === 'salvage' ? 'Click a wrecked car or junk heap to strip and clear it, or a ruin in a cleared district of yours to pull it down. Esc to stop.'
     : tool.kind === 'folk' ? `Ask the Folk for a ${FOLK_WORKS[tool.work].name.toLowerCase()}: click a spot in the Wild. They build it at night. Esc to stop.`
     : isBackyard(tool.site) ? `Click a household's plot to give them the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: it goes at the back of their yard, and one of them works it. Esc to stop.`
     : `Place the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: click to place, right-click or T to turn it. Esc to stop.`));
@@ -563,8 +565,19 @@ function councilPlace(what: PlaceKind | 'plot') {
   resumeAfterBuild = true;
 }
 /** The old-world building under a point, if any. */
+/** A wreck or junk heap with scrap left, within a step of this point. */
+function heapAtPoint(x: number, z: number) {
+  let best: (typeof world.heaps)[number] | null = null, bd = 1.6;
+  for (const h of world.heaps) {
+    if (h.scrap <= 0) continue;
+    const d = Math.hypot(tileX(world, h.tx) - x, tileZ(world, h.tz) - z);
+    if (d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
 function ruinAtPoint(x: number, z: number) {
   return world.ruins.find((r) => {
+    if (r.razed) return false;
     const cs = Math.cos(r.yaw), sn = Math.sin(r.yaw), px = x - r.x, pz = z - r.z;
     return Math.abs(px * cs - pz * sn) <= r.w / 2 + 0.3 && Math.abs(px * sn + pz * cs) <= r.d / 2 + 0.3;
   });
@@ -573,6 +586,15 @@ function placeHover(cx: number, cy: number) {
   if (!build || build.kind === 'plot') return;
   const g = groundAt(cx, cy);
   if (!g) { placement.hide(); return; }
+  if (build.kind === 'salvage') {
+    const h = heapAtPoint(g.x, g.z);
+    const r = h ? null : ruinAtPoint(g.x, g.z) ?? null;
+    const why = r ? whyNotRaze(colony, r) : null;
+    placement.showRuin(r, !why);
+    buildPanel.hint(h ? `${h.kind === 'car' ? 'A wrecked car' : 'A junk heap'} (${h.scrap} scrap)${h.marked ? ': already marked' : '. Click to strip it and clear it away.'}`
+      : r ? (why ? `${r.name}: ${why}` : `${r.name}: click to pull it down for about ${razeYield(r)} scrap.`) : 'Click a wrecked car, a junk heap, or a ruin in a cleared district of yours. Esc to stop.');
+    return;
+  }
   if (build.kind === 'restore') {
     const r = ruinAtPoint(g.x, g.z) ?? null;
     const why = r ? whyNotRestore(colony, r) : null;
@@ -605,6 +627,19 @@ function placeClick(cx: number, cy: number) {
   if (!build || build.kind === 'plot') return;
   const g = groundAt(cx, cy);
   if (!g) return;
+  if (build.kind === 'salvage') {
+    const h = heapAtPoint(g.x, g.z);
+    if (h) { const why = markHeap(colony, h); if (why) { buildPanel.hint(why); return; } }
+    else {
+      const r = ruinAtPoint(g.x, g.z);
+      if (!r) return;
+      const why = razeRuin(colony, r);
+      if (why) { buildPanel.hint(`${r.name}: ${why}`); return; }
+    }
+    // Stay in the tool: mark several in a row.
+    hud.render();
+    return;
+  }
   if (build.kind === 'restore') {
     const r = ruinAtPoint(g.x, g.z);
     if (!r) return;

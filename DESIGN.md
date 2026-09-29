@@ -3270,3 +3270,28 @@ from salvage, not eras". `sim/power.ts`, `render/power.ts`.
   - A log line when the grid first falls short, and when it catches up.
 - **Debug:** `__game.buildNow(kind)` places and finishes a building near
   the fire.
+
+### 24.18 Backlog: strip and clear, pulling ruins down (built)
+The user's backlog (§23.2): "junk cars selectable for stripping and removal
+… dismantling cleared ruins for scrap is one renewable source".
+`sim/salvage.ts`, the build menu's **Strip and clear** tool.
+- **Wrecks and junk heaps:** a click marks one (`Heap.marked`). Builders
+  strip marked heaps first, whatever the stores hold, until they're gone
+  (an emptied heap is no longer drawn). Hovering shows its scrap.
+- **Ruins:** a click on an unrestored ruin in a cleared district that is
+  the village's (or shared) pulls it down (`village.razes`, the builders'
+  `raze` task, at most 3 to a ruin).
+  - Work: 200 + 6 × area minutes.
+  - Yield: 0.45 × area scrap (at least 8), recorded with its provenance,
+    plus any glass, copper or steel still in its walls.
+  - The walls' tiles are freed; the slab and paving stay (use Depave).
+  - Pulling down teaches a little wiring.
+  - A pulled-down ruin is no longer drawn, restorable or strippable.
+
+  Refused for districts of the Folk, undecided or uncleared districts,
+  restored ruins, and ruins being restored.
+- **Why it matters** (the user's thought in §24.11): salvage lying about
+  runs out, but the walls of the old world hold a great deal more, and
+  only in districts the village has cleared. The push to take territory.
+- **Not yet:** electric carts from junk cars (they need wiring and a
+  hauling effect); horses and wagons.

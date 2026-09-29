@@ -66,6 +66,8 @@ export interface Heap {
   id: number; tx: number; tz: number; kind: 'car' | 'pile'; scrap: number; max: number; rot: number; reserved: number;
   /** Provenance: the ruin it came from (index into `ruins`) and what it is. */
   source?: number; material?: Material;
+  /** Marked by the player to be stripped first and cleared away (salvage.ts). */
+  marked?: boolean;
 }
 export interface WallBlock { tx: number; tz: number; h: number }
 

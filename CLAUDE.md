@@ -205,6 +205,9 @@ reference: Tiny Glade.
     births/foundlings, play, apprentices at 12, of age at 16, old age. Published v35 WITHOUT the card's family lines
     (they make the artifact publish check refuse the page as a "PR review page"; see §24.15). Next: family tree + heirs,
     then crossing (§24.6).
+    BACKLOG ROUND (§24.16–24.18): restored houses are homes with plots/yards (`plotForRuin`); toadstools on the
+    mycelium; POWER (`sim/power.ts`, `render/power.ts`: wiring know-how, windmill/solar/turbine, grid, lights by power);
+    STRIP AND CLEAR (`sim/salvage.ts`: marked wrecks, pulling ruins down). Next: timber handling, electric carts.
     ORDER: cleared districts (§24.4) → move/deconstruct → figures + children + lineage → crossing → A → B.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network

@@ -366,7 +366,7 @@ function buildDistrict(world: World, id: number): THREE.Group {
   const d = new THREE.Group();
   d.userData.district = id;
   for (const r of world.ruins) {
-    if (r.district !== id) continue;
+    if (r.district !== id || r.razed) continue; // pulled down for salvage (salvage.ts)
     const g = buildRuin(r);
     g.position.set(r.x, heightAt(world, r.x, r.z), r.z);
     d.add(g);
@@ -393,7 +393,7 @@ export function buildRuins(world: World): THREE.Group {
   return root;
 }
 
-const restoreKey = (world: World) => world.ruins.map((r) => (r.restored ? 1 : 0)).join('');
+const restoreKey = (world: World) => world.ruins.map((r) => (r.razed ? 2 : r.restored ? 1 : 0)).join('');
 
 /** Rebuild the districts whose ruins have been restored since last time. */
 export function syncRuins(world: World, root: THREE.Group): boolean {

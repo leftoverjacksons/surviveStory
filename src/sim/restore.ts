@@ -47,7 +47,7 @@ export function restorable(col: Colony): Ruin[] {
   const w = col.world, v = col.village;
   const planned = new Set(v.projects.filter((p) => !p.done && p.kind === 'restore').map((p) => p.ruin));
   const ours = new Set(col.haunts.filter((h) => h.state === 'cleared' && (h.owner === 'village' || h.owner === 'shared')).map((h) => h.district));
-  return w.ruins.filter((r) => ours.has(r.district) && !r.restored && !planned.has(r.id) && RESTORE[r.kind] && reachableRuin(w, r));
+  return w.ruins.filter((r) => ours.has(r.district) && !r.restored && !r.razed && !planned.has(r.id) && RESTORE[r.kind] && reachableRuin(w, r));
 }
 
 /** Can people get from the fire to the ruin's door at all? (Some stand beyond water or walls.) */
@@ -129,6 +129,7 @@ export function whyNotRestore(col: Colony, r: Ruin): string | null {
   const def = RESTORE[r.kind];
   if (!def) return 'There is nothing left of it worth saving.';
   if (r.restored) return 'Already restored.';
+  if (r.razed || (col.village.razes ?? []).some((z) => z.ruin === r.id)) return 'It is coming down for salvage.';
   if (col.village.projects.some((p) => !p.done && p.kind === 'restore' && p.ruin === r.id)) return 'Already being restored.';
   const h = col.haunts.find((x) => x.district === r.district);
   if (h && h.state !== 'cleared') return 'Something still lives there. Clear the district first.';
