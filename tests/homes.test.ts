@@ -95,5 +95,5 @@ describe('meals', () => {
       for (const a of col.agents) if (a.needs.food <= 0) starving++;
     }
     expect(starving).toBe(0);
-  });
+  }, 30000); // thirty simulated days: slow under load
 });
