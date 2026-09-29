@@ -119,6 +119,8 @@ export interface World {
   depaved?: number;
   /** Bumped when a square's ground changes (paving broken up): the terrain redraws. */
   groundVersion?: number;
+  /** Bumped when the ground is raised after worldgen (knowes, DESIGN §25.3): the terrain redraws its heights. */
+  heightVersion?: number;
   /** How well each tile is remembered as a path (0..1): kept up through the seasons (colony.ts#dailyWear). */
   pathMemory?: Float32Array;
   /** Gates the village wore through its fences, where people kept crossing (hedges.ts). */

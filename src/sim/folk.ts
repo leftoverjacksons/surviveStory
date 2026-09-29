@@ -11,7 +11,7 @@
  * - The player guides what they give their nights to: the woods, the
  *   village (night chores), or their own home (the mound grows).
  */
-import { CHAMBERS, chamberCount, digChamber, firstChambers, townhouseDaily, type Chamber } from './townhouse';
+import { KNOWES, housing, knoweCount, raiseKnowe, settleFolk, townhouseDaily, homeOf, type Knowe } from './townhouse';
 import { HAUNT_RADIUS } from './haunt';
 import type { Colony } from './colony';
 import { alive, log, remember, withRng, type Survivor } from './community';
@@ -35,8 +35,10 @@ export interface FolkLand {
 
 const MOUND_NAMES = ['Thorn Knowe', 'the Hollow Hill', 'Bracken Howe', 'Elder Knoll', 'Foxglove Hill', 'the Green Lowe', 'Hob\'s Knap', 'Moss Howe'];
 
-/** How far their land reaches around the mound at the start. */
-export const WILD_RADIUS = 8.5;
+/** How far their land reaches around the Great Hill at the start (DESIGN §25.3). */
+export const WILD_RADIUS = 14;
+/** The Great Hill's radius: twice the old mound's (DESIGN §25.3). */
+export const GREAT_HILL_R = 7.2;
 
 /**
  * Choose the mound's place and lay out its land. Called by worldgen after the
@@ -51,19 +53,19 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
   // If nothing fits every wish, the good ground farthest from the old districts.
   let fallback: { x: number; z: number; far: number } | null = null;
   for (let k = 0; k < 400; k++) {
-    const a = ringA + rng.range(-0.6, 0.6) * (k < 120 ? 1 : k < 260 ? 2 : 3), d = ringD + rng.range(12, 19);
+    const a = ringA + rng.range(-0.6, 0.6) * (k < 120 ? 1 : k < 260 ? 2 : 3), d = ringD + rng.range(17, 25);
     const x = Math.cos(a) * d, z = Math.sin(a) * d;
     if (segmentDist(x, z, w.fairyRing.x, w.fairyRing.z) < 17) continue;
     const tx = toTileX(w, x), tz = toTileZ(w, z);
     if (!inBounds(w, tx, tz)) continue;
-    if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 14) continue;
+    if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 18) continue;
     const far = Math.min(99, ...w.districts.map((q) => Math.hypot(x - q.x, z - q.z)));
     let ok = true, forest = 0;
-    for (let dz = -5; dz <= 5 && ok; dz++) for (let dx = -5; dx <= 5; dx++) {
+    for (let dz = -9; dz <= 9 && ok; dz++) for (let dx = -9; dx <= 9; dx++) {
       if (!inBounds(w, tx + dx, tz + dz)) { ok = false; break; }
       const i = idx(w, tx + dx, tz + dz);
       const g = w.ground[i];
-      if (Math.hypot(dx, dz) <= 4 && (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete || w.blocked[i] || flatDist[i] < 5)) { ok = false; break; }
+      if (Math.hypot(dx, dz) <= GREAT_HILL_R + 0.5 && (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete || w.blocked[i] || flatDist[i] < 5)) { ok = false; break; }
       if (g === Ground.Forest) forest++;
     }
     if (!ok) continue;
@@ -73,34 +75,18 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
   }
   const at = best ?? fallback ?? { x: w.fairyRing.x * 1.7, z: w.fairyRing.z * 1.7 };
   const mound: Mound = {
-    x: at.x, z: at.z, r: 3.6, name: MOUND_NAMES[Math.abs(seed) % MOUND_NAMES.length],
+    x: at.x, z: at.z, r: GREAT_HILL_R, name: MOUND_NAMES[Math.abs(seed) % MOUND_NAMES.length],
     // The door looks toward the Ring.
     door: Math.atan2(w.fairyRing.z - at.z, w.fairyRing.x - at.x),
   };
 
   // The hill itself: a smooth swell in the ground.
-  const S = w.w + 1;
-  const base = heightAt(w, mound.x, mound.z);
-  for (let vz = 0; vz <= w.h; vz++) for (let vx = 0; vx <= w.w; vx++) {
-    const x = vx - w.w / 2, z = vz - w.h / 2;
-    const d = Math.hypot(x - mound.x, z - mound.z);
-    if (d >= mound.r + 0.8) continue;
-    // A barrow's profile: a rounded crown, steep sides, a small skirt.
-    const k = Math.max(0, 1 - d / (mound.r + 0.8));
-    const swell = 2.5 * Math.sqrt(Math.min(1, k * 1.25)) * (k < 0.2 ? k / 0.2 : 1);
-    const i = vz * S + vx;
-    // Blend toward a hill standing on the local ground, so it sits on slopes too.
-    w.heights[i] = w.heights[i] * (1 - k * 0.6) + (base * k * 0.6) + swell;
-  }
-  // Nobody walks over the top of it.
+  raiseHill(w, mound.x, mound.z, mound.r, 3.6);
   const mtx = toTileX(w, mound.x), mtz = toTileZ(w, mound.z);
-  for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) {
-    if (!inBounds(w, mtx + dx, mtz + dz)) continue;
-    if (Math.hypot(tileX(w, mtx + dx) - mound.x, tileZ(w, mtz + dz) - mound.z) <= mound.r - 1) w.blocked[idx(w, mtx + dx, mtz + dz)] = 1;
-  }
 
   // Their land around it.
-  for (let dz = -10; dz <= 10; dz++) for (let dx = -10; dx <= 10; dx++) {
+  const WR = Math.ceil(WILD_RADIUS) + 1;
+  for (let dz = -WR; dz <= WR; dz++) for (let dx = -WR; dx <= WR; dx++) {
     const tx = mtx + dx, tz = mtz + dz;
     if (!inBounds(w, tx, tz)) continue;
     const i = idx(w, tx, tz);
@@ -140,11 +126,40 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
   lay(doorPt, { x: ring.x - Math.cos(toRing) * 4.6, z: ring.z - Math.sin(toRing) * 4.6 }, rng.range(-6, 6));
   const back = mound.door + Math.PI + rng.range(-0.6, 0.6);
   lay({ x: mound.x + Math.cos(back) * (mound.r + 0.4), z: mound.z + Math.sin(back) * (mound.r + 0.4) },
-    { x: mound.x + Math.cos(back) * 24, z: mound.z + Math.sin(back) * 24 }, rng.range(-5, 5));
+    { x: mound.x + Math.cos(back) * (mound.r + 20), z: mound.z + Math.sin(back) * (mound.r + 20) }, rng.range(-5, 5));
 
   // The village has always known the hill is there.
   reveal(w, mound.x, mound.z, WILD_RADIUS + 3);
   return { mound, path, paths };
+}
+
+/**
+ * A barrow in the ground at (x, z): a rounded crown, steep sides, a small
+ * skirt, standing on the local ground so it sits on slopes too. Nobody walks
+ * over the top of it. Only ever raises the ground (DESIGN §25.3: knowes are
+ * raised this way mid-game, so nothing already standing is left floating).
+ */
+export function raiseHill(w: World, x0: number, z0: number, r: number, height: number) {
+  const S = w.w + 1;
+  const base = heightAt(w, x0, z0);
+  const R = Math.ceil(r + 1);
+  const cx = Math.round(x0 + w.w / 2), cz = Math.round(z0 + w.h / 2);
+  for (let vz = cz - R; vz <= cz + R; vz++) for (let vx = cx - R; vx <= cx + R; vx++) {
+    if (vx < 0 || vz < 0 || vx > w.w || vz > w.h) continue;
+    const x = vx - w.w / 2, z = vz - w.h / 2;
+    const d = Math.hypot(x - x0, z - z0);
+    if (d >= r + 0.8) continue;
+    const k = Math.max(0, 1 - d / (r + 0.8));
+    const swell = height * Math.sqrt(Math.min(1, k * 1.25)) * (k < 0.2 ? k / 0.2 : 1);
+    const i = vz * S + vx;
+    w.heights[i] = Math.max(w.heights[i], w.heights[i] * (1 - k * 0.6) + base * k * 0.6 + swell);
+  }
+  const tx0 = toTileX(w, x0), tz0 = toTileZ(w, z0);
+  for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+    if (!inBounds(w, tx0 + dx, tz0 + dz)) continue;
+    if (Math.hypot(tileX(w, tx0 + dx) - x0, tileZ(w, tz0 + dz) - z0) <= r - 1) w.blocked[idx(w, tx0 + dx, tz0 + dz)] = 1;
+  }
+  w.heightVersion = (w.heightVersion ?? 0) + 1;
 }
 
 /** Distance from home (the origin) to the segment a→b. */
@@ -176,6 +191,8 @@ export interface Fae {
   known: boolean;
   /** Day of their last chore in the village (one a night at most). */
   lastChore: number;
+  /** Where they live: a knowe's id, or 0 for the hall under the Great Hill (DESIGN §25.3). */
+  home?: number;
 }
 
 export interface LedAway {
@@ -245,8 +262,11 @@ export interface FolkSociety {
   song: number;
   nextId: number;
   version: number;
-  /** The townhouse under the hill (townhouse.ts). */
-  chambers?: Chamber[];
+  /** The knowes raised round the Great Hill (townhouse.ts, DESIGN §25.3). */
+  knowes?: Knowe[];
+  nextKnowe?: number;
+  /** An old save's chambers (DESIGN §24.9), turned into knowes on load. */
+  chambers?: { kind: string }[];
 }
 
 const NAMES: Record<FaeKind, string[]> = {
@@ -272,20 +292,21 @@ function wildTiles(w: World): number {
 }
 
 /** The land they want: it grows as their society does. */
-export const landWanted = (f: FolkSociety) => 180 + f.level * 70;
+export const landWanted = (f: FolkSociety) => 420 + f.level * 80;
 
 export function createFolk(w: World): FolkSociety {
   const m = w.folk.mound;
   const f: FolkSociety = {
     standing: 40, growth: 0, level: 0, beings: [], works: [], focus: 'woods', met: false, rules: [],
     news: [], offeredDay: 0, offendedUntil: 0, led: null, chores: { day: 0, n: 0 }, land: wildTiles(w), dew: 4, song: 3, nextId: 1, version: 0,
-    chambers: firstChambers(m.door),
+    knowes: [],
   };
   for (const kind of ['elder', 'hob', 'sprite'] as FaeKind[]) addFae(f, w, kind, 0);
+  settleFolk(f);
   // What was already there: a ring of toadstools and a cairn by the door.
   f.works.push(
-    { kind: 'ring', x: m.x + Math.cos(m.door + 0.9) * 5.2, z: m.z + Math.sin(m.door + 0.9) * 5.2, grown: 1 },
-    { kind: 'cairn', x: m.x + Math.cos(m.door - 0.5) * 4.4, z: m.z + Math.sin(m.door - 0.5) * 4.4, grown: 1 },
+    { kind: 'ring', x: m.x + Math.cos(m.door + 0.7) * (m.r + 1.8), z: m.z + Math.sin(m.door + 0.7) * (m.r + 1.8), grown: 1 },
+    { kind: 'cairn', x: m.x + Math.cos(m.door - 0.4) * (m.r + 0.9), z: m.z + Math.sin(m.door - 0.4) * (m.r + 0.9), grown: 1 },
   );
   return f;
 }
@@ -413,7 +434,7 @@ export function folkDaily(col: Colony) {
       // Their needs (DESIGN §21.8): without rest, dance and light, the hill can't grow past the brink.
       const needs = folkNeeds(col);
       const ready = needs.filter((x) => x.gate).every((x) => x.met);
-      f.growth += 0.025 * (f.focus === 'home' ? 2.2 : 1) * (chamberCount(f, 'nursery') ? 1.25 : 1) * (0.5 + res) * (0.4 + 0.6 * needs.filter((x) => x.met).length / needs.length);
+      f.growth += 0.025 * (f.focus === 'home' ? 2.2 : 1) * (knoweCount(f, 'nursery') ? 1.25 : 1) * (0.5 + res) * (0.4 + 0.6 * needs.filter((x) => x.met).length / needs.length);
       if (f.growth >= 0.95 && !ready) {
         f.growth = 0.95;
         const want = needs.filter((x) => x.gate && !x.met).map((x) => x.label.toLowerCase());
@@ -428,8 +449,11 @@ export function folkDaily(col: Colony) {
         f.level++;
         const kind: FaeKind = rng.pick(['hob', 'sprite', 'piper', 'hob']);
         const fae = addFae(f, w, kind, f.level);
-        const ch = digChamber(col);
-        news(col, f.met ? `${fae.name} has come to live at ${m.name}, and a new chamber has been dug under the hill: ${CHAMBERS[ch.kind].name.toLowerCase()}. The hill is growing.` : `There are more lights around ${m.name} at dusk than there used to be.`, 'good');
+        const k = raiseKnowe(col);
+        settleFolk(f);
+        news(col, !f.met ? `There are more lights around ${m.name} at dusk than there used to be${k ? ', and the ground beside it has risen into a new green hill' : ''}.`
+          : k ? `${fae.name} has come to live at ${m.name}. Overnight a new hill rose beside it: ${k.name}, ${KNOWES[k.kind].name.toLowerCase()}. The Folk are growing.`
+          : `${fae.name} has come to live at ${m.name}. There is no room left round the hill for another knowe.`, 'good');
         addWork(col, rng);
       }
     }
@@ -533,7 +557,7 @@ export function folkNeeds(col: Colony): FolkNeed[] {
   const n = (k: FolkWorkKind) => done.filter((x) => x.kind === k).length;
   return [
     { id: 'room', label: 'Room', met: f.land >= landWanted(f), hint: 'Land left to the Wild around the hill.', gate: false },
-    { id: 'rest', label: 'Rest', met: (n('bower') + chamberCount(f, 'bowers')) * 2 >= f.beings.length + 1, hint: 'A bower (or a sleeping chamber under the hill) for every two of them, and one spare for whoever comes next.', gate: true },
+    { id: 'rest', label: 'Rest', met: housing(f) + n('bower') * 2 >= f.beings.length + 1, hint: 'Room in the hall and the knowes (or a bower for every two more), and one spare for whoever comes next.', gate: true },
     { id: 'dance', label: 'Dance', met: n('ring') >= 1 + Math.floor(f.level / 3), hint: 'A dancing ring (another every third growth).', gate: true },
     { id: 'light', label: 'Light', met: n('lantern') >= 1 + Math.floor(f.level / 2), hint: 'Glow-lanterns along their paths, more as the hill grows.', gate: true },
     { id: 'gifts', label: 'Gifts', met: col.community.day - f.offeredDay <= 3, hint: 'An offering at the door in the last three days.', gate: false },
@@ -580,8 +604,8 @@ function gather(col: Colony) {
   const done = f.works.filter(builtWork);
   const count = (k: FaeKind) => f.beings.filter((b) => b.kind === k).length;
   const boost = f.focus === 'home' ? 1.5 : 1;
-  f.dew = Math.min(40 + chamberCount(f, 'dewcellar') * 20, f.dew + (count('sprite') + Math.min(4, done.filter((k) => k.kind === 'flowers').length) + 0.5 + chamberCount(f, 'dewcellar') * 2) * boost);
-  f.song = Math.min(40, f.song + (count('piper') + count('elder') * 0.5 + Math.min(4, done.filter((k) => k.kind === 'ring').length) + 0.3 + chamberCount(f, 'gallery') * 2) * boost);
+  f.dew = Math.min(40 + knoweCount(f, 'dewcellar') * 20, f.dew + (count('sprite') + Math.min(4, done.filter((k) => k.kind === 'flowers').length) + 0.5 + knoweCount(f, 'dewcellar') * 2) * boost);
+  f.song = Math.min(40, f.song + (count('piper') + count('elder') * 0.5 + Math.min(4, done.filter((k) => k.kind === 'ring').length) + 0.3 + knoweCount(f, 'gallery') * 2) * boost);
 }
 
 /** Without a player (tests, probes), the Folk order what their needs call for. */
@@ -644,14 +668,15 @@ export function folkTick(col: Colony, dt: number) {
       if (!out) {
         // Home by dawn.
         if (fae.act !== 'in') {
-          if (Math.hypot(fae.x - m.x, fae.z - m.z) < 0.5) { fae.act = 'in'; fae.t = 60; }
-          else { fae.to = { x: m.x, z: m.z }; fae.act = 'walk'; fae.t = 0; }
+          const home = homeOf(f, w, fae.home);
+          if (Math.hypot(fae.x - home.x, fae.z - home.z) < 0.5) { fae.act = 'in'; fae.t = 60; }
+          else { fae.to = home; fae.act = 'walk'; fae.t = 0; }
         } else fae.t = 60;
         continue;
       }
       // Out for the night: choose what to do.
       const village = f.focus === 'village' && f.standing >= 45 && (fae.kind === 'hob' || fae.kind === 'sprite') && h >= 0 && h < 4 && fae.lastChore !== col.community.day
-        && (f.chores.day !== col.community.day || f.chores.n < 1 + Math.floor(f.level / 2) + chamberCount(f, 'guestroom'));
+        && (f.chores.day !== col.community.day || f.chores.n < 1 + Math.floor(f.level / 2) + knoweCount(f, 'guestroom'));
       if (village) { fae.to = jitter(col.world.campfire, 5, rng); fae.act = 'walk'; fae.t = -1; continue; }
       // Orders from the village come first for the hands of the hill.
       const order = fae.kind !== 'piper' && h < 4.5 ? f.works.find((k) => !builtWork(k) && (k.paid || (f.dew >= FOLK_WORKS[k.kind].dew && f.song >= FOLK_WORKS[k.kind].song))) : undefined;

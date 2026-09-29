@@ -13,7 +13,7 @@
  */
 import type { Colony } from './colony';
 import { benchSpot } from './homes';
-import { digChamber, firstChambers } from './townhouse';
+import { knowesFromChambers, settleFolk } from './townhouse';
 import { createMycelium } from './mycelium';
 import { settleLineage } from './lineage';
 
@@ -61,10 +61,12 @@ function migrate(col: Colony) {
   col.community.resources.logs ??= 0;
   for (const s of col.community.survivors) settleLineage(col.community, s);
   col.mycelium ??= createMycelium(col.world);
-  if (!col.folk.chambers) {
-    // A hill that grew before the townhouse (DESIGN §24.9): one chamber for each growth.
-    col.folk.chambers = firstChambers(col.world.folk.mound.door);
-    for (let i = 0; i < col.folk.level; i++) digChamber(col);
+  if (!col.folk.knowes) {
+    // Chambers under the hill (DESIGN §24.9), or a hill that grew before them: knowes round it (§25.3).
+    col.folk.knowes = [];
+    knowesFromChambers(col, col.folk.chambers ?? Array.from({ length: col.folk.level }, () => ({ kind: 'bowers' })));
+    delete col.folk.chambers;
+    settleFolk(col.folk);
   }
   // Benches were once set in front of the door (DESIGN §23.7): move them along the wall.
   for (const p of col.village.plots) for (const y of p.yard) if (y.kind === 'bench') Object.assign(y, benchSpot(p));

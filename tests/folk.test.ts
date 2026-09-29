@@ -4,7 +4,7 @@ import { createColony, tick } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
 import { SITE_KINDS } from '../src/sim/sites';
 import { Zone, heightAt, idx, paintZone, toTileX, toTileZ } from '../src/sim/world';
-import { landWanted } from '../src/sim/folk';
+import { WILD_RADIUS, folkDaily, landWanted } from '../src/sim/folk';
 
 const days = (col: ReturnType<typeof createColony>, n: number) => { for (let m = 0; m < 1440 * n; m += 10) tick(col, 10); };
 
@@ -53,8 +53,9 @@ describe('the Folk', () => {
     expect(col.folk.offeredDay).toBeGreaterThan(10);
     // Take back most of their land.
     const m = col.world.folk.mound;
-    paintZone(col.world, m.x, m.z, 9, Zone.Home);
-    days(col, 2);
+    paintZone(col.world, m.x, m.z, WILD_RADIUS, Zone.Home);
+    // Their next day's reckoning (a council may give land back soon after, so look straight away).
+    folkDaily(col);
     expect(col.folk.standing).toBeLessThan(warmed - 8);
     expect(col.folk.news.some((n) => /edge of their land/.test(n.text))).toBe(true);
   }, 60000);

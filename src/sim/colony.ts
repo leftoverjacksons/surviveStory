@@ -133,6 +133,8 @@ export interface Item { id: number; kind: ItemKind; amount: number; x: number; z
 
 export type ColonyEvent =
   | { type: 'felled'; tree: number; dirX: number; dirZ: number }
+  /** A tree taken into a rising hill (a knowe, DESIGN §25.3). */
+  | { type: 'swallowed'; tree: number }
   | { type: 'discovered'; poi: number }
   | { type: 'planted'; tree: number };
 
@@ -1262,7 +1264,8 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     }
   }
   // Anyone at a loose end brings in a ripe harvest or lends a hand on a building site.
-  if (!t && s.role !== 'rest') t = pickFarm(col, a, 'harvest') ?? pickBuild(col, a) ?? pickSplit(col, a) ?? pursue(col, a, s) ?? pickYard(col, a, s);
+  // (Not the building sites while all hands are at the woodpile: a council commitment.)
+  if (!t && s.role !== 'rest') t = pickFarm(col, a, 'harvest') ?? (committed(col, 'all_hands') ? null : pickBuild(col, a)) ?? pickSplit(col, a) ?? pursue(col, a, s) ?? pickYard(col, a, s);
   return t ?? pickLeisure(col, a, s) ?? pickWander(col, a);
 }
 

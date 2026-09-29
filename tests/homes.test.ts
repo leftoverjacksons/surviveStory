@@ -89,10 +89,13 @@ describe('meals', () => {
   it('nobody goes hungry while the stores hold plenty', () => {
     const col = createColony(generateWorld(2), createCommunity(2));
     let starving = 0;
+    // Someone led off by the Folk goes hungry until they're home again: not the stores' fault.
+    const led = new Map<number, number>();
     for (let m = 0; m < 30 * 1440; m += 10) {
       tick(col, 10);
+      if (col.folk.led) led.set(col.folk.led.id, col.minute);
       if (col.community.resources.food < col.agents.length * 3) continue;
-      for (const a of col.agents) if (a.needs.food <= 0) starving++;
+      for (const a of col.agents) if (a.needs.food <= 0 && col.minute - (led.get(a.id) ?? -1e9) > 360) starving++;
     }
     expect(starving).toBe(0);
   }, 30000); // thirty simulated days: slow under load

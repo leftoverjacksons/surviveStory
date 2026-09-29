@@ -9,7 +9,7 @@ import { nextGathering } from '../sim/gatherings';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
-import { CHAMBERS, chambers } from '../sim/townhouse';
+import { KNOWES, housing, knowes } from '../sim/townhouse';
 import { folkMood, reachShare } from '../sim/mycelium';
 import { FOLK_WORKS, folkNeeds, landWanted, standingWord, type FolkFocus } from '../sim/folk';
 import { FAE_UNIT, FOLK_SUITED, canAskFolk, canClear, veilCost } from '../sim/haunt';
@@ -687,35 +687,30 @@ export class Hud {
       ${news ? `<div class="folk-news">${news}</div>` : ''}`;
   }
 
-  /** The townhouse under the hill, in cross-section (DESIGN §24.9). */
+  /** The Great Hill and its knowes, from above (DESIGN §25.3). */
   private underHill(): string {
-    const f = this.col.folk;
-    const cs = chambers(f);
-    const SHORT: Record<string, string> = { hearth: 'Hearth', bowers: 'Bowers', dewcellar: 'Dew', gallery: 'Song', archive: 'Roots', nursery: 'Nursery', guestroom: 'Guests' };
-
-    const W = 280, H = 118, cx = W / 2, top = 26;
-    // The hall in the middle; chambers off it left and right, alternately, in two rows.
-    let k = -1;
-    const pos = cs.map((c) => {
-      if (c.kind === 'hearth') return { x: cx, y: 60 };
-      k++;
-      const side = k % 2 ? 1 : -1, step = Math.floor(k / 2);
-      return { x: cx + side * Math.min(W / 2 - 16, 50 + step * 30), y: step % 2 ? 100 : 76 };
-    });
-    const tunnels = pos.map((p, i) => i === 0 ? '' : `<line x1="${cx}" y1="62" x2="${p.x.toFixed(0)}" y2="${p.y.toFixed(0)}" class="tn"/>`).join('');
-    const rooms = cs.map((c, i) => {
-      const p = pos[i], d = CHAMBERS[c.kind];
-      const r = c.kind === 'hearth' ? 22 : 13;
-      return `<g><title>${esc(`${d.name}: ${d.blurb} Above ground: ${d.topside}.`)}</title><ellipse cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" rx="${r}" ry="${(r * 0.62).toFixed(0)}" class="${c.kind === 'hearth' ? 'hh' : 'ch'}"/>`
-        + `<text x="${p.x.toFixed(0)}" y="${(p.y + 3).toFixed(0)}">${SHORT[c.kind]}</text></g>`;
+    const f = this.col.folk, m = this.col.world.folk.mound;
+    const ks = knowes(f);
+    const SHORT: Record<string, string> = { dwelling: 'Home', dewcellar: 'Dew', gallery: 'Song', archive: 'Roots', nursery: 'Nursery', guestroom: 'Guests' };
+    const who = (home: number) => f.beings.filter((b) => (b.home ?? 0) === home).map((b) => (b.known ? b.name : 'someone unmet'));
+    const W = 280, H = 150, cx = W / 2, cy = H / 2;
+    const far = Math.max(12, ...ks.map((k) => Math.hypot(k.x - m.x, k.z - m.z) + k.r));
+    const sc = (Math.min(W, H) / 2 - 8) / far;
+    const hall = `<g><title>${esc(`${m.name}, the Great Hill: the hearth-hall of the Gentry. Living here: ${who(0).join(', ') || 'nobody'}.`)}</title>`
+      + `<circle cx="${cx}" cy="${cy}" r="${(m.r * sc).toFixed(1)}" class="hh"/><text x="${cx}" y="${cy + 3}">Hall</text></g>`;
+    const paths = ks.map((k) => `<line x1="${cx}" y1="${cy}" x2="${(cx + (k.x - m.x) * sc).toFixed(0)}" y2="${(cy + (k.z - m.z) * sc).toFixed(0)}" class="tn"/>`).join('');
+    const hills = ks.map((k) => {
+      const x = cx + (k.x - m.x) * sc, y = cy + (k.z - m.z) * sc, d = KNOWES[k.kind];
+      const living = who(k.id);
+      return `<g><title>${esc(`${k.name}, ${d.name.toLowerCase()}: ${d.blurb} Living here: ${living.join(', ') || 'nobody yet'}. Above ground: ${d.topside}.`)}</title>`
+        + `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${Math.max(9, k.r * sc).toFixed(1)}" class="ch"/><text x="${x.toFixed(0)}" y="${(y + 3).toFixed(0)}">${SHORT[k.kind]}</text></g>`;
     }).join('');
-    const hill = `<path d="M8 ${top + 14} Q ${cx} ${top - 40} ${W - 8} ${top + 14}" class="hl"/><line x1="0" y1="${top + 14}" x2="${W}" y2="${top + 14}" class="gl"/>`;
     const counts = new Map<string, number>();
-    for (const c of cs) counts.set(c.kind, (counts.get(c.kind) ?? 0) + 1);
-    const list = [...counts].map(([kind, n]) => `${CHAMBERS[kind as keyof typeof CHAMBERS].name}${n > 1 ? ` ×${n}` : ''}`).join(' · ');
-    return `<div class="h" style="margin-top:8px">Under the hill</div>
-      <svg class="underhill" viewBox="0 0 ${W} ${H}" role="img" aria-label="The townhouse under the hill: ${esc(list)}">${hill}${tunnels}${rooms}</svg>
-      <div class="effects">${esc(list)}. Hover a chamber to see what it does. Those with Sight see the townhouse above ground at night; everyone sees it in the Veil view.</div>`;
+    for (const k of ks) counts.set(k.kind, (counts.get(k.kind) ?? 0) + 1);
+    const list = ['The hearth-hall', ...[...counts].map(([kind, n]) => `${KNOWES[kind as keyof typeof KNOWES].name}${n > 1 ? ` ×${n}` : ''}`)].join(' · ');
+    return `<div class="h" style="margin-top:8px">The hill and its knowes</div>
+      <svg class="underhill" viewBox="0 0 ${W} ${H}" role="img" aria-label="The Great Hill and its knowes: ${esc(list)}">${paths}${hall}${hills}</svg>
+      <div class="effects">${esc(list)}. Room for ${housing(f)} of them (${f.beings.length} now). A new knowe rises each time the hill grows. Hover one to see who lives there. Those with Sight see their lodges at night; everyone sees them in the Veil view.</div>`;
   }
 
   setOmenMode(on: boolean) { this.omenMode = on; document.body.classList.toggle('omen', on); }

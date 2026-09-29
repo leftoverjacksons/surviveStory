@@ -1,50 +1,65 @@
 /**
- * The mound as a townhouse (DESIGN §24.9). Under the hill the Folk live in a
- * Nunnehi townhouse: a hearth-hall with chambers dug off it, one more each
- * time the hill grows, chosen by what the hill lacks. Each chamber does
- * something small and real. Above ground each has a ghostly counterpart
- * (render/townhouse.ts) that most people can't see: clear with Sight, or in
- * the Veil view.
+ * The Folk's settlement (DESIGN §25.3; replaces the chambers of §24.9). The
+ * Great Hill holds the hearth-hall, where the Gentry sit and the hill decides.
+ * Each time the hill grows, a knowe is raised around it: a smaller hill,
+ * about the old mound's size, and in it a two-storey dwelling (one floor at
+ * the hill's crown, one below) for a household of the Folk. The hills are
+ * real ground; what stands on and in them is of the Veil, seen only with
+ * Sight after dark, or in the Veil view (render/townhouse.ts).
+ *
+ * Every knowe houses a household, and each has a character that does
+ * something small and real (what the old chambers did): a dew-knowe keeps
+ * dew, the pipers' knowe makes song, the archive-knowe keeps the names of
+ * the village's dead, the nursery quickens the hill's growth, the
+ * guest-knowe sends a hob down to the village one night more.
  */
 import { alive } from './community';
 import type { Colony } from './colony';
 import type { FolkSociety } from './folk';
+import { raiseHill } from './folk';
+import { HAUNT_RADIUS } from './haunt';
+import { Ground, Zone, idx, inBounds, reveal, toTileX, toTileZ, type World } from './world';
 
-export type ChamberKind = 'hearth' | 'bowers' | 'dewcellar' | 'gallery' | 'archive' | 'nursery' | 'guestroom';
+export type KnoweKind = 'dwelling' | 'dewcellar' | 'gallery' | 'archive' | 'nursery' | 'guestroom';
 
-export interface Chamber {
-  kind: ChamberKind;
-  /** Where it lies off the hall: bearing from the hill's centre (radians) and depth below the crown (0..1). */
-  a: number;
-  depth: number;
-  /** The hill's growth it was dug at. */
+export interface Knowe {
+  id: number;
+  kind: KnoweKind;
+  name: string;
+  x: number; z: number;
+  /** Radius of its hill. */
+  r: number;
+  /** The Great Hill's growth it was raised at. */
   level: number;
 }
 
-export const CHAMBERS: Record<ChamberKind, { name: string; blurb: string; topside: string }> = {
-  hearth: { name: 'Hearth-hall', blurb: 'The townhouse itself: seven sides round a fire that never goes out. Where they gather and decide.', topside: 'a seven-sided lodge of light on the crown of the hill' },
-  bowers: { name: 'Sleeping bowers', blurb: 'Rooms of woven root and moss. Each gives two of them somewhere to rest (counts toward Rest).', topside: 'small domed lodges round the hill\'s shoulder' },
-  dewcellar: { name: 'Dew-cellar', blurb: 'Where the night\'s dew is kept cool. Two more dew each night.', topside: 'a well with a bowl of dew that shines' },
-  gallery: { name: 'Song-gallery', blurb: 'A long, echoing chamber where the pipers practise. Two more song each night.', topside: 'tall reed pipes that hum in the wind' },
-  archive: { name: 'Root-archive', blurb: 'Their memory, written in roots: the names of the village\'s dead are kept here too. Grief in the village eases sooner.', topside: 'a tree hung with small lanterns, one for each name' },
-  nursery: { name: 'Nursery', blurb: 'Where the young of the hill are sung to. The hill grows faster.', topside: 'a cradle of light swinging in the branches' },
-  guestroom: { name: 'Guest-room', blurb: 'A room with a door the size of a person. Their hobs come down one night more to help the village.', topside: 'a lodge with a door left open, lit from inside' },
+/** A knowe's hill: about the old mound's size. */
+export const KNOWE_R = 3.4;
+/** How many of the Folk the hall under the Great Hill houses, and each knowe. */
+export const HALL_HOUSES = 6;
+export const KNOWE_HOUSES = 5;
+
+export const KNOWES: Record<KnoweKind, { name: string; blurb: string; topside: string }> = {
+  dwelling: { name: 'Dwelling-knowe', blurb: `A household of the Folk: a hall at the crown and a sleeping floor below. Room for ${KNOWE_HOUSES} (counts toward Rest).`, topside: 'a round lodge of light on its crown, a door-glow facing the Great Hill' },
+  dewcellar: { name: 'Dew-knowe', blurb: 'Its lower floor keeps the night\'s dew cool. Two more dew each night, and room to store more.', topside: 'a lodge with a well beside it, and a bowl of dew that shines' },
+  gallery: { name: 'Pipers\' knowe', blurb: 'The pipers live here and practise in the long room below. Two more song each night.', topside: 'a lodge with tall reed pipes that hum in the wind' },
+  archive: { name: 'Root-archive', blurb: 'Their memory, written in roots: the names of the village\'s dead are kept here too. Grief in the village eases sooner.', topside: 'a lodge under a tree hung with small lanterns, one for each name' },
+  nursery: { name: 'Nursery-knowe', blurb: 'Where the young of the hill are sung to. The hill grows faster.', topside: 'a lodge with a cradle of light swinging in the branches' },
+  guestroom: { name: 'Guest-knowe', blurb: 'A door the size of a person, left open. Their hobs come down one night more to help the village.', topside: 'a lodge with its door open, lit from inside' },
 };
 
-/** The townhouse a new hill starts with. */
-export const firstChambers = (door: number): Chamber[] => [
-  { kind: 'hearth', a: 0, depth: 0.5, level: 0 },
-  { kind: 'bowers', a: door + Math.PI * 0.75, depth: 0.7, level: 0 },
-];
+const NAMES = ['Bramble', 'Hazel', 'Rowan', 'Thimble', 'Sorrel', 'Yarrow', 'Elder', 'Foxglove', 'Rush', 'Harebell', 'Sloe', 'Mallow', 'Tansy', 'Vetch'];
 
-export const chambers = (f: FolkSociety): Chamber[] => f.chambers ?? [];
-export const chamberCount = (f: FolkSociety, kind: ChamberKind) => chambers(f).filter((c) => c.kind === kind).length;
+export const knowes = (f: FolkSociety): Knowe[] => f.knowes ?? [];
+export const knoweCount = (f: FolkSociety, kind: KnoweKind) => knowes(f).filter((k) => k.kind === kind).length;
+/** How many of the Folk the settlement can house. */
+export const housing = (f: FolkSociety) => HALL_HOUSES + knowes(f).length * KNOWE_HOUSES;
 
-/** What the hill lacks most: the next chamber it digs. */
-export function nextChamber(col: Colony): ChamberKind {
+/** What the hill lacks most: the next knowe's character. */
+export function nextKnowe(col: Colony): KnoweKind {
   const f = col.folk;
-  const has = (k: ChamberKind) => chamberCount(f, k) > 0;
-  if (chamberCount(f, 'bowers') * 2 < f.beings.length) return 'bowers';
+  const has = (k: KnoweKind) => knoweCount(f, k) > 0;
+  if (housing(f) < f.beings.length + 2) return 'dwelling';
   if (!has('dewcellar') && f.dew < 12) return 'dewcellar';
   if (!has('gallery') && f.song < 12) return 'gallery';
   if (!has('archive') && col.community.survivors.some((s) => !s.alive && !s.departed && !s.taken)) return 'archive';
@@ -52,25 +67,150 @@ export function nextChamber(col: Colony): ChamberKind {
   if (!has('guestroom') && f.standing >= 70) return 'guestroom';
   if (!has('dewcellar')) return 'dewcellar';
   if (!has('gallery')) return 'gallery';
-  return 'bowers';
+  return 'dwelling';
 }
 
-/** The hill has grown: dig the chamber it lacks. Returns it. */
-export function digChamber(col: Colony): Chamber {
-  const f = col.folk, m = col.world.folk.mound;
-  const kind = nextChamber(col);
-  const n = chambers(f).length;
-  // Chambers spiral out from the hall, away from the door, deeper as they go.
-  const c: Chamber = { kind, a: m.door + Math.PI + (n % 2 ? 1 : -1) * (0.5 + Math.floor(n / 2) * 0.7), depth: Math.min(1, 0.55 + n * 0.06), level: f.level };
-  (f.chambers ??= []).push(c);
-  return c;
+/**
+ * Where a knowe could stand: around the Great Hill, on open ground that is
+ * the Folk's or nobody's (not the village's zones, plots or paving), clear of
+ * their paths, their works, the Ring and the other knowes. Fewest trees, and
+ * nearest the hill, first. The same world gives the same place.
+ */
+export function knoweSite(col: Colony, r = KNOWE_R): { x: number; z: number } | null {
+  const w = col.world, f = col.folk, m = w.folk.mound;
+  let best: { x: number; z: number; score: number } | null = null;
+  const n = knowes(f).length;
+  for (let ring = 0; ring < 6; ring++) {
+    const d = m.r + r + 1.6 + ring * 2.2;
+    for (let k = 0; k < 36; k++) {
+      const a = m.door + Math.PI + (k / 36) * Math.PI * 2 + n * 0.37;
+      const x = m.x + Math.cos(a) * d, z = m.z + Math.sin(a) * d;
+      const trees = siteTrees(col, x, z, r);
+      if (trees < 0) continue;
+      const score = trees * 3 + ring * 1.5 + Math.abs(Math.sin((k + n) * 1.7)) * 0.5;
+      if (!best || score < best.score) best = { x, z, score };
+    }
+    if (best && best.score < ring * 1.5 + 3) break;
+  }
+  return best ? { x: best.x, z: best.z } : null;
 }
 
-/** Daily: what the chambers do beyond dew, song and rest (those are read where they're used). */
+/** Trees on a site, or −1 if the site won't do. */
+function siteTrees(col: Colony, x: number, z: number, r: number): number {
+  const w = col.world, f = col.folk, v = col.village;
+  if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < r + 5) return -1;
+  if (knowes(f).some((k) => Math.hypot(k.x - x, k.z - z) < k.r + r + 1)) return -1;
+  if (f.works.some((k) => Math.hypot(k.x - x, k.z - z) < r + 1)) return -1;
+  if (v.buildings.some((b) => Math.hypot(b.inside.x - x, b.inside.z - z) < r + 4)) return -1;
+  // Not among the old world's ruins, nor in a district that is still haunted.
+  if (w.ruins.some((q) => !q.razed && Math.hypot(q.x - x, q.z - z) < r + 2 + Math.max(q.w, q.d) / 2)) return -1;
+  if (col.haunts.some((h) => h.state !== 'cleared' && Math.hypot(w.districts[h.district].x - x, w.districts[h.district].z - z) < HAUNT_RADIUS + r)) return -1;
+  let trees = 0;
+  const R = Math.ceil(r + 1);
+  const cx = toTileX(w, x), cz = toTileZ(w, z);
+  for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+    const tx = cx + dx, tz = cz + dz;
+    const d = Math.hypot(tx - w.w / 2 + 0.5 - x, tz - w.h / 2 + 0.5 - z);
+    if (d > r + 0.8) continue;
+    if (!inBounds(w, tx, tz)) return -1;
+    const i = idx(w, tx, tz), g = w.ground[i];
+    if (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete) return -1;
+    if (w.folk.path[i] || v.plotAt[i]) return -1;
+    if (w.zone[i] !== Zone.Wild && w.zone[i] !== Zone.None) return -1;
+    if (w.blocked[i] && w.treeAt[i] < 0) return -1;
+    if (w.treeAt[i] >= 0) trees++;
+  }
+  return trees;
+}
+
+/**
+ * The hill has grown: raise a knowe for what it lacks. The ground swells; any
+ * trees on it are taken into the hill; the land round it becomes the Wild.
+ * Returns the knowe, or null if there is nowhere left to raise one.
+ */
+export function raiseKnowe(col: Colony, kind: KnoweKind = nextKnowe(col)): Knowe | null {
+  const w = col.world, f = col.folk;
+  const at = knoweSite(col);
+  if (!at) return null;
+  const used = new Set(knowes(f).map((k) => k.name));
+  const base = NAMES.find((nm) => !used.has(`${nm} Knowe`)) ?? `${NAMES[knowes(f).length % NAMES.length]} the Second`;
+  const k: Knowe = { id: (f.nextKnowe = (f.nextKnowe ?? 0) + 1), kind, name: `${base} Knowe`, x: at.x, z: at.z, r: KNOWE_R, level: f.level };
+  swallowTrees(col, k.x, k.z, k.r + 0.6);
+  raiseHill(w, k.x, k.z, k.r, 1.8);
+  // Their land round it.
+  const R = Math.ceil(k.r + 3);
+  const cx = toTileX(w, k.x), cz = toTileZ(w, k.z);
+  for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+    const tx = cx + dx, tz = cz + dz;
+    if (!inBounds(w, tx, tz)) continue;
+    const i = idx(w, tx, tz), g = w.ground[i];
+    if (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete || w.zone[i] !== Zone.None) continue;
+    if (Math.hypot(tx - w.w / 2 + 0.5 - k.x, tz - w.h / 2 + 0.5 - k.z) <= k.r + 3) w.zone[i] = Zone.Wild;
+  }
+  w.zoneVersion++;
+  // A new hill is hard to miss.
+  reveal(w, k.x, k.z, k.r + 3);
+  (f.knowes ??= []).push(k);
+  f.version++;
+  return k;
+}
+
+/** Trees where a hill rises are taken into it. */
+function swallowTrees(col: Colony, x: number, z: number, r: number) {
+  const w = col.world;
+  const R = Math.ceil(r);
+  const cx = toTileX(w, x), cz = toTileZ(w, z);
+  for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+    const tx = cx + dx, tz = cz + dz;
+    if (!inBounds(w, tx, tz)) continue;
+    const i = idx(w, tx, tz), id = w.treeAt[i];
+    if (id < 0 || Math.hypot(tx - w.w / 2 + 0.5 - x, tz - w.h / 2 + 0.5 - z) > r) continue;
+    const t = w.trees[id];
+    t.felled = true;
+    w.treeAt[i] = -1;
+    w.blocked[i] = 0;
+    col.events.push({ type: 'swallowed', tree: id });
+  }
+}
+
+/** Where one of the Folk lives: a knowe, or the hall under the Great Hill (0). */
+export function homeOf(f: FolkSociety, w: World, home: number | undefined): { x: number; z: number } {
+  const k = home ? knowes(f).find((x) => x.id === home) : undefined;
+  return k ? { x: k.x, z: k.z } : { x: w.folk.mound.x, z: w.folk.mound.z };
+}
+
+/** Give everyone without a home one: the Gentry in the hall first, then the knowes with room. */
+export function settleFolk(f: FolkSociety) {
+  const count = new Map<number, number>();
+  for (const b of f.beings) if (b.home !== undefined) count.set(b.home, (count.get(b.home) ?? 0) + 1);
+  for (const b of f.beings) {
+    if (b.home !== undefined && (b.home === 0 || knowes(f).some((k) => k.id === b.home))) continue;
+    const gentry = b.kind === 'elder' || b.kind === 'piper';
+    const hallRoom = (count.get(0) ?? 0) < HALL_HOUSES;
+    const k = knowes(f).find((x) => (count.get(x.id) ?? 0) < KNOWE_HOUSES && (x.kind === 'gallery') === (b.kind === 'piper'))
+      ?? knowes(f).find((x) => (count.get(x.id) ?? 0) < KNOWE_HOUSES);
+    b.home = gentry && hallRoom ? 0 : k ? k.id : 0;
+    count.set(b.home, (count.get(b.home) ?? 0) + 1);
+  }
+}
+
+/** Daily: what the knowes do beyond dew, song and rest (those are read where they're used). */
 export function townhouseDaily(col: Colony) {
   const f = col.folk;
   // The root-archive keeps the names of the dead: those grieving in the village mend a little sooner.
-  if (chamberCount(f, 'archive') && f.standing >= 20 && col.community.day % 2 === 0) {
+  if (knoweCount(f, 'archive') && f.standing >= 20 && col.community.day % 2 === 0) {
     for (const s of alive(col.community)) if (s.griefDays > 0) s.griefDays--;
+  }
+  settleFolk(f);
+}
+
+/**
+ * An old save's chambers under the small mound (DESIGN §24.9) become knowes
+ * round it, one for each chamber dug (the sleeping bowers become dwellings).
+ */
+export function knowesFromChambers(col: Colony, old: { kind: string }[]) {
+  for (const c of old) {
+    if (c.kind === 'hearth') continue;
+    raiseKnowe(col, c.kind === 'bowers' ? 'dwelling' : c.kind as KnoweKind);
   }
 }

@@ -1,16 +1,18 @@
 /**
- * The townhouse (DESIGN §24.9), drawn. Above ground: ghostly buildings on the
- * hill, one for each chamber (a seven-sided lodge of light on the crown,
- * domed bowers, a dew well, reed pipes, a lantern tree, a cradle, a guest
- * lodge). Most eyes see only a shimmer; with Sight they are clear at night,
- * and in the Veil view they are plain by day. Under the hill, in the Veil
- * view only, the chambers glow through the earth, joined by tunnels to the
- * hearth-hall.
+ * The Folk's settlement (DESIGN §25.3), drawn. The hills are real ground
+ * (raised in the terrain); what stands on and in them is of the Veil. On the
+ * Great Hill's crown, the hearth-hall: a seven-sided lodge of light. On each
+ * knowe, a round lodge (the upper floor) facing the Great Hill, with its
+ * character beside it: a dew well, reed pipes, a lantern tree, a cradle, an
+ * open door. Most eyes see only a shimmer; with Sight they are clear at night,
+ * and in the Veil view they are plain by day. Underground, in the Veil view
+ * only, each knowe's lower floor glows through the earth, joined by a tunnel
+ * to the hall.
  */
 import * as THREE from 'three';
 import type { Colony } from '../sim/colony';
 import { alive } from '../sim/community';
-import { chambers, type Chamber } from '../sim/townhouse';
+import { knowes, type Knowe } from '../sim/townhouse';
 import { heightAt } from '../sim/world';
 import { worldUniforms } from './util';
 
@@ -46,7 +48,7 @@ export class TownhouseView {
   sync() {
     const f = this.col.folk;
     const dead = this.col.community.survivors.filter((s) => !s.alive && !s.departed && !s.taken).length;
-    const key = `${chambers(f).map((c) => c.kind).join(',')}|${Math.min(12, dead)}`;
+    const key = `${knowes(f).map((k) => `${k.id}${k.kind}`).join(',')}|${Math.min(12, dead)}`;
     if (key === this.key) return;
     this.key = key;
     for (const g of [this.top, this.under]) for (const c of [...g.children]) { g.remove(c); c.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); }
@@ -54,86 +56,100 @@ export class TownhouseView {
     this.topMats = []; this.underMats = [];
     const w = this.col.world, m = w.folk.mound;
     const crown = heightAt(w, m.x, m.z);
-    const hall = new THREE.Vector3(m.x, crown - 1.6, m.z);
-    for (const c of chambers(f)) {
-      this.top.add(this.topside(c, Math.min(12, Math.max(3, dead))));
-      // Under the hill: the room, and a tunnel back to the hall.
-      const at = c.kind === 'hearth' ? hall.clone() : new THREE.Vector3(m.x + Math.cos(c.a) * m.r * 0.62, crown - 1.2 - c.depth * 1.4, m.z + Math.sin(c.a) * m.r * 0.62);
-      const room = new THREE.Mesh(new THREE.SphereGeometry(c.kind === 'hearth' ? 1.1 : 0.55, 12, 8), this.mat(this.underMats, c.kind === 'hearth' ? '#ffcf8a' : '#9ff2e0', c.kind === 'hearth' ? 0.45 : 0.35, false));
-      room.scale.y = 0.6;
-      room.position.copy(at);
-      this.under.add(room);
-      if (c.kind !== 'hearth') {
-        const d = at.distanceTo(hall);
-        const tunnel = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, d, 6), this.mat(this.underMats, '#9ff2e0', 0.25, false));
-        tunnel.position.copy(at).add(hall).multiplyScalar(0.5);
-        tunnel.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), hall.clone().sub(at).normalize());
-        this.under.add(tunnel);
-      }
+    const hall = new THREE.Vector3(m.x, crown - 2.4, m.z);
+    this.top.add(this.hallLodge());
+    // The hall itself, underground.
+    const room = new THREE.Mesh(new THREE.SphereGeometry(1.8, 14, 8), this.mat(this.underMats, '#ffcf8a', 0.45, false));
+    room.scale.y = 0.55;
+    room.position.copy(hall);
+    this.under.add(room);
+    for (const k of knowes(f)) {
+      this.top.add(this.knoweLodge(k, Math.min(12, Math.max(3, dead))));
+      // The lower floor, and a tunnel back to the hall.
+      const at = new THREE.Vector3(k.x, heightAt(w, k.x, k.z) - 1.1, k.z);
+      const floor = new THREE.Mesh(new THREE.SphereGeometry(1.1, 12, 8), this.mat(this.underMats, '#9ff2e0', 0.35, false));
+      floor.scale.y = 0.45;
+      floor.position.copy(at);
+      this.under.add(floor);
+      // A tunnel back to the hall: sagging deeper in the middle, and bending a little, like a root.
+      const mid = at.clone().add(hall).multiplyScalar(0.5);
+      const side = new THREE.Vector3(hall.z - at.z, 0, at.x - hall.x).normalize().multiplyScalar(at.distanceTo(hall) * 0.15 * (k.id % 2 ? 1 : -1));
+      mid.add(side).setY(Math.min(at.y, hall.y) - 0.8);
+      const curve = new THREE.QuadraticBezierCurve3(at, mid, hall);
+      this.under.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.12, 6), this.mat(this.underMats, '#9ff2e0', 0.14, false)));
     }
     // The door's passage down to the hall.
-    const door = new THREE.Vector3(m.x + Math.cos(m.door) * m.r * 0.78, heightAt(w, m.x + Math.cos(m.door) * m.r * 0.78, m.z + Math.sin(m.door) * m.r * 0.78) + 0.3, m.z + Math.sin(m.door) * m.r * 0.78);
+    const dx = m.x + Math.cos(m.door) * m.r * 0.8, dz = m.z + Math.sin(m.door) * m.r * 0.8;
+    const door = new THREE.Vector3(dx, heightAt(w, dx, dz) + 0.3, dz);
     const pd = door.distanceTo(hall);
-    const passage = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, pd, 6), this.mat(this.underMats, '#ffcf8a', 0.3, false));
+    const passage = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, pd, 6), this.mat(this.underMats, '#ffcf8a', 0.3, false));
     passage.position.copy(door).add(hall).multiplyScalar(0.5);
     passage.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), hall.clone().sub(door).normalize());
     this.under.add(passage);
     for (const o of this.under.children) o.renderOrder = 5;
   }
 
-  /** A chamber's ghostly counterpart above ground. */
-  private topside(c: Chamber, names: number): THREE.Group {
+  /** The hearth-hall on the Great Hill's crown: seven sides, a conical roof, the fire's light through the smoke-hole. */
+  private hallLodge(): THREE.Group {
     const w = this.col.world, m = w.folk.mound;
     const g = new THREE.Group();
     const pale = this.mat(this.topMats, '#bff7ea', 0.24), warm = this.mat(this.topMats, '#ffd9a0', 0.55), bright = this.mat(this.topMats, '#e6fff8', 0.7);
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); g.add(o); return o; };
-    if (c.kind === 'hearth') {
-      // The townhouse on the crown: seven sides, a conical roof, the fire's light through the smoke-hole.
-      g.position.set(m.x, heightAt(w, m.x, m.z) - 0.1, m.z);
-      add(new THREE.CylinderGeometry(1.35, 1.45, 1.1, 7, 1, true), pale, 0, 0.55, 0);
-      add(new THREE.ConeGeometry(1.75, 1.25, 7, 1, true), pale, 0, 1.72, 0);
-      add(new THREE.SphereGeometry(0.16, 8, 6), warm, 0, 2.3, 0);
-      // Posts at the seven corners.
-      for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2; add(new THREE.CylinderGeometry(0.05, 0.05, 1.3, 4), bright, Math.cos(a) * 1.4, 0.65, Math.sin(a) * 1.4); }
-      g.rotation.y = -m.door;
-      return g;
-    }
-    const x = m.x + Math.cos(c.a) * m.r * 0.95, z = m.z + Math.sin(c.a) * m.r * 0.95;
-    g.position.set(x, heightAt(w, x, z), z);
-    g.rotation.y = -c.a;
-    switch (c.kind) {
-      case 'bowers':
-        for (const [dx, dz, r] of [[0, -0.5, 0.55], [0.2, 0.55, 0.45]] as const) {
-          add(new THREE.SphereGeometry(r, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), pale, dx, 0, dz);
-          add(new THREE.CircleGeometry(0.14, 8), warm, dx + r * 0.98, 0.18, dz).rotation.y = Math.PI / 2;
-        }
+    g.position.set(m.x, heightAt(w, m.x, m.z) - 0.1, m.z);
+    add(new THREE.CylinderGeometry(2.1, 2.25, 1.6, 7, 1, true), pale, 0, 0.8, 0);
+    add(new THREE.ConeGeometry(2.7, 1.9, 7, 1, true), pale, 0, 2.55, 0);
+    add(new THREE.SphereGeometry(0.24, 8, 6), warm, 0, 3.4, 0);
+    for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2; add(new THREE.CylinderGeometry(0.07, 0.07, 1.9, 4), bright, Math.cos(a) * 2.2, 0.95, Math.sin(a) * 2.2); }
+    g.rotation.y = -m.door;
+    return g;
+  }
+
+  /** A knowe's upper floor, facing the Great Hill, with its character beside it. */
+  private knoweLodge(k: Knowe, names: number): THREE.Group {
+    const w = this.col.world, m = w.folk.mound;
+    const g = new THREE.Group();
+    const pale = this.mat(this.topMats, '#bff7ea', 0.24), warm = this.mat(this.topMats, '#ffd9a0', 0.55), bright = this.mat(this.topMats, '#e6fff8', 0.7);
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); g.add(o); return o; };
+    g.position.set(k.x, heightAt(w, k.x, k.z) - 0.05, k.z);
+    // Facing the hall: local +x points at the Great Hill.
+    g.rotation.y = -Math.atan2(m.z - k.z, m.x - k.x);
+    // The lodge: a round wall, a domed thatch, a door-glow toward the hill.
+    add(new THREE.CylinderGeometry(0.95, 1.0, 0.9, 10, 1, true), pale, 0, 0.45, 0);
+    add(new THREE.SphereGeometry(1.15, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), pale, 0, 0.85, 0).scale.y = 0.75;
+    add(new THREE.PlaneGeometry(0.4, 0.7), warm, 1.0, 0.36, 0).rotation.y = Math.PI / 2;
+    add(new THREE.SphereGeometry(0.09, 6, 4), bright, 0, 1.75, 0);
+    // Its character, off to one side.
+    const s = new THREE.Group();
+    s.position.set(-0.3, 0, 1.55);
+    g.add(s);
+    const put = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); s.add(o); return o; };
+    switch (k.kind) {
+      case 'dwelling':
+        put(new THREE.SphereGeometry(0.45, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), pale, 0, 0, 0);
         break;
       case 'dewcellar':
-        add(new THREE.TorusGeometry(0.45, 0.08, 6, 14), pale, 0, 0.3, 0).rotation.x = Math.PI / 2;
-        add(new THREE.CircleGeometry(0.4, 14), bright, 0, 0.32, 0).rotation.x = -Math.PI / 2;
-        for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.04, 0.04, 1.1, 4), pale, 0, 0.55, s * 0.5);
-        add(new THREE.BoxGeometry(0.06, 0.06, 1.1), pale, 0, 1.1, 0);
+        put(new THREE.TorusGeometry(0.4, 0.07, 6, 14), pale, 0, 0.28, 0).rotation.x = Math.PI / 2;
+        put(new THREE.CircleGeometry(0.35, 14), bright, 0, 0.3, 0).rotation.x = -Math.PI / 2;
+        for (const sd of [-1, 1]) put(new THREE.CylinderGeometry(0.04, 0.04, 1.0, 4), pale, 0, 0.5, sd * 0.45);
         break;
       case 'gallery':
-        for (let i = 0; i < 6; i++) add(new THREE.CylinderGeometry(0.07, 0.09, 1.4 + i * 0.3, 6, 1, true), pale, (i % 2) * 0.15, (1.4 + i * 0.3) / 2, (i - 2.5) * 0.2);
+        for (let i = 0; i < 6; i++) put(new THREE.CylinderGeometry(0.06, 0.08, 1.3 + i * 0.28, 6, 1, true), pale, (i % 2) * 0.14, (1.3 + i * 0.28) / 2, (i - 2.5) * 0.18);
         break;
-      case 'archive': {
-        add(new THREE.CylinderGeometry(0.1, 0.18, 2, 6, 1, true), pale, 0, 1, 0);
+      case 'archive':
+        put(new THREE.CylinderGeometry(0.1, 0.18, 2, 6, 1, true), pale, 0, 1, 0);
         for (let i = 0; i < names; i++) {
-          const a = (i / names) * Math.PI * 2, r = 0.45 + (i % 3) * 0.2;
-          add(new THREE.SphereGeometry(0.07, 6, 4), warm, Math.cos(a) * r, 1.3 + (i % 4) * 0.25, Math.sin(a) * r);
+          const a = (i / names) * Math.PI * 2, r = 0.4 + (i % 3) * 0.18;
+          put(new THREE.SphereGeometry(0.07, 6, 4), warm, Math.cos(a) * r, 1.3 + (i % 4) * 0.25, Math.sin(a) * r);
         }
-        add(new THREE.SphereGeometry(0.9, 10, 6), pale, 0, 2.1, 0).scale.y = 0.55;
+        put(new THREE.SphereGeometry(0.85, 10, 6), pale, 0, 2.1, 0).scale.y = 0.55;
         break;
-      }
       case 'nursery':
-        for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.04, 0.04, 1.8, 4), pale, 0, 0.9, s * 0.6).rotation.x = s * 0.3;
-        add(new THREE.TorusGeometry(0.3, 0.06, 5, 10, Math.PI), bright, 0, 0.75, 0).rotation.set(Math.PI, 0, 0);
+        for (const sd of [-1, 1]) put(new THREE.CylinderGeometry(0.04, 0.04, 1.7, 4), pale, 0, 0.85, sd * 0.55).rotation.x = sd * 0.3;
+        put(new THREE.TorusGeometry(0.28, 0.06, 5, 10, Math.PI), bright, 0, 0.72, 0).rotation.set(Math.PI, 0, 0);
         break;
       case 'guestroom':
-        add(new THREE.BoxGeometry(1.1, 1.4, 1.2), pale, 0, 0.7, 0);
-        add(new THREE.ConeGeometry(0.95, 0.7, 4, 1, true), pale, 0, 1.75, 0).rotation.y = Math.PI / 4;
-        add(new THREE.PlaneGeometry(0.45, 0.95), warm, 0.56, 0.48, 0).rotation.y = Math.PI / 2;
+        put(new THREE.BoxGeometry(0.9, 1.2, 1.0), pale, 0, 0.6, 0);
+        put(new THREE.PlaneGeometry(0.4, 0.85), warm, 0.46, 0.43, 0).rotation.y = Math.PI / 2;
         break;
     }
     return g;

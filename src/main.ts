@@ -37,7 +37,7 @@ import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
-import { digChamber } from './sim/townhouse';
+import { raiseKnowe, settleFolk } from './sim/townhouse';
 import { MyceliumView } from './render/mycelium';
 import { myceliumDaily } from './sim/mycelium';
 import { powered, whyLocked } from './sim/power';
@@ -1106,6 +1106,7 @@ function frame() {
   perf.sim += (performance.now() - tSim - perf.sim) * 0.05;
   for (const ev of colony.events) {
     if (ev.type === 'felled') trees.fell(ev.tree, ev.dirX, ev.dirZ);
+    else if (ev.type === 'swallowed') trees.vanish(ev.tree);
   }
   colony.events.length = 0;
 
@@ -1414,10 +1415,10 @@ const veilDebug = {
   },
   /** Mark paving to be broken up (DESIGN §24.12). */
   depave: (x: number, z: number, r: number) => markDepave(world, x, z, r, true),
-  /** Grow the hill n times, each with its chamber (DESIGN §24.9). */
   /** Grow the mycelium n days (and set the Folk's standing, if given). */
   spread(n = 10, standing?: number) { if (standing !== undefined) colony.folk.standing = standing; for (let i = 0; i < n; i++) myceliumDaily(colony); },
-  dig(n = 1) { for (let i = 0; i < n; i++) { colony.folk.level++; addFae(colony.folk, colony.world, 'hob', colony.folk.level); digChamber(colony); } },
+  /** Grow the hill n times, each raising a knowe (DESIGN §25.3). */
+  dig(n = 1) { for (let i = 0; i < n; i++) { colony.folk.level++; addFae(colony.folk, colony.world, 'hob', colony.folk.level); raiseKnowe(colony); settleFolk(colony.folk); } },
   /** Put a gathering on (DESIGN §24.8): 'festival', 'folk_festival', or 'wedding' (the two closest free adults). */
   gather(kind: 'festival' | 'folk_festival' | 'wedding' = 'festival') {
     if (kind !== 'wedding') return scheduleGathering(colony, kind, kind === 'festival' ? 'The test festival' : 'the dance at the Ring');

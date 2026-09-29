@@ -222,12 +222,16 @@ export function buildTerrain(w: World): THREE.Group {
   let overlays = [tileOverlay(w, Ground.Asphalt, 0.03, asphalt), tileOverlay(w, Ground.Concrete, 0.04, concrete)];
   group.add(...overlays);
   // Paving broken up (DESIGN §24.12) or greened over: recolour the ground and redraw the paving.
-  let groundVersion = w.groundVersion ?? 0;
+  let groundVersion = w.groundVersion ?? 0, heightVersion = w.heightVersion ?? 0;
   group.userData.refreshGround = () => {
-    if ((w.groundVersion ?? 0) === groundVersion) return;
+    const raised = (w.heightVersion ?? 0) !== heightVersion;
+    if ((w.groundVersion ?? 0) === groundVersion && !raised) return;
     groundVersion = w.groundVersion ?? 0;
-    paint(false);
+    heightVersion = w.heightVersion ?? 0;
+    // A knowe raised (DESIGN §25.3): the ground takes the new heights.
+    paint(raised);
     (geo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+    if (raised) { pos.needsUpdate = true; geo.computeVertexNormals(); geo.computeBoundingSphere(); }
     for (const o of overlays) { group.remove(o); o.geometry.dispose(); }
     overlays = [tileOverlay(w, Ground.Asphalt, 0.03, asphalt), tileOverlay(w, Ground.Concrete, 0.04, concrete)];
     group.add(...overlays);

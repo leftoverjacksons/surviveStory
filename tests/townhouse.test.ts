@@ -2,36 +2,66 @@ import { describe, expect, it } from 'vitest';
 import { createCommunity, killSurvivor } from '../src/sim/community';
 import { createColony } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
-import { addFae, folkDaily, folkNeeds } from '../src/sim/folk';
-import { chamberCount, chambers, digChamber, nextChamber, townhouseDaily } from '../src/sim/townhouse';
+import { GREAT_HILL_R, addFae, folkDaily, folkNeeds } from '../src/sim/folk';
+import { HALL_HOUSES, KNOWE_HOUSES, KNOWE_R, housing, knoweCount, knowes, nextKnowe, raiseKnowe, settleFolk, townhouseDaily } from '../src/sim/townhouse';
 import { makeSave, restore } from '../src/sim/save';
+import { Zone, heightAt, idx, toTileX, toTileZ } from '../src/sim/world';
 import type { Colony } from '../src/sim/colony';
 
 const fresh = (seed = 7) => createColony(generateWorld(seed), createCommunity(seed));
 
-describe('the townhouse under the hill (DESIGN §24.9)', () => {
-  it('starts with a hearth-hall and a sleeping chamber, and digs what it lacks', () => {
+describe('the Great Hill and its knowes (DESIGN §25.3)', () => {
+  it('the Great Hill is twice the old mound, and the Gentry live in its hall', () => {
     const col = fresh();
-    expect(chambers(col.folk).map((c) => c.kind)).toEqual(['hearth', 'bowers']);
-    // Crowded: the next chamber is for sleeping.
-    addFae(col.folk, col.world, 'hob', 1); // four of them: two pairs
-    expect(nextChamber(col)).toBe('bowers');
-    digChamber(col);
-    expect(chamberCount(col.folk, 'bowers')).toBe(2);
-    // Enough beds, little dew: a dew-cellar.
-    col.folk.dew = 2;
-    expect(nextChamber(col)).toBe('dewcellar');
+    expect(col.world.folk.mound.r).toBe(GREAT_HILL_R);
+    expect(knowes(col.folk)).toEqual([]);
+    const elder = col.folk.beings.find((b) => b.kind === 'elder')!;
+    expect(elder.home).toBe(0);
+    expect(housing(col.folk)).toBe(HALL_HOUSES);
   });
 
-  it('sleeping chambers count toward Rest; the dew-cellar adds dew', () => {
+  it('a knowe rises on open ground round the hill: real ground, trees taken in, the Wild round it', () => {
+    const col = fresh();
+    const w = col.world, m = w.folk.mound;
+    const before = w.heights.slice();
+    const k = raiseKnowe(col, 'dwelling')!;
+    expect(k).not.toBeNull();
+    const d = Math.hypot(k.x - m.x, k.z - m.z);
+    expect(d).toBeGreaterThanOrEqual(m.r + KNOWE_R);
+    // The ground rose there, and only rose anywhere.
+    expect(heightAt(w, k.x, k.z)).toBeGreaterThan(0);
+    for (let i = 0; i < before.length; i++) expect(w.heights[i]).toBeGreaterThanOrEqual(before[i]);
+    const i = idx(w, toTileX(w, k.x), toTileZ(w, k.z));
+    expect(w.treeAt[i]).toBe(-1);
+    expect(w.zone[i]).toBe(Zone.Wild);
+    expect(w.heightVersion).toBeGreaterThan(0);
+    // A second one stands clear of the first.
+    const k2 = raiseKnowe(col, 'gallery')!;
+    expect(Math.hypot(k2.x - k.x, k2.z - k.z)).toBeGreaterThan(k.r * 2);
+    expect(housing(col.folk)).toBe(HALL_HOUSES + 2 * KNOWE_HOUSES);
+  });
+
+  it('the hill raises what it lacks: room first, then dew', () => {
+    const col = fresh();
+    for (let i = 0; i < 5; i++) addFae(col.folk, col.world, 'hob', 1);
+    expect(nextKnowe(col)).toBe('dwelling');
+    raiseKnowe(col);
+    settleFolk(col.folk);
+    // Wee folk live in the knowes once the hall is for the Gentry.
+    expect(col.folk.beings.some((b) => (b.home ?? 0) > 0)).toBe(true);
+    col.folk.dew = 2;
+    expect(nextKnowe(col)).toBe('dewcellar');
+  });
+
+  it('knowes count toward Rest; the dew-knowe adds dew', () => {
     const col = fresh();
     col.folk.works = col.folk.works.filter((k) => k.kind !== 'bower');
-    // Three of them and one spare want four places; the first sleeping chamber gives two.
+    for (let i = 0; i < 5; i++) addFae(col.folk, col.world, 'hob', 1);
     expect(folkNeeds(col).find((n) => n.id === 'rest')!.met).toBe(false);
-    col.folk.chambers!.push({ kind: 'bowers', a: 0, depth: 0.7, level: 1 });
+    raiseKnowe(col, 'dwelling');
     expect(folkNeeds(col).find((n) => n.id === 'rest')!.met).toBe(true);
     const a = fresh(), b = fresh();
-    b.folk.chambers!.push({ kind: 'dewcellar', a: 0, depth: 0.7, level: 1 });
+    raiseKnowe(b, 'dewcellar');
     a.folk.standing = b.folk.standing = 60;
     folkDaily(a); folkDaily(b);
     expect(b.folk.dew - a.folk.dew).toBeCloseTo(2, 5);
@@ -45,17 +75,20 @@ describe('the townhouse under the hill (DESIGN §24.9)', () => {
     col.community.day = 10;
     townhouseDaily(col);
     expect(s.griefDays).toBe(before);
-    col.folk.chambers!.push({ kind: 'archive', a: 0, depth: 0.7, level: 1 });
+    raiseKnowe(col, 'archive');
     townhouseDaily(col);
     expect(s.griefDays).toBe(before - 1);
   });
 
-  it('an old save with a grown hill gets a chamber for each growth', () => {
+  it("an old save's chambers become knowes", () => {
     const col = fresh();
-    col.folk.level = 3;
+    col.folk.level = 2;
     const f = structuredClone(makeSave(col));
-    delete f.colony.folk.chambers;
+    delete f.colony.folk.knowes;
+    f.colony.folk.chambers = [{ kind: 'hearth' }, { kind: 'bowers' }, { kind: 'dewcellar' }];
     const b = restore(f) as Colony;
-    expect(chambers(b.folk).length).toBe(5);
+    expect(knowes(b.folk).map((k) => k.kind)).toEqual(['dwelling', 'dewcellar']);
+    expect(b.folk.chambers).toBeUndefined();
+    expect(knoweCount(b.folk, 'dewcellar')).toBe(1);
   });
 });

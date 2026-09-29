@@ -96,6 +96,8 @@ function capacity(col: Colony): { cap: Float32Array; hub: Float32Array; source: 
   const m = w.folk.mound;
   mark(m.x, m.z, 1);
   for (const k of col.folk.works) if (k.built === undefined || k.built >= 1) mark(k.x, k.z, 0.9);
+  // The knowes round the Great Hill: the network runs out to each, and on from there (DESIGN §25.3).
+  for (const k of col.folk.knowes ?? []) mark(k.x, k.z, 0.95, true);
   mark(w.fairyRing.x, w.fairyRing.z, 0.9, true);
   for (const b of col.village.buildings) if (b.kind === 'shrine') mark(b.door.x, b.door.z, 0.8, true);
   mark(w.site.memorial.x, w.site.memorial.z, 0.6, true);

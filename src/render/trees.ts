@@ -287,6 +287,13 @@ export class TreeField {
   }
 
   /** Hide a standing tree and play it falling in direction (dirX, dirZ). */
+  /** Gone without falling: taken into a rising hill (DESIGN §25.3). No stump. */
+  vanish(treeId: number) {
+    for (const s of this.slots.get(treeId) ?? []) { s.mesh.setMatrixAt(s.index, ZERO); s.mesh.instanceMatrix.needsUpdate = true; }
+    this.slots.delete(treeId);
+    this.youngKey = '';
+  }
+
   fell(treeId: number, dirX: number, dirZ: number) {
     const slots = this.slots.get(treeId) ?? [];
     const t = this.world.trees[treeId];
