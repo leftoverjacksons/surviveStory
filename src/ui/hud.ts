@@ -3,7 +3,6 @@ import { dayOf, fireWood, hourOf } from '../sim/colony';
 import {
   dayOfSeason, daysToFullMoon, daysUntilWinter, isFullMoon, seasonOf, yearOf, DAYS_PER_SEASON, SEASON_NAMES, WEATHER_NAMES,
 } from '../sim/calendar';
-import { childrenOf, familyOf, parentsOf } from '../sim/lineage';
 import { placeKindOf, whyNotCancel, whyNotTakeDown } from '../sim/dismantle';
 import { nextGathering } from '../sim/gatherings';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
@@ -905,15 +904,9 @@ export class Hud {
       close.length ? `Close to <em>${esc(close.join(', '))}</em>` : '',
       rivals.length ? `At odds with <em>${esc(rivals.join(', '))}</em>` : '',
     ].filter(Boolean).join(' · ');
-    // Lineage (DESIGN §24.15): family, parents, children, a child on the way.
-    const fam = s.family ? familyOf(c, s.family) : null;
-    const parents = parentsOf(c, s), kids = childrenOf(c, s);
-    const kin = [
-      fam ? `Of the <em>${esc(s.family!)}</em> family${fam.known ? ` (${esc(fam.known)})` : ''}` : '',
-      parents.length ? `${s.parents ? 'Child of' : 'Taken in by'} <em>${esc(parents.map((p) => p.name.split(' ')[0] + (p.alive ? '' : ' †')).join(' and '))}</em>` : '',
-      kids.length ? `${kids.length === 1 ? 'A child' : 'Children'}: <em>${esc(kids.map((k) => k.name.split(' ')[0] + (k.alive ? '' : ' †')).join(', '))}</em>` : '',
-      s.expecting !== undefined ? `Expecting a child, around day ${s.expecting}` : '',
-    ].filter(Boolean).join(' · ');
+    // Lineage lines (family, parents, children) are held back from the card for now: with them the
+    // single-file build is refused by the artifact publish check (DESIGN §24.15). The data is in lineage.ts.
+
     const bar = (key: string, cls: string) => `<div class="bar ${cls}" data-bar="${key}"><i style="width:0%"></i></div>`;
     return `<div class="card ${s.griefDays > 0 ? 'grieving' : ''} ${s.id === this.selected ? 'selected' : ''}" data-id="${s.id}">
       <div class="row"><span class="name">${esc(s.name)}</span>
@@ -929,7 +922,6 @@ export class Hud {
       <div class="needs">
         <div>FOOD${bar('food', 'need')}</div><div>REST${bar('rest', 'need')}</div><div>COMPANY${bar('social', 'need')}</div>
       </div>
-      ${kin ? `<div class="bonds">${kin}</div>` : ''}
       ${bonds ? `<div class="bonds">${bonds}</div>` : ''}
       <div class="bonds home"></div>
     </div>`;

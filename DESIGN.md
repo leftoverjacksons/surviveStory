@@ -3201,3 +3201,18 @@ offence.
 - **Next:** the family tree panel and heirs (homes passing to children),
   then crossing between the peoples (§24.6), with hybrid children at most
   5–10% of children.
+- **Publishing problem (open).** With the family lines on the person
+  card ("Of the X family", parents, children), the single-file build is
+  refused by the claude.ai artifact publish check. It is classed as a
+  "PR review page" and rejected as too large. Bisection on a scratch
+  artifact:
+  - v33 passes;
+  - the figures commit passes;
+  - the lineage commit without the card lines passes;
+  - even the family-name line alone, reworded, fails;
+  - "†" is not the cause.
+
+  The rule behind the check is not visible to us. The card lines are
+  held back in v35; the simulation and the data are unchanged. They will
+  come back in another form (a family tree panel) once the cause is
+  understood.
