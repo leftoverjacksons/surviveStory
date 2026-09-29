@@ -191,7 +191,9 @@ reference: Tiny Glade.
     wedding → partners + one household. Published v30.
     TOWNHOUSE BUILT §24.9 (`sim/townhouse.ts`, `render/townhouse.ts`, Folk card cross-section, `__game.dig`):
     chambers per growth with small effects, ghostly topside (shimmer / Sight ≥ 45 at night / Veil view),
-    chambers glow underground in the Veil view. NOT published. Next: mycelium blessing/curse (§24.3).
+    chambers glow underground in the Veil view. MYCELIUM BUILT §24.10 (`sim/mycelium.ts`, `render/mycelium.ts`,
+    `scripts/mycelium.ts`): network from the hill, blessing (growth +15%) / curse (nuisances) where it reaches, dead
+    ground in uncleared districts. NOT published. Next: cleared districts' fate (§24.4), children/school, crossing.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

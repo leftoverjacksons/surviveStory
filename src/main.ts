@@ -38,6 +38,7 @@ import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
 import { digChamber } from './sim/townhouse';
+import { MyceliumView } from './render/mycelium';
 import { TownhouseView } from './render/townhouse';
 import { GatheringView } from './render/gathering';
 import { PlotsView } from './render/plots';
@@ -208,6 +209,8 @@ scene.add(phenomena.group);
 const folkView = new FolkView(colony, document.getElementById('labels')!);
 const townhouse = new TownhouseView(colony);
 scene.add(townhouse.group);
+const myceliumView = new MyceliumView(colony);
+scene.add(myceliumView.group);
 scene.add(folkView.group);
 const clearingView = new ClearingView(colony, document.getElementById('labels')!);
 scene.add(clearingView.group);
@@ -1057,6 +1060,7 @@ function frame() {
   phenomena.update(t, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   folkView.update(t, sky.night, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   townhouse.update(t, sky.night);
+  myceliumView.update(t);
   keepOut.update();
   if (veil) {
     // The team stands where they stand in the Veil.

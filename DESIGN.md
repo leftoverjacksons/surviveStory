@@ -2990,3 +2990,43 @@ offence.
   stands above it), and a list with counts.
 - **Debug:** `__game.dig(n)` grows the hill n times.
 - **Next:** the mycelium blessing and curse (§24.3).
+
+### 24.10 The mycelium: blessing and curse (built)
+- **The network** (`sim/mycelium.ts`, `Colony.mycelium`) lives on a
+  4-tile grid. Each day every cell moves toward
+  min(what its ground carries, its strongest neighbour × 0.86), growing at
+  most 0.12 a day and withering 0.03 a day.
+  - *What ground carries:* soil 0.42, plus up to 0.45 more for Wild and
+    Folk paths. Paving and water carry nothing.
+  - *Folk works:* 0.9.
+  - *The hill:* always a full source.
+  - *Hubs:* the Ring, the shrine, Sacred ground and the memorial. Once the
+    network reaches one, it grows strong again from there.
+  - *Districts:* an uncleared one is dead ground. A cleared one carries
+    0.4 (village) or 0.8 (given to the Folk).
+  - *Cutting in the Wild* severs the cell (−0.35).
+  - *Reach:* on plain ground the network gets about 9 cells (36 tiles)
+    from the hill, so bringing it into the village takes the Wild, paths,
+    works or hubs. Measured with `scripts/mycelium.ts` (6 villages × 64
+    days): it covers 0–100% of the fields and 0–75% of the homes.
+- **Mood** (`folkMood`): standing ≥ 45 is a blessing (0.4 to 1), < 30 a
+  curse (up to −1), and in between neither.
+  - *Blessing:* growth up to +15% where it reaches (`landFactor`: crops,
+    berries, yards); +0.6 morale a day for people sleeping in blessed
+    homes.
+  - *Curse (nuisances only, per the proposal's default; the user's
+    question on curse strength stands):*
+    - growing crop rows go black in patches (at most 6 a day);
+    - food turns in the stores (up to 4) if the network is under the fire;
+    - bad dreams (−2 morale) in cursed homes.
+
+    The old soured mischief (§19) still applies everywhere.
+  - Chances use a hash of the day, not the random stream.
+- **Seen** in the Veil view (`render/mycelium.ts`): threads from each
+  cell to the neighbour it grew from (a branching network), with knots
+  where it is thick. They are gold while blessing, violet while cursing,
+  blue between.
+- **The Folk card** says what share of fields and homes it reaches, what
+  it is doing, and how it grows.
+- **Next:** what cleared districts become (§24.4), then children and a
+  school (§24.5), then crossing between the peoples (§24.6).

@@ -14,6 +14,7 @@
 import type { Colony } from './colony';
 import { benchSpot } from './homes';
 import { digChamber, firstChambers } from './townhouse';
+import { createMycelium } from './mycelium';
 
 export const SAVE_VERSION = 1;
 
@@ -56,6 +57,7 @@ function migrate(col: Colony) {
   col.community.logCount ??= col.community.log.length;
   col.requests ??= [];
   col.gatherings ??= [];
+  col.mycelium ??= createMycelium(col.world);
   if (!col.folk.chambers) {
     // A hill that grew before the townhouse (DESIGN §24.9): one chamber for each growth.
     col.folk.chambers = firstChambers(col.world.folk.mound.door);

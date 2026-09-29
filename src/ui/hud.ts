@@ -8,6 +8,7 @@ import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../s
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
 import { CHAMBERS, chambers } from '../sim/townhouse';
+import { folkMood, reachShare } from '../sim/mycelium';
 import { FOLK_WORKS, folkNeeds, landWanted, standingWord, type FolkFocus } from '../sim/folk';
 import { FAE_UNIT, FOLK_SUITED, canAskFolk, canClear, veilCost } from '../sim/haunt';
 import type { DistrictKind } from '../sim/oldworld';
@@ -607,6 +608,16 @@ export class Hud {
       ['The hill', f.level ? `Grown ${f.level} time${f.level > 1 ? 's' : ''} · next ${Math.round(f.growth * 100)}%` : `Next growth ${Math.round(f.growth * 100)}%`],
     ];
     if (f.rules.length) facts.push(['Their rules', f.rules.join(' ')]);
+    {
+      const mood = folkMood(col);
+      const fields: { x: number; z: number }[] = [];
+      const w = col.world;
+      for (let i = 0; i < w.zone.length; i++) if (w.zone[i] === Zone.Field) fields.push({ x: (i % w.w) - w.w / 2 + 0.5, z: Math.floor(i / w.w) - w.h / 2 + 0.5 });
+      const homes = col.village.buildings.filter((b) => b.kind === 'home').map((b) => b.door);
+      const share = (pts: { x: number; z: number }[]) => `${Math.round(reachShare(col, pts) * 100)}%`;
+      const what = mood > 0 ? `a blessing (growth up to +${Math.round(15 * mood)}%)` : mood < 0 ? 'a curse (blight, sour stores, bad dreams)' : 'neither blessing nor curse while they are wary';
+      facts.push(['Their mycelium', `Reaches ${share(fields)} of the fields and ${share(homes)} of the homes: ${what}. It grows along the Wild, their paths and works, and from Sacred ground and the shrine once it gets there; uncleared districts are dead ground. (Seen in the Veil view.)`]);
+    }
     facts.push(['Dew · song', `${Math.floor(f.dew)} · ${Math.floor(f.song)} (sprites and moon gardens gather dew; pipers and rings make song)`]);
     const orders = f.works.filter((k) => k.built !== undefined);
     if (orders.length) facts.push(['Asked for', orders.map((k) => `${FOLK_WORKS[k.kind].name.toLowerCase()} ${Math.round((k.built ?? 0) * 100)}%`).join(' · ')]);

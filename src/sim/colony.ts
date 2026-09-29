@@ -42,6 +42,7 @@ import {
 } from './veil';
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
+import { blessingGrowth, createMycelium, myceliumDaily, sever, type Mycelium } from './mycelium';
 import { activeGathering, courtshipDaily, gatherSpot, gatheringsTick, joined, type Gathering } from './gatherings';
 import {
   Crop, Ground, LANE_WEAR, PATH_WEAR, Zone, findNearest, idx, isExplored, passable, reveal, tileX, tileZ, toTileX, toTileZ,
@@ -173,6 +174,8 @@ export interface Colony {
   fenceCross?: Record<number, number>;
   /** Festivals, dances and weddings, on and to come (gatherings.ts). */
   gatherings?: Gathering[];
+  /** The Folk's network under the ground: where their blessing or curse reaches (mycelium.ts). */
+  mycelium?: Mycelium;
 }
 
 /** Has this search come up empty recently? (See `hush`.) */
@@ -200,7 +203,7 @@ export function createColony(world: World, community: Community): Colony {
     village: createVillage(world), beds: new Map(),
     weather: weatherOn(1, world.seed), claims: new Map(), replant: [], tended: new Set(), lowDays: new Map(),
     hints: new Set(), private_fieldCache: { version: -1, tiles: [] },
-    veil: createVeil(world), council: createCouncil(), folk: createFolk(world), haunts: createHaunts(world), clearing: null, taken: [], ledger: {}, gatherings: [],
+    veil: createVeil(world), council: createCouncil(), folk: createFolk(world), haunts: createHaunts(world), clearing: null, taken: [], ledger: {}, gatherings: [], mycelium: createMycelium(world),
   };
   // The first line of the story names where it starts.
   const opening = community.log.find((l) => l.day === 1 && l.tone === 'info');
@@ -293,7 +296,7 @@ function workRate(s: Survivor, role: RoleId, col?: Colony) {
 
 /** The land's answer where it grows: resonance, and the Moth Woman's blessing. */
 function landFactor(col: Colony, x: number, z: number) {
-  return growthFactor(resonanceAt(col, x, z)) * (col.community.day < col.veil.mothBlessing ? 1.12 : 1);
+  return growthFactor(resonanceAt(col, x, z)) * (col.community.day < col.veil.mothBlessing ? 1.12 : 1) * blessingGrowth(col, x, z);
 }
 
 // ---------- movement ----------
@@ -1222,7 +1225,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         const ti = idx(w, tree.tx, tree.tz);
         w.treeAt[ti] = -1;
         if (w.zone[ti] === Zone.Woodlot) col.replant.push(ti);
-        if (w.zone[ti] === Zone.Wild) breakRule(col, s, 'cut');
+        if (w.zone[ti] === Zone.Wild) { breakRule(col, s, 'cut'); sever(col, tp.x, tp.z); }
         // Cutting thins the Veil: gently in a woodlot, sharply near the Ring.
         const nearRing = Math.hypot(tp.x - w.fairyRing.x, tp.z - w.fairyRing.z) < 14;
         disturb(col, tp.x, tp.z, (w.zone[ti] === Zone.Woodlot ? 0.012 : 0.03) * (nearRing ? 2 : 1));
@@ -2182,6 +2185,7 @@ function daily(col: Colony) {
   }
   veilDaily(col, { cold, rationing: rationing(col) });
   folkDaily(col);
+  myceliumDaily(col);
   if (col.folk.led && c.day >= col.folk.led.until) endLed(col, null);
   hauntDaily(col);
   fishingDaily(col, (x, z, amt) => disturb(col, x, z, amt, 2));
