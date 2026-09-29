@@ -3,6 +3,7 @@ import { dayOf, fireWood, hourOf } from '../sim/colony';
 import {
   dayOfSeason, daysToFullMoon, daysUntilWinter, isFullMoon, seasonOf, yearOf, DAYS_PER_SEASON, SEASON_NAMES, WEATHER_NAMES,
 } from '../sim/calendar';
+import { nextGathering } from '../sim/gatherings';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
@@ -362,7 +363,12 @@ export class Hud {
     const items: [string, string][] = [];
     if (k.gates !== 'normal' && k.gatesUntil > day) items.push([`Gates ${k.gates} · ${k.gatesUntil - day}d`, k.gates === 'open' ? 'Newcomers are welcomed: more arrive.' : 'Nobody new is let in.']);
     if (k.restUntil > now) items.push([`Rest day · ${days(k.restUntil)}d`, 'Nobody works; everyone rests.']);
-    if (k.festivalUntil > now) items.push([`Festival · ${days(k.festivalUntil)}d`, 'The village celebrates.']);
+    const g = nextGathering(col);
+    if (g) {
+      const on = g.start <= now ? 'now' : Math.floor(g.start / 1440) === Math.floor(now / 1440) ? 'tonight' : `day ${Math.floor(g.start / 1440) + 1}`;
+      const what = g.kind === 'wedding' ? 'Wedding' : g.kind === 'folk_festival' ? 'Dance at the Ring' : 'Festival';
+      items.push([`${what} · ${on}`, `${g.title.replace(/^./, (x) => x.toUpperCase())}. Everyone who can will go: a feast, then dancing.`]);
+    } else if (k.festivalUntil > now) items.push([`Festival · ${days(k.festivalUntil)}d`, 'The village celebrates.']);
     for (const m of k.commitments ?? []) if (m.until > now) items.push([`${m.title} · ${days(m.until)}d`, m.effect]);
     const html = items.map(([t, tip]) => `<span class="commit" title="${esc(tip)}">${esc(t)}</span>`).join('');
     if (html === this.commitKey) return;
@@ -800,7 +806,11 @@ export class Hud {
     const grief = s.griefDays > 0 ? `<span class="chip grief">Grieving</span>` : '';
     const roles = (Object.keys(ROLES) as RoleId[])
       .map((j) => `<option value="${j}" ${j === s.role ? 'selected' : ''} title="${esc(ROLES[j].blurb)}">${ROLES[j].name}</option>`).join('');
+    const nameOf = (id: number) => c.survivors.find((o) => o.id === id)?.name.split(' ')[0] ?? '';
+    const mate = s.partner !== undefined ? c.survivors.find((o) => o.id === s.partner) : undefined;
     const bonds = [
+      mate ? (mate.alive ? `Married to <em>${esc(nameOf(mate.id))}</em>` : `Widowed: <em>${esc(nameOf(mate.id))}</em> is gone`) : '',
+      s.courting !== undefined ? `Walking out with <em>${esc(nameOf(s.courting))}</em>` : '',
       close.length ? `Close to <em>${esc(close.join(', '))}</em>` : '',
       rivals.length ? `At odds with <em>${esc(rivals.join(', '))}</em>` : '',
     ].filter(Boolean).join(' · ');

@@ -7,7 +7,7 @@
  * the council settles it by itself after a day.
  */
 import type { Colony } from './colony';
-import { adjustBond, alive, bondValue, log, type Survivor } from './community';
+import { alive, bondValue, log, type Survivor } from './community';
 import { DAYS_PER_SEASON, dayOfSeason, seasonOf } from './calendar';
 import { bedsTotal, hasBuilt, sharedBeds, storageCapacity, storageWanted, store, type SiteKind } from './buildings';
 import { householdOf, waitingHouseholds } from './homes';
@@ -16,6 +16,7 @@ import { communitySight, homeResonance, lanternGift, nurture, type EntityRequest
 import { Zone, idx, paintZone, reveal, toTileX, toTileZ, type Point } from './world';
 import { WILD_RADIUS, changeStanding } from './folk';
 import { applyDilemma, dilemmaAffinity, dilemmaDue, type Commitment, type Question } from './dilemmas';
+import { scheduleGathering } from './gatherings';
 
 export type ProposalKind =
   | 'build' | 'festival' | 'wild_ring' | 'rest_day' | 'open_gates' | 'close_gates' | 'offering' | 'grove' | 'home' | 'commons'
@@ -420,24 +421,21 @@ function applyProposal(col: Colony, p: Proposal) {
     case 'build':
       col.village.priority = p.build;
       break;
-    case 'festival':
-      col.council.festivalUntil = col.minute + 1440;
-      for (const s of living) s.morale = Math.min(100, s.morale + 8);
-      for (let i = 0; i < living.length; i++) for (let j = i + 1; j < living.length; j++) adjustBond(c, living[i].id, living[j].id, 2);
-      nurture(col, w.home.x, w.home.z, 0.08, 3);
+    case 'festival': {
+      // It is held by the fire this evening or the next (gatherings.ts); the good of it goes to whoever comes.
+      const g = scheduleGathering(col, 'festival', FESTIVALS[seasonOf(c.day)][0]);
+      for (const s of living) s.morale = Math.min(100, s.morale + 2);
+      log(c, `${g.title} will be held by the fire ${Math.floor(g.start / 1440) === Math.floor(col.minute / 1440) ? 'this evening' : 'tomorrow evening'}. Someone has found the bunting.`, 'good');
       break;
+    }
     case 'wild_ring':
       paintZone(w, w.fairyRing.x, w.fairyRing.z, 5, Zone.Sacred);
       break;
     case 'folk_festival': {
-      col.council.festivalUntil = col.minute + 1440;
-      for (const s of living) s.morale = Math.min(100, s.morale + 6);
-      for (let i = 0; i < living.length; i++) for (let j = i + 1; j < living.length; j++) adjustBond(c, living[i].id, living[j].id, 1);
-      changeStanding(col, 8);
-      nurture(col, w.folk.mound.x, w.folk.mound.z, 0.1, 3);
-      const stranger = col.folk.beings.find((b) => !b.known);
-      if (stranger) stranger.known = true;
-      log(c, `The village danced at the Ring with the Folk of ${w.folk.mound.name} until the stars went pale.${stranger ? ` ${stranger.name} danced with everyone, and told them their name.` : ''}`, 'strange');
+      const g = scheduleGathering(col, 'folk_festival', `the dance with the Folk of ${w.folk.mound.name}`);
+      for (const s of living) s.morale = Math.min(100, s.morale + 2);
+      changeStanding(col, 2);
+      log(c, `Word was left at the door in ${w.folk.mound.name}: the village will come to the Ring ${Math.floor(g.start / 1440) === Math.floor(col.minute / 1440) ? 'tonight' : 'tomorrow night'}, with food and music.`, 'strange');
       break;
     }
     case 'folk_land': {

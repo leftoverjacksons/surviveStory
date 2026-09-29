@@ -2890,3 +2890,51 @@ offence.
    population over time?
 5. **Topside visibility.** Invisible without Sight, or always faintly
    visible so the player can admire it?
+
+### 24.8 Festivals and weddings that happen (built; the user's first pick from §24.7)
+- **Gatherings** (`sim/gatherings.ts`, `Colony.gatherings`). A festival,
+  a dance with the Folk, or a wedding is held on a given evening:
+  - festivals 17:30–23:30 by the fire;
+  - Folk dances 18:30–23:30 at the Ring;
+  - weddings 15:00–22:30 by the fire.
+
+  Agreeing a festival at council now *schedules* it (this evening if
+  there is time, else tomorrow). The HUD chip says when. Everyone who
+  isn't worn out downs tools and walks there (`gather` task).
+  - *Phases:* arrive, then the feast (seated on the ring, eating), then the
+    dance. In the dance people go round the fire hand to hand, one or two
+    play (storytellers first: fiddle, accordion, a bucket drum), and the
+    worn out or old sit and watch. At a wedding, the couple stand under an
+    arch of flowers for their vows, then everyone cheers. At the Ring, the
+    Fae dance in the ring among the villagers.
+  - *Effects* go to whoever came, at the end: morale, bonds between those
+    present, the land's nurture, and the Folk's standing plus a name
+    learned. A small lift comes at the agreement itself.
+  - Rest drains at half rate at a gathering, and people stay until rest
+    < 3, so the dance lasts into the night.
+  - Seats and dancers are placed only in open sectors of the ring (not
+    through buildings or the old cars).
+- **Courtship** (`courtshipDaily`). The closest free pair of adults (bond
+  ≥ 55, age gap ≤ 16) may start walking out: a 30% daily chance, at most
+  one new pair a day. They spend fine evenings sitting by the water, and
+  their bond grows by 2 a day. A bond below 30 ends it. After 5 days at
+  bond ≥ 70, they decide to marry, and the wedding is held 2 days on
+  (1 food per guest at the feast). At the wedding they become partners
+  (`Survivor.partner`) and one household: the mover joins the partner
+  whose home has room; otherwise they set up together and wait for a home.
+  The person card shows "Married to", "Walking out with", or "Widowed".
+  No gender rules.
+- **Render** (`render/gathering.ts`). Poles with bunting and string
+  lights, trestle tables with food and benches, the wedding arch, and
+  foxfire jars at the Ring. They are put up 2 h before and taken down 1 h
+  after. New poses: `dance` (Walk clip, arms out), `play` (seated fiddle),
+  `cheer` (Wave).
+- **Measured** (`scripts/life.ts`, 6 villages × 64 days): 2–3 festivals
+  and 1–2 weddings per village, and 1–3 courtships. The smallest village
+  (6 people) had none. Everyone present attends.
+- **Debug:** `__game.gather('festival' | 'folk_festival' | 'wedding')`.
+- **Next** from §24.7 (the user's order): the townhouse chambers and
+  ghost topside, then the mycelium blessing and curse. Children and a
+  school, and crossing between the peoples, come later. The questions on
+  children's pace, curse strength, hybrids and topside visibility still
+  stand.

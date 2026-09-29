@@ -42,6 +42,7 @@ import {
 } from './veil';
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
+import { activeGathering, courtshipDaily, gatherSpot, gatheringsTick, joined, type Gathering } from './gatherings';
 import {
   Crop, Ground, LANE_WEAR, PATH_WEAR, Zone, findNearest, idx, isExplored, passable, reveal, tileX, tileZ, toTileX, toTileZ,
   type Heap, type Point, type Tree, type World,
@@ -53,7 +54,7 @@ export const WOOD_TARGET = 30;      // spare wood kept on hand beyond projects a
 export const FIRE_WOOD_PER_DAY = 2;  // the fire; more in winter (see fireWood)
 export const START_MINUTE = 7 * 60; // day 1, 07:00
 
-export type Anim = 'idle' | 'walk' | 'chop' | 'build' | 'carry' | 'forage' | 'sleep' | 'sit' | 'eat' | 'look' | 'fish';
+export type Anim = 'idle' | 'walk' | 'chop' | 'build' | 'carry' | 'forage' | 'sleep' | 'sit' | 'eat' | 'look' | 'fish' | 'dance' | 'play' | 'cheer';
 export type ItemKind = 'wood' | 'food' | 'scrap' | 'glimmer' | 'glass' | 'copper' | 'steel';
 export const MAX_POP = 24;
 
@@ -65,7 +66,8 @@ export type Task =
   | { kind: 'forage'; bush: number; stage: 'go' | 'work' | 'deliver'; t: number }
   | { kind: 'eat'; stage: 'go' | 'eat'; t: number; place: MealPlace; building: number }
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
-  | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern'; building: number }
+  | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern' | 'water'; building: number }
+  | { kind: 'gather'; g: number; stage: 'go' | 'be'; slot: number; ate?: boolean }
   | { kind: 'craft'; building: number; stage: 'go' | 'work'; t: number }
   | { kind: 'strip'; ruin: number; stage: 'go' | 'work' | 'deliver'; t: number }
   | { kind: 'yard'; plot: number; item: number; stage: 'go' | 'work'; t: number }
@@ -169,6 +171,8 @@ export interface Colony {
   requests?: Request[];
   /** Crossings of fence tiles, toward putting a gate in (hedges.ts). */
   fenceCross?: Record<number, number>;
+  /** Festivals, dances and weddings, on and to come (gatherings.ts). */
+  gatherings?: Gathering[];
 }
 
 /** Has this search come up empty recently? (See `hush`.) */
@@ -196,7 +200,7 @@ export function createColony(world: World, community: Community): Colony {
     village: createVillage(world), beds: new Map(),
     weather: weatherOn(1, world.seed), claims: new Map(), replant: [], tended: new Set(), lowDays: new Map(),
     hints: new Set(), private_fieldCache: { version: -1, tiles: [] },
-    veil: createVeil(world), council: createCouncil(), folk: createFolk(world), haunts: createHaunts(world), clearing: null, taken: [], ledger: {},
+    veil: createVeil(world), council: createCouncil(), folk: createFolk(world), haunts: createHaunts(world), clearing: null, taken: [], ledger: {}, gatherings: [],
   };
   // The first line of the story names where it starts.
   const opening = community.log.find((l) => l.day === 1 && l.tone === 'info');
@@ -846,11 +850,20 @@ function mealPlace(col: Colony, a: Agent, s: Survivor): { place: MealPlace; buil
 }
 
 /** Where to spend the evening: at home some nights, the hall in bad weather, else the fire. */
-function eveningPlace(col: Colony, a: Agent, s: Survivor): { place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern'; building: number; spot: Point } {
+function eveningPlace(col: Colony, a: Agent, s: Survivor): { place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern' | 'water'; building: number; spot: Point } {
   const v = col.village;
   const hh = householdOf(v, s.id);
   const home = homeOf(v, s.id);
   const season = seasonNow(col);
+  // Walking out: a courting couple sit by the water, most fine evenings (gatherings.ts).
+  if (s.courting !== undefined && season !== 'winter' && col.weather !== 'rain' && col.weather !== 'snow'
+    && habit(col, Math.min(s.id, s.courting) * 17 + 3) < 60) {
+    const shore = nearestShore(col);
+    if (shore) {
+      const side = s.id < s.courting ? -0.3 : 0.3;
+      return { place: 'water', building: 0, spot: { x: tileX(col.world, shore.tx) + side, z: tileZ(col.world, shore.tz) + 0.2 } };
+    }
+  }
   if (home && hh && habit(col, hh.id * 13) < 45) {
     const plot = plotById(col, home.plot);
     const bench = plot?.yard.find((y) => y.kind === 'bench' && y.progress >= 1);
@@ -1045,6 +1058,13 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
       const p = { x: led.hint.x + (habit(col, s.id) / 100 - 0.5) * led.hint.r, z: led.hint.z + (habit(col, s.id + 3) / 100 - 0.5) * led.hint.r };
       if (setDest(col, a, p.x, p.z)) return { kind: 'search', stage: 'go', t: 0 };
     }
+  }
+  // A festival, a dance or a wedding: everyone who isn't worn out goes (gatherings.ts).
+  const g = activeGathering(col);
+  if (g && a.needs.rest >= (isEvening(h) || isNight(h) ? 3 : 12) && s.hp >= s.maxHp * 0.25) {
+    const slot = col.agents.indexOf(a);
+    const spot = gatherSpot(col, g, s, slot, col.agents.length);
+    if (setDest(col, a, spot.p.x, spot.p.z)) return { kind: 'gather', g: g.id, stage: 'go', slot };
   }
   // Woken by hunger in the night: eat something before going back to bed.
   if (a.needs.food < 15 && res.food >= 1) {
@@ -1330,7 +1350,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
     case 'social': {
       if (t.stage === 'go') {
         a.anim = 'walk';
-        a.activity = { fire: 'Heading to the fire', home: 'Heading home for the evening', hall: 'Heading to the hall', bench: 'Heading home for the evening', tavern: 'Heading to the tavern' }[t.place];
+        a.activity = { fire: 'Heading to the fire', home: 'Heading home for the evening', hall: 'Heading to the hall', bench: 'Heading home for the evening', tavern: 'Heading to the tavern', water: 'Walking out' }[t.place];
         if (walk(col, a, dt)) {
           t.stage = 'sit';
           const b = t.building && (t.place === 'home' || t.place === 'hall' || t.place === 'tavern') ? buildingById(col, t.building) : undefined;
@@ -1343,6 +1363,12 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         face(a, w.campfire);
         a.activity = 'Talking by the fire';
         a.needs.social = Math.min(100, a.needs.social + dt * (25 / 60));
+      } else if (t.place === 'water') {
+        const o = s.courting !== undefined ? col.agents.find((x) => x.id === s.courting) : undefined;
+        const near = o && o.task?.kind === 'social' && o.task.place === 'water' && Math.hypot(o.x - a.x, o.z - a.z) < 2;
+        if (near) face(a, o);
+        a.activity = near ? `Sitting by the water with ${first(survivorOf(col, o.id))}` : 'Waiting by the water';
+        a.needs.social = Math.min(100, a.needs.social + dt * ((near ? 25 : 4) / 60));
       } else {
         const mates = col.agents.filter((o) => o !== a && o.task?.kind === 'social' && o.task.stage === 'sit' && o.task.place === t.place && o.task.building === t.building);
         const names = mates.slice(0, 2).map((o) => first(survivorOf(col, o.id)));
@@ -1357,6 +1383,60 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         a.needs.social = Math.min(100, a.needs.social + dt * ((t.place === 'hall' || t.place === 'tavern' ? 25 : mates.length ? 20 : 6) / 60));
       }
       if (!isEvening(hourOf(col))) endTask(col, a);
+      return;
+    }
+    case 'gather': {
+      const g = (col.gatherings ?? []).find((x) => x.id === t.g);
+      if (!g || g.done || col.minute >= g.end) return endTask(col, a);
+      const spot = gatherSpot(col, g, s, t.slot, col.agents.length);
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = `On the way to ${g.title.replace(/^The /, 'the ')}`;
+        if (walk(col, a, dt)) { t.stage = 'be'; joined(g, s.id); }
+        return;
+      }
+      // Within the ring, people step straight to where they should be.
+      const dx = spot.p.x - a.x, dz = spot.p.z - a.z, d = Math.hypot(dx, dz);
+      const step = WALK_SPEED * dt * (spot.act === 'dance' ? 1.5 : 1);
+      a.path = []; a.pathI = 0;
+      if (d > step) {
+        a.x += (dx / d) * step; a.z += (dz / d) * step;
+        if (spot.act !== 'dance') { face(a, spot.p); a.anim = 'walk'; a.activity = 'Finding a place'; return; }
+      } else { a.x = spot.p.x; a.z = spot.p.z; }
+      face(a, spot.face);
+      a.needs.social = Math.min(100, a.needs.social + dt * (25 / 60));
+      const partner = g.couple?.find((id) => id !== s.id);
+      const pair = g.couple ? g.couple.map((id) => first(survivorOf(col, id))).join(' and ') : '';
+      const withFolk = g.kind === 'folk_festival' ? ' with the Folk' : '';
+      switch (spot.act) {
+        case 'stand': case 'cheer':
+          a.anim = spot.act === 'cheer' ? 'cheer' : 'idle';
+          a.activity = g.couple?.includes(s.id) ? `Saying vows to ${first(survivorOf(col, partner!))}`
+            : g.kind === 'wedding' ? (spot.act === 'cheer' ? `Cheering ${pair}` : `Watching ${pair} say their vows`)
+            : `At ${g.title.replace(/^The /, 'the ')}`;
+          break;
+        case 'eat':
+          a.anim = 'eat';
+          a.activity = g.couple?.includes(s.id) ? 'At the head of the wedding feast' : `Eating at the ${g.kind === 'wedding' ? 'wedding ' : ''}feast${withFolk}`;
+          if (!t.ate) {
+            t.ate = true;
+            // The festival's food was set aside when it was agreed; a wedding feast comes from the stores.
+            if (g.kind === 'wedding' && res.food >= 1) gainFood(col, 'feast', -1);
+          }
+          a.needs.food = Math.min(100, a.needs.food + dt * 1.2);
+          break;
+        case 'dance':
+          a.anim = 'dance';
+          a.activity = g.couple?.includes(s.id) ? `Dancing with ${first(survivorOf(col, partner!))}` : `Dancing${withFolk}`;
+          break;
+        case 'play':
+          a.anim = 'play';
+          a.activity = `Playing ${['the fiddle', 'an old accordion', 'a drum made from a bucket', 'a tin whistle'][(s.id + g.id) % 4]} for the dance`;
+          break;
+        case 'watch':
+          a.anim = 'sit';
+          a.activity = 'Watching the dancing, tapping a foot';
+          break;
+      }
       return;
     }
     case 'leisure': {
@@ -1907,6 +1987,9 @@ function shouldInterrupt(col: Colony, a: Agent): boolean {
   if (!t || a.carry) return false;
   const h = hourOf(col);
   if (t.kind === 'lost') return false;
+  if (t.kind === 'gather') return a.needs.rest < 3;
+  // A gathering has begun: down tools (a meal or a sleep can finish first).
+  if (activeGathering(col) && !['eat', 'sleep', 'offer', 'search'].includes(t.kind) && a.needs.rest >= 12) return true;
   if (isNight(h)) return t.kind !== 'sleep' && t.kind !== 'eat';
   if (isEvening(h)) return !['social', 'eat', 'sleep', 'offer'].includes(t.kind);
   if (a.needs.food < 15 && col.community.resources.food >= 1) return t.kind !== 'eat' && t.kind !== 'sleep';
@@ -2112,6 +2195,7 @@ function daily(col: Colony) {
   departures(col);
   dailyRollover(c);
   householdsDaily(col);
+  courtshipDaily(col);
   dailyYards(col, lastSeason);
   syncAgents(col, true);
   knowhowDaily(col);
@@ -2342,7 +2426,7 @@ export function tick(col: Colony, dtMinutes: number) {
     for (const a of col.agents) {
       const s = survivorOf(col, a.id);
       a.needs.food = Math.max(0, a.needs.food - dt * (4.2 / 60));
-      if (a.task?.kind !== 'sleep' || a.task.stage !== 'sleep') a.needs.rest = Math.max(0, a.needs.rest - dt * (5 / 60));
+      if (a.task?.kind !== 'sleep' || a.task.stage !== 'sleep') a.needs.rest = Math.max(0, a.needs.rest - dt * ((a.task?.kind === 'gather' ? 2.5 : 5) / 60)); // a festival keeps people up
       a.needs.social = Math.max(0, a.needs.social - dt * (2.5 / 60));
 
       if (shouldInterrupt(col, a)) endTask(col, a);
@@ -2352,6 +2436,7 @@ export function tick(col: Colony, dtMinutes: number) {
     }
 
     folkTick(col, dt);
+    gatheringsTick(col);
     if (Math.floor(col.minute / 60) !== Math.floor(before / 60)) hourly(col);
     if (Math.floor(col.minute / MIN_PER_DAY) !== Math.floor(before / MIN_PER_DAY)) daily(col);
   }

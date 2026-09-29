@@ -51,6 +51,11 @@ export interface Survivor {
   hopeAgain?: number;
   /** Last day they truly met something from the other side. */
   metEntity?: number;
+  /** Married to (gatherings.ts); kept after a death, for the memory. */
+  partner?: number;
+  /** Walking out with, and since when. */
+  courting?: number;
+  courtingSince?: number;
 }
 
 export type BondKind = 'stranger' | 'friend' | 'close' | 'rival';

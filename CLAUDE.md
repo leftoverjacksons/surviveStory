@@ -185,6 +185,10 @@ reference: Tiny Glade.
     gates and arches; remembered snow-free desire paths; calm fire flicker; `scripts/shots/flicker.mjs`).
     Shimmer chase stopped at the user's request. NOT published. Next: design proposal §24 (Folk as equals +
     village life), then move/deconstruct, staging (A), B.
+  - DESIGN §24 PROPOSAL (Folk as equals + village life) written; user chose festivals + weddings first.
+    GATHERINGS BUILT §24.8 (`sim/gatherings.ts`, `render/gathering.ts`, `scripts/life.ts`, `__game.gather`):
+    festivals/Folk dances/weddings actually held (arrive → feast → dance; vows under an arch), courtship →
+    wedding → partners + one household. v29 published (fixes §23.7); gatherings NOT published.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

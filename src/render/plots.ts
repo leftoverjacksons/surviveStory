@@ -207,7 +207,7 @@ const FLAGS = ['#b8453a', '#e0b050', '#4f7fa8', '#f0e6cc', '#6f9a5a', '#a8608a']
 interface Anchor { id: string; pts: THREE.Vector3[] }
 
 /** A salvaged pole carrying the lights across open ground: its top, and where it stands. */
-interface Pole { top: THREE.Vector3; base: THREE.Vector3 }
+export interface Pole { top: THREE.Vector3; base: THREE.Vector3 }
 
 const SPAN = 12; // the longest string that hangs between two eaves unaided
 const POLE_H = 3.1;
@@ -287,7 +287,7 @@ export function planLights(world: World, groups: Anchor[]): { pairs: [THREE.Vect
 }
 
 /** Strings of pennants and lights between eaves and poles (world coordinates). */
-function bunting(pairs: [THREE.Vector3, THREE.Vector3][], poles: Pole[] = []): THREE.Group {
+export function bunting(pairs: [THREE.Vector3, THREE.Vector3][], poles: Pole[] = []): THREE.Group {
   const g = new THREE.Group();
   if (poles.length) {
     const wood = mat('#5a4430'), dark = mat('#3a3028');

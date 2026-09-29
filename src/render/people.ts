@@ -393,6 +393,29 @@ export class People {
         r.armR.rotation.set(-2.2, 0, 0.4); // hand shading the eyes
         break;
       }
+      case 'dance': {
+        // A skipping step, arms out to the neighbours on either side.
+        const s = Math.sin(ph * 7);
+        r.hipL.rotation.x = s * 0.6; r.hipR.rotation.x = -s * 0.6;
+        r.body.position.y = Math.abs(Math.cos(ph * 7)) * 0.1;
+        r.armL.rotation.set(-0.3, 0, 1.1 + s * 0.15); r.armR.rotation.set(-0.3, 0, -1.1 + s * 0.15);
+        break;
+      }
+      case 'play': {
+        // Seated, bowing a fiddle (or squeezing a box): the arms saw across.
+        r.body.position.y = -0.42;
+        r.hipL.rotation.x = -1.45; r.hipR.rotation.x = -1.45;
+        r.armL.rotation.set(-1.4, 0, 0.5);
+        r.armR.rotation.set(-1.1, 0, -0.3 + Math.sin(ph * 5) * 0.35);
+        r.head.rotation.z = 0.25;
+        break;
+      }
+      case 'cheer': {
+        r.armL.rotation.set(-2.8 + Math.sin(ph * 6) * 0.2, 0, 0.3);
+        r.armR.rotation.set(-2.8 - Math.sin(ph * 6) * 0.2, 0, -0.3);
+        r.body.position.y = Math.max(0, Math.sin(ph * 6)) * 0.06;
+        break;
+      }
       default:
         r.head.rotation.y = Math.sin(ph * 0.3) * 0.5;
     }
@@ -410,10 +433,13 @@ export class People {
     r.basket.visible = a.carry?.kind === 'food' || a.carry?.kind === 'glimmer' || a.anim === 'forage';
     r.sheet.visible = a.carry?.kind === 'scrap' || a.carry?.kind === 'glass' || a.carry?.kind === 'copper' || a.carry?.kind === 'steel';
     const moving = a.pathI < a.path.length;
-    const seated = a.anim === 'sit' || a.anim === 'eat' || a.anim === 'fish';
+    const seated = a.anim === 'sit' || a.anim === 'eat' || a.anim === 'fish' || a.anim === 'play';
     let clip = 'Idle';
     switch (a.anim) {
       case 'walk': case 'carry': clip = moving ? 'Walk' : 'Idle'; break;
+      case 'dance': clip = 'Walk'; break;
+      case 'cheer': clip = 'Wave'; break;
+      case 'play': clip = 'Idle_Neutral'; break;
       case 'chop': clip = 'Sword_Slash'; r.axe.visible = true; break;
       case 'build': clip = 'Punch_Right'; r.axe.visible = true; break;
       case 'forage': clip = 'Interact'; break;
@@ -447,6 +473,14 @@ export class People {
       } else if (a.anim === 'eat') {
         aim(B('UpperArm.R'), B('LowerArm.R'), dir(0.2, -0.6, 0.6));
         aim(B('LowerArm.R'), B('Wrist.R'), dir(-0.2, 0.2 + Math.max(0, Math.sin(ph * 2)) * 0.9, 0.5));
+      } else if (a.anim === 'play') {
+        // A fiddle under the chin: left arm out and up, the bow arm sawing across.
+        aim(B('UpperArm.L'), B('LowerArm.L'), dir(-0.5, 0.1, 0.8));
+        aim(B('LowerArm.L'), B('Wrist.L'), dir(0.4, 0.5, 0.6));
+        aim(B('UpperArm.R'), B('LowerArm.R'), dir(0.6, -0.3, 0.5));
+        aim(B('LowerArm.R'), B('Wrist.R'), dir(-0.9 + Math.sin(ph * 5) * 0.5, 0.25, 0.4));
+        const h = B('Head');
+        if (h) h.rotateZ(0.3);
       } else {
         const h = B('Head');
         if (h) h.rotateY(Math.sin(ph * 0.35) * 0.5);
@@ -462,6 +496,14 @@ export class People {
         aim(B(`UpperArm.${side}`), B(`LowerArm.${side}`), dir(x * 0.15, -0.9, 0.3));
         aim(B(`LowerArm.${side}`), B(`Wrist.${side}`), dir(-x * 0.3, 0.1, 1));
       }
+    } else if (a.anim === 'dance') {
+      // Arms out to either side, hands at shoulder height, swinging with the step.
+      const s = Math.sin(ph * 7);
+      for (const [side, x] of [['L', -1], ['R', 1]] as const) {
+        aim(B(`UpperArm.${side}`), B(`LowerArm.${side}`), dir(x, 0.05 + s * x * 0.15, 0.25));
+        aim(B(`LowerArm.${side}`), B(`Wrist.${side}`), dir(x, 0.3, 0.3));
+      }
+      r.body.position.y = Math.abs(Math.cos(ph * 7)) * 0.07;
     } else if (a.anim === 'look') {
       const h = B('Head');
       if (h) h.rotateY(Math.sin(ph * 0.5) * 0.8);

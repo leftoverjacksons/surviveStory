@@ -43,7 +43,7 @@ Q='?seed=41&site=farm' node scripts/shots/shot.mjs /tmp/shots \
 `__game` hooks worth knowing: `colony`, `scene`, `iso`, `tick`, `setSpeed`,
 `refresh`, `select`, `inspect`, `paint`, `reveal`, `field`, `build`, `place`,
 `fits`, `plotTry`, `screenOf`, `folkOrder`, `folkWhy`, `save`, `setWoods`,
-`veilStart`, `veilTurns`, `stats`.
+`veilStart`, `veilTurns`, `stats`, `gather` (a festival, Folk dance or wedding).
 
 ## Publishing the single-file build
 

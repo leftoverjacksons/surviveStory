@@ -54,6 +54,7 @@ function migrate(col: Colony) {
   col.folk.song ??= 0;
   col.community.logCount ??= col.community.log.length;
   col.requests ??= [];
+  col.gatherings ??= [];
   // Benches were once set in front of the door (DESIGN §23.7): move them along the wall.
   for (const p of col.village.plots) for (const y of p.yard) if (y.kind === 'bench') Object.assign(y, benchSpot(p));
 }

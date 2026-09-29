@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
-import { createCommunity, killSurvivor, log, recruit, setRole } from './sim/community';
+import { alive, createCommunity, killSurvivor, log, recruit, setRole } from './sim/community';
 import { SITE_KINDS, type SiteKind } from './sim/sites';
 import { generateWorld, siteKindFor } from './sim/worldgen';
 import { Zone, heightAt, paintZone, reveal, tileX, tileZ, toTileX, toTileZ } from './sim/world';
@@ -36,6 +36,8 @@ import { act as veilAct, endTurn, finish, giveDistrict, moveUnit, reachable, sta
 import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
+import { scheduleGathering } from './sim/gatherings';
+import { GatheringView } from './render/gathering';
 import { PlotsView } from './render/plots';
 import { seasonIndex } from './sim/calendar';
 import { RoofControl, type RoofMode } from './render/roofs';
@@ -192,6 +194,8 @@ scene.add(heaps.group);
 const plotsView = new PlotsView(world, colony.village);
 villageView.group.name = 'village'; plotsView.group.name = 'plots'; heaps.group.name = 'heaps'; station.group.name = 'site';
 scene.add(plotsView.group);
+const gatheringView = new GatheringView(world);
+scene.add(gatheringView.group);
 const fields = new FieldsView(world);
 fields.group.name = 'fields';
 scene.add(fields.group);
@@ -1094,6 +1098,8 @@ function frame() {
   const occupied = new Set<number>();
   for (const a of colony.agents) if (a.indoors && a.inside) occupied.add(a.inside);
   plotsView.update(t, sky.night);
+  gatheringView.sync(colony);
+  gatheringView.update(t, sky.night);
   RESTORED_GLOW.opacity = sky.night > 0.3 ? sky.night * 0.9 : 0;
   grade.uniforms.uNight.value = sky.night;
   villageView.update(sky.night, occupied, t);
@@ -1275,6 +1281,12 @@ const veilDebug = {
     const r = startClearing(colony, hi, team.slice(0, withFolk ? 3 : 4), withFolk ? colony.folk.beings.find((b) => b.kind === 'elder')?.id : undefined);
     if (typeof r !== 'string') enterVeil(r);
     return r;
+  },
+  /** Put a gathering on (DESIGN §24.8): 'festival', 'folk_festival', or 'wedding' (the two closest free adults). */
+  gather(kind: 'festival' | 'folk_festival' | 'wedding' = 'festival') {
+    if (kind !== 'wedding') return scheduleGathering(colony, kind, kind === 'festival' ? 'The test festival' : 'the dance at the Ring');
+    const [a, b] = alive(colony.community).filter((s) => s.age >= 18);
+    return scheduleGathering(colony, 'wedding', `The wedding of ${a.name.split(' ')[0]} and ${b.name.split(' ')[0]}`, [a.id, b.id]);
   },
   veilTurns(n: number) { for (let i = 0; i < n && veil && !veil.cl.outcome; i++) playTurn(colony, veil.cl); afterVeilAction(); },
   veil: () => veil,
