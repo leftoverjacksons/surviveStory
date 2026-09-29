@@ -35,6 +35,8 @@ export interface Fishery {
   boatFoot: Footprint;
   jetty: number;
   hut: number;
+  /** The day the Wee Folk knotted its nets (half a catch). */
+  tangled?: number;
   shed: number;
   boat: number;
   /** Day the "fished thin" warning was last given. */
@@ -241,7 +243,8 @@ export function catchRate(col: Colony, f: Fishery, s: Survivor, fromBoat: boolea
   const stockK = Math.pow(Math.max(0, pond.stock) / pond.max, 0.7);
   const seasonK = season === 'winter' ? 0.45 : season === 'summer' ? 1 : 1.15;
   const nets = knows(s, 'netmending') && f.shed > 0 ? 1.5 : 1;
-  return 0.65 * stockK * seasonK * nets * (fromBoat ? 1.3 : 1);
+  const knotted = f.tangled === col.community.day ? 0.5 : 1;
+  return 0.65 * stockK * seasonK * nets * knotted * (fromBoat ? 1.3 : 1);
 }
 
 /** Where on the jetty a fisher sits (the end first), or the boat's spot out on the water. */

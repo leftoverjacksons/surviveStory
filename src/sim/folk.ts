@@ -13,6 +13,7 @@
  */
 import { KNOWES, housing, knoweCount, raiseKnowe, settleFolk, townhouseDaily, homeOf, type Knowe } from './townhouse';
 import { HAUNT_RADIUS } from './haunt';
+import { faeDaily, feel, gentryFeel, gentryView, isGentry, sway, visitTarget, weeVisit } from './fae';
 import type { Colony } from './colony';
 import { alive, log, remember, withRng, type Survivor } from './community';
 import type { Rng } from './rng';
@@ -193,6 +194,12 @@ export interface Fae {
   lastChore: number;
   /** Where they live: a knowe's id, or 0 for the hall under the Great Hill (DESIGN §25.3). */
   home?: number;
+  /** What they think of the village's people (survivor id → −100..100) and of each other (fae id → …) (DESIGN §25.2, fae.ts). */
+  of?: Record<number, number>;
+  kin?: Record<number, number>;
+  /** A Wee one's house call tonight (household id), and the day of their last. */
+  visit?: number;
+  visited?: number;
 }
 
 export interface LedAway {
@@ -265,6 +272,8 @@ export interface FolkSociety {
   /** The knowes raised round the Great Hill (townhouse.ts, DESIGN §25.3). */
   knowes?: Knowe[];
   nextKnowe?: number;
+  /** Mischief done tonight (day, count): a cap, more as the hill grows (fae.ts). */
+  mischief?: { day: number; n: number };
   /** An old save's chambers (DESIGN §24.9), turned into knowes on load. */
   chambers?: { kind: string }[];
 }
@@ -364,6 +373,8 @@ export function leaveOffering(col: Colony, s: Survivor): boolean {
   if (f.offeredDay === day) return false;
   f.offeredDay = day;
   changeStanding(col, f.standing < 60 ? 1.2 : 0.6);
+  gentryFeel(f, s.id, 1.5);
+  sway(s, 1);
   nurture(col, col.world.folk.mound.x, col.world.folk.mound.z, 0.01, 1);
   const r = folkReading(col, s, col.world.folk.mound.x, col.world.folk.mound.z);
   withRng(col.community, (rng) => {
@@ -382,12 +393,16 @@ function meet(col: Colony, s: Survivor, rng: Rng) {
     f.met = true;
     const elder = f.beings.find((b) => b.kind === 'elder') ?? f.beings[0];
     elder.known = true;
+    feel(elder, s.id, 15);
+    sway(s, 10);
     news(col, `${n} took bread to ${m.name}, and the door was open. ${elder.name} came out and spoke with them: the hill has been theirs since before the roads, and they will share the land if the village keeps to their ways.`, 'good');
     learnRule(col, 0, s);
     return;
   }
   if (stranger) {
     stranger.known = true;
+    feel(stranger, s.id, 15);
+    sway(s, 8);
     news(col, `${n} met ${stranger.name} of ${m.name}. ${stranger.kind === 'hob' ? 'A small, brown, busy person with flour on their hands.' : stranger.kind === 'sprite' ? 'Quick as a wren; there and gone and there again.' : stranger.kind === 'piper' ? 'They played three notes and ' + n + ' forgot what they came for.' : 'Old as the hill, and kind.'}`, 'good');
   }
   const next = RULES.findIndex((r) => !f.rules.includes(r));
@@ -473,19 +488,9 @@ export function folkDaily(col: Colony) {
       col.community.resources.glimmer += 2;
       news(col, 'A little heap of glimmer was left on the doorstep of the hall, wrapped in a dock leaf.', 'good');
     }
-    // Mischief when things have soured.
-    if (f.standing < 20 && rng.chance(0.3)) {
-      const r = col.community.resources;
-      if (rng.chance(0.5) && r.food > 8) {
-        const lost = Math.min(r.food - 4, rng.int(3, 7));
-        r.food -= lost;
-        news(col, `${lost} food soured overnight in the stores. ${f.met ? 'Everyone knows who did it.' : 'Nobody can say how.'}`, 'bad');
-      } else {
-        const p = col.village.projects.find((x) => !x.done && x.work > 20);
-        if (p) { p.work = Math.max(0, p.work - 25); news(col, `The tools for ${p.name.toLowerCase()} were found up a tree in the morning. Half a day lost.`, 'bad'); }
-      }
-    }
   });
+  // The Gentry's feelings, iron over doors, and the village's mood felt at the hill (fae.ts; the Wee Folk's mischief is nightly, at the doors).
+  faeDaily(col);
   f.version++;
 }
 
@@ -674,7 +679,11 @@ export function folkTick(col: Colony, dt: number) {
         } else fae.t = 60;
         continue;
       }
-      // Out for the night: choose what to do.
+      // Out for the night: choose what to do. A Wee one may call at a house in the village (fae.ts).
+      if (!isGentry(fae) && (h >= 20 || h < 4) && rng.chance(0.3)) {
+        const door = visitTarget(col, fae, rng);
+        if (door) { fae.to = door; fae.act = 'walk'; fae.t = 0; continue; }
+      }
       const village = f.focus === 'village' && f.standing >= 45 && (fae.kind === 'hob' || fae.kind === 'sprite') && h >= 0 && h < 4 && fae.lastChore !== col.community.day
         && (f.chores.day !== col.community.day || f.chores.n < 1 + Math.floor(f.level / 2) + knoweCount(f, 'guestroom'));
       if (village) { fae.to = jitter(col.world.campfire, 5, rng); fae.act = 'walk'; fae.t = -1; continue; }
@@ -710,6 +719,15 @@ function arrive(col: Colony, fae: Fae, rng: Rng): Fae['act'] {
     fae.t = rng.range(30, 50);
     return 'tend';
   }
+  // A Wee one at a door: a saucer taken and a favour done, or mischief.
+  if (fae.visit !== undefined) {
+    const did = weeVisit(col, fae, rng);
+    // Favours are quiet (only some reach the log); mischief is always talked about.
+    const kind = /saucer|milk out|kindling/.test(did ?? '') ? 'favour' : 'mischief';
+    if (did) news(col, did, kind === 'favour' || /meadowsweet/.test(did) ? 'good' : f.standing >= 45 ? 'strange' : 'bad', kind === 'mischief' || rng.chance(0.35));
+    fae.t = rng.range(20, 50);
+    return 'chore';
+  }
   // A hob in the village does a chore, then goes home.
   if (Math.hypot(fae.x - col.world.campfire.x, fae.z - col.world.campfire.z) < 8) {
     fae.lastChore = col.community.day;
@@ -734,6 +752,7 @@ export function breakRule(col: Colony, s: Survivor, what: 'cut' | 'forage') {
   const f = col.folk;
   const n = s.name.split(' ')[0];
   changeStanding(col, what === 'cut' ? -5 : -1.5);
+  gentryFeel(f, s.id, what === 'cut' ? -10 : -3);
   f.offendedUntil = Math.max(f.offendedUntil, col.community.day + (what === 'cut' ? 5 : 2));
   if (what === 'cut') {
     news(col, f.met
@@ -755,8 +774,10 @@ export function maybeLeadAway(col: Colony, rng: Rng) {
   if (cross ? !rng.chance(f.standing < 20 ? 0.3 : 0.18) : !borrowed || !rng.chance(0.02)) return;
   const pool = alive(c).filter((s) => !col.taken.some((t) => t.id === s.id));
   if (pool.length < 3) return;
-  // The Folk take the careless and the sweet alike.
-  const s = rng.pick(pool);
+  // The Gentry choose (DESIGN §25.2): when cross, whoever they like least, often; when borrowing, a favourite.
+  const byView = [...pool].sort((a, b) => gentryView(f, a.id) - gentryView(f, b.id));
+  const s = cross ? (rng.chance(0.5) ? byView[0] : rng.pick(pool)) : (rng.chance(0.6) ? byView[byView.length - 1] : rng.pick(pool));
+  sway(s, borrowed ? 6 : -10);
   const a = rng.range(0, Math.PI * 2), d = rng.range(WILD_RADIUS + 4, WILD_RADIUS + 14);
   let x = m.x + Math.cos(a) * d, z = m.z + Math.sin(a) * d;
   const tx = toTileX(w, x), tz = toTileZ(w, z);

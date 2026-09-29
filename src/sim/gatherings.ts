@@ -15,6 +15,7 @@
 import { adjustBond, alive, bondValue, log, remember, type Survivor } from './community';
 import type { Colony } from './colony';
 import { changeStanding } from './folk';
+import { gentryFeel, sway } from './fae';
 import { householdOf, type Household } from './homes';
 import { nurture } from './veil';
 import { passable, toTileX, toTileZ, type Point } from './world';
@@ -230,6 +231,8 @@ function finish(col: Colony, g: Gathering) {
     for (const s of came) remember(s, c.day, `Danced at ${g.title}.`);
   } else if (g.kind === 'folk_festival') {
     changeStanding(col, 8);
+    // The Gentry remember who danced with them; the dancers think better of the Folk (DESIGN §25.2).
+    for (const s of came) { gentryFeel(col.folk, s.id, 4); sway(s, 5); }
     nurture(col, w.folk.mound.x, w.folk.mound.z, 0.1, 3);
     const stranger = col.folk.beings.find((b) => !b.known);
     if (stranger) stranger.known = true;

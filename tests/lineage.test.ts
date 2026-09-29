@@ -29,9 +29,9 @@ describe('growing up, families (DESIGN §24.15)', () => {
     p.expecting = col.community.day + 1;
     const n0 = col.community.survivors.length;
     day(col); day(col);
-    expect(col.community.survivors.length).toBe(n0 + 1);
-    const baby = col.community.survivors[n0];
-    expect(baby.age).toBe(0);
+    // (A newcomer may have walked in meanwhile: find the baby by age.)
+    const baby = col.community.survivors.slice(n0).find((x) => x.age === 0)!;
+    expect(baby).toBeDefined();
     expect(baby.name.endsWith(p.family!)).toBe(true);
     expect(parentsOf(col.community, baby).map((x) => x.id).sort()).toEqual([p.id, q.id].sort());
     expect(childrenOf(col.community, p)).toContain(baby);

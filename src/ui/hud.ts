@@ -10,6 +10,7 @@ import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../s
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
 import { KNOWES, housing, knowes } from '../sim/townhouse';
+import { faeView, isGentry, opinionOf, viewWord, villageFeeling } from '../sim/fae';
 import { folkMood, reachShare } from '../sim/mycelium';
 import { FOLK_WORKS, folkNeeds, landWanted, standingWord, type FolkFocus } from '../sim/folk';
 import { FAE_UNIT, FOLK_SUITED, canAskFolk, canClear, veilCost } from '../sim/haunt';
@@ -650,11 +651,26 @@ export class Hud {
     const known = f.beings.filter((b) => b.known);
     const facts: [string, string][] = [
       ['Standing', `${cap(word)} (${Math.round(f.standing)})`],
-      ['Their people', f.met ? `${f.beings.length}${known.length ? `: ${known.map((b) => b.name).join(', ')}${known.length < f.beings.length ? ', and others' : ''}` : ''}` : 'Nobody has met them yet. Lights at dusk.'],
+      ['Their people', f.met ? `${f.beings.filter(isGentry).length} of the Gentry (tall, ageless, named; they choose whom to befriend) and ${f.beings.filter((b) => !isGentry(b)).length} of the Wee Folk (small, abroad in the village from dusk to dawn: a saucer left at the door is repaid; without one, mischief)` : 'Nobody has met them yet. Lights at dusk.'],
       ['Their land', `${land} tiles of Wild${land >= want ? ' (room to grow)' : land < want * 0.8 ? ` (crowded; they want about ${want})` : ` (enough; they would grow with ${want})`}`],
       ['The hill', f.level ? `Grown ${f.level} time${f.level > 1 ? 's' : ''} · next ${Math.round(f.growth * 100)}%` : `Next growth ${Math.round(f.growth * 100)}%`],
     ];
     if (f.rules.length) facts.push(['Their rules', f.rules.join(' ')]);
+    // The Gentry's feelings, as the village has come to know them (DESIGN §25.2).
+    if (known.some(isGentry)) {
+      const people = alive(col.community);
+      const lines = known.filter(isGentry).map((b) => {
+        const fond = people.filter((p) => opinionOf(b, p.id) >= 20).map((p) => p.name.split(' ')[0]);
+        const cold = people.filter((p) => opinionOf(b, p.id) <= -20).map((p) => p.name.split(' ')[0]);
+        return `${b.name}${fond.length ? `, fond of ${fond.slice(0, 3).join(', ')}` : ''}${cold.length ? `${fond.length ? ';' : ','} cold to ${cold.slice(0, 3).join(', ')}` : ''}${!fond.length && !cold.length ? ', keeping their counsel' : ''}`;
+      });
+      facts.push(['The Gentry', lines.join('. ') + '.']);
+    }
+    {
+      const v = villageFeeling(col);
+      const iron = col.village.households.filter((h) => h.iron).length;
+      facts.push(['The village', `On the whole ${viewWord(v)} (${v >= 0 ? '+' : ''}${Math.round(v)})${iron ? `; ${iron} house${iron > 1 ? 's have' : ' has'} iron over the door` : ''}. The Folk feel it.`]);
+    }
     {
       const mood = folkMood(col);
       const fields: { x: number; z: number }[] = [];
@@ -862,6 +878,8 @@ export class Hud {
       if (j >= SKILLED) parts.push(`Knows ${name}`);
       else if (j > 0.05) parts.push(`Learning ${name} · ${Math.round((j / SKILLED) * 100)}%`);
     }
+    // How they feel about the Folk, once it has become something (DESIGN §25.2).
+    if (Math.abs(faeView(s)) >= 15) parts.push(cap(viewWord(faeView(s))));
     return parts.length ? `<br>${parts.join(' · ')}` : '';
   }
 

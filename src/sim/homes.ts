@@ -31,6 +31,10 @@ export interface Household {
   since: number;
   /** Day they last petitioned the council. */
   petitioned: number;
+  /** The Wee Folk (DESIGN §25.2): the day a saucer was left at the door (negative once taken), the day of the last mischief, iron over the door. */
+  saucer?: number;
+  hit?: number;
+  iron?: boolean;
 }
 
 /** A house's shape, in its local frame: door toward +z, width along x. */

@@ -42,6 +42,10 @@ export interface Survivor {
   hue: number;
   /** 0..100: how much of the hidden layer they perceive. */
   sight: number;
+  /** How they feel about the Folk, −100..100 (DESIGN §25.2): moved by what happens to them. */
+  fae?: number;
+  /** The day their tools were hidden by the Wee Folk (work goes slowly). */
+  toolsHidden?: number;
   /** Day they joined the village. */
   arrived?: number;
   /** Know-how, 0..1 per craft (0.5 = can do it). */

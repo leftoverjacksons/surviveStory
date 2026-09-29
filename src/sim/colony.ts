@@ -28,6 +28,7 @@ import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pond
 import { highwayZ } from './worldgen';
 import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence } from './fields';
 import { breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, maybeLeadAway, type FolkSociety } from './folk';
+import { saucersAtDusk } from './fae';
 import { planRestore, ruinDoor } from './restore';
 import { rareDaily, ruinToStrip, strip } from './rare';
 import { autopilotDaily } from './autopilot';
@@ -307,7 +308,9 @@ function workRate(s: Survivor, role: RoleId, col?: Colony) {
   // Push: a shove from nowhere helps with the heavy lifting.
   const push = role === 'builder' && s.psi === 'push' && s.sight >= PSI_SIGHT ? 1.2 : 1;
   const tools = col ? toolFactor(col, role) : 1;
-  return traitSum(s, (t) => t.roleBonus?.[role], 1, 'add') * (0.7 + s.morale / 200) * weather * push * tools * (ageWork(s) || 0.5);
+  // Tools hidden up a tree by the Wee Folk (DESIGN §25.2): a slow day.
+  const hidden = col && s.toolsHidden === col.community.day ? 0.7 : 1;
+  return traitSum(s, (t) => t.roleBonus?.[role], 1, 'add') * (0.7 + s.morale / 200) * weather * push * tools * hidden * (ageWork(s) || 0.5);
 }
 
 /** The land's answer where it grows: resonance, and the Moth Woman's blessing. */
@@ -1126,7 +1129,9 @@ function pickOffering(col: Colony, a: Agent, s: Survivor): Task | null {
   // Every day while they are wary; once friendly, every third day keeps the peace.
   if (f.standing >= 50 && c.day - f.offeredDay < 3) return null;
   if (col.agents.some((o) => o.task?.kind === 'offer')) return null;
-  const pull = s.sight + (s.aspiration?.kind === 'veil' ? 25 : 0) + (s.role === 'attune' ? 20 : 0) + (f.standing < 30 ? 15 : 0);
+  // Those who have turned against the Folk won't go (DESIGN §25.2); those fond of them go more.
+  if ((s.fae ?? 0) < -20) return null;
+  const pull = s.sight + (s.aspiration?.kind === 'veil' ? 25 : 0) + (s.role === 'attune' ? 20 : 0) + (f.standing < 30 ? 15 : 0) + (s.fae ?? 0) * 0.5;
   if (pull < 35 || habit(col, s.id * 7 + c.day) > pull) return null;
   const m = col.world.folk.mound;
   const d = m.r + 1.3;
@@ -2305,6 +2310,7 @@ function hourly(col: Colony) {
     veilHourly(col, rng, hour, hour >= 18 || hour < 6);
     if (hour === 8) maybeConvene(col, rng);
     if (hour === 1) maybeLeadAway(col, rng);
+    if (hour === 20) saucersAtDusk(col);
   });
 
   const season = seasonNow(col);
