@@ -10,6 +10,7 @@ import type { StoreParts } from './station';
 import { homeLayout, houseFloor, housePoint } from '../sim/homes';
 import { buildHouse, foundationUnder } from './house';
 import { cellarMesh, domeMesh, shrineMesh, tradeMesh } from './trades';
+import { solarMesh, turbineMesh, windmillMesh } from './power';
 import type { HouseSpec } from '../sim/homes';
 import { mergeStatic } from './merge';
 import type { RoofControl } from './roofs';
@@ -694,6 +695,9 @@ export class VillageView {
       case 'shrine': g = shrineMesh(W, D, tier, p, seed, glow); break;
       case 'toolshop': case 'tailor': case 'smokehouse': case 'tavern': g = tradeMesh(kind, W, D, tier, p, (f.tx * 7349 + f.tz * 131) >>> 0, clad, glow); break; // same look as a site and when finished
       case 'annex': g = leanTo(W + 0.3, D + 0.3, p, glow); break;
+      case 'windmill': g = windmillMesh(p, seed); break;
+      case 'solar': g = solarMesh(W, D, p); break;
+      case 'turbine': g = turbineMesh(p); break;
       case 'jetty': {
         const len = (facing === 1 || facing === 3) ? f.w : f.d;
         g = jetty(len, tier, p);
@@ -770,6 +774,9 @@ export class VillageView {
     return g;
   }
 
+  private spinners: THREE.Object3D[] = [];
+  private lastSpin = 0;
+
   private upsert(id: string, key: string, build: (glow: THREE.Mesh[]) => THREE.Group) {
     const e = this.entries.get(id);
     if (e && e.key === key) return;
@@ -781,6 +788,8 @@ export class VillageView {
     this.register(group);
     this.group.add(group);
     this.entries.set(id, { key, group, glow });
+    this.spinners = [];
+    this.group.traverse((o) => { if (o.userData.spin) this.spinners.push(o); });
   }
 
   /** Hand roofs and building materials to the roof control. */
@@ -973,8 +982,11 @@ export class VillageView {
   }
 
   /** Warm windows at night for buildings with someone asleep inside. */
-  update(night: number, occupied: Set<number>, _t: number) {
+  update(night: number, occupied: Set<number>, t: number) {
     const lit = night > 0.35;
+    // Windmill sails and turbine blades turn (power.ts): a little faster in the wind of the cold months would be nice; steady for now.
+    const dt = t - this.lastSpin; this.lastSpin = t;
+    for (const s of this.spinners) s.rotation.z -= (s.userData.spin as number) * Math.min(0.1, Math.max(0, dt));
     const st = this.village.buildings.find((b) => b.kind === 'store')!;
     for (const m of this.store.glow) m.visible = lit && occupied.has(st.id);
     for (const b of this.village.buildings) {

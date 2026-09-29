@@ -45,7 +45,7 @@ export interface Survivor {
   /** Day they joined the village. */
   arrived?: number;
   /** Know-how, 0..1 per craft (0.5 = can do it). */
-  skills?: { joinery?: number; netmending?: number };
+  skills?: { joinery?: number; netmending?: number; wiring?: number };
   /** What they hope for, and when they'll set their heart on something new. */
   aspiration?: Aspiration;
   hopeAgain?: number;

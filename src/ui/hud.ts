@@ -3,6 +3,7 @@ import { dayOf, fireWood, hourOf } from '../sim/colony';
 import {
   dayOfSeason, daysToFullMoon, daysUntilWinter, isFullMoon, seasonOf, yearOf, DAYS_PER_SEASON, SEASON_NAMES, WEATHER_NAMES,
 } from '../sim/calendar';
+import { powerDemand, powerSupply } from '../sim/power';
 import { placeKindOf, whyNotCancel, whyNotTakeDown } from '../sim/dismantle';
 import { nextGathering } from '../sim/gatherings';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
@@ -825,7 +826,10 @@ export class Hud {
       return `<div class="ready ${have < need ? 'short' : ''}"><span>${label}</span><div class="bar"><i style="width:${pct.toFixed(0)}%"></i></div><span>${Math.floor(have)}/${need}</span></div>`;
     };
     const head = inWinter ? `Winter · ${daysLeft} day${daysLeft === 1 ? '' : 's'} to spring` : `Winter in ${toWinter} day${toWinter === 1 ? '' : 's'}`;
-    const html = `<div class="h">${head}</div>${row('Food', food, needFood)}${row('Firewood', wood, needWood)}${row('Beds', beds, pop)}`;
+    // The grid (power.ts), once anything but the first little panel feeds it.
+    const gridBuilt = col.village.buildings.some((b) => b.kind === 'solar' || b.kind === 'turbine' || b.kind === 'windmill');
+    const power = gridBuilt ? row('Power', Math.round(powerSupply(col) * 10) / 10, Math.round(powerDemand(col) * 10) / 10) : '';
+    const html = `<div class="h">${head}</div>${row('Food', food, needFood)}${row('Firewood', wood, needWood)}${row('Beds', beds, pop)}${power}`;
     if ($('winter').innerHTML !== html) $('winter').innerHTML = html;
   }
 

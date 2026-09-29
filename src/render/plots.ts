@@ -587,10 +587,10 @@ export class PlotsView {
   }
 
   /** Washing stirs in the wind; hens peck about. */
-  update(t: number, night = 0) {
+  update(t: number, night = 0, power = 1) {
     for (const e of this.entries.values()) {
       e.group.traverse((o) => {
-        if (o.userData.bulbs) { ((o as THREE.Points).material as THREE.PointsMaterial).opacity = night > 0.3 ? night * (0.9 + Math.sin(t * 1.7) * 0.05) : 0; return; }
+        if (o.userData.bulbs) { ((o as THREE.Points).material as THREE.PointsMaterial).opacity = night > 0.3 ? night * (0.9 + Math.sin(t * 1.7) * 0.05) * (0.25 + 0.75 * power) : 0; return; }
         if (o.userData.cloth) o.rotation.x = Math.sin(t * 2.2 + o.position.x * 3) * 0.18;
         else if (o.userData.hen) o.rotation.x = Math.max(0, Math.sin(t * 3 + o.position.x * 5)) * 0.5;
       });

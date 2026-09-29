@@ -43,6 +43,7 @@ import {
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
 import { finishTakedown } from './dismantle';
+import { learnWiring, millFactor, powerDaily } from './power';
 import { APPRENTICE_AGE, TODDLER_AGE, ageWork, isAdult, isChild, lineageDaily, oldAge, settleLineage } from './lineage';
 import { DEPAVE_WORK, finishDepave, nearestDepave } from './depave';
 import { blessingGrowth, createMycelium, myceliumDaily, sever, type Mycelium } from './mycelium';
@@ -190,6 +191,8 @@ const hush = (col: Colony, key: string, minutes: number) => { (col.memo ??= {})[
 
 /** Add (or, if negative, spend) food, noting where it came from. */
 export function gainFood(col: Colony, source: string, amount: number) {
+  // A windmill grinds the grain: each harvest goes further (power.ts).
+  if (source === 'fields' && amount > 0) amount *= millFactor(col);
   col.community.resources.food += amount;
   col.ledger[source] = (col.ledger[source] ?? 0) + amount;
 }
@@ -1639,6 +1642,8 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         if (t.t >= 50) {
           const got = strip(col, r, 3, first(s));
           if (!got) return endTask(col, a);
+          // Pulling cable and panels out of the old world teaches how they go together (power.ts).
+          learnWiring(col, s, 0.06);
           a.carry = { kind: got.mat, amount: got.amount };
           if (!deliver(col, a)) { res[got.mat] += got.amount; a.carry = null; return endTask(col, a); }
           t.stage = 'deliver';
@@ -1861,6 +1866,8 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       face(a, p.kind === 'clear_store' || p.kind === 'patch_roof' ? buildingById(col, p.target)!.inside : footCenter(w, p.foot));
       a.anim = 'build';
       p.work += dt * workRate(s, 'builder', col);
+      // Wiring up panels and a turbine teaches wiring (power.ts).
+      if (p.kind === 'solar' || p.kind === 'turbine') learnWiring(col, s, dt * 0.0015);
       // Building teaches joinery: slowly alone, quickly beside someone who knows it.
       if (!knows(s, 'joinery')) {
         const teacher = col.agents.find((o) => o !== a && o.task?.kind === 'build' && o.task.project === p.id
@@ -2287,6 +2294,7 @@ function daily(col: Colony) {
   veilDaily(col, { cold, rationing: rationing(col) });
   folkDaily(col);
   myceliumDaily(col);
+  powerDaily(col);
   if (col.folk.led && c.day >= col.folk.led.until) endLed(col, null);
   hauntDaily(col);
   fishingDaily(col, (x, z, amt) => disturb(col, x, z, amt, 2));

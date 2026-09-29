@@ -39,6 +39,7 @@ import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
 import { digChamber } from './sim/townhouse';
 import { MyceliumView } from './render/mycelium';
+import { POWER_KINDS, powered, whyNotPower, type PowerKind } from './sim/power';
 import { cancelProject, keepStanding, placeKindOf, takeDown } from './sim/dismantle';
 import { markDepave } from './sim/depave';
 import { TownhouseView } from './render/townhouse';
@@ -618,6 +619,9 @@ function placeClick(cx: number, cy: number) {
     if (typeof res === 'string') { buildPanel.hint(res); return; }
     if (colony.village.priority === build.site) colony.village.priority = undefined;
   } else {
+    // Power wants know-how (power.ts): joiners for a windmill, someone who knows wiring for panels and turbines.
+    const locked = (POWER_KINDS as string[]).includes(build.site) ? whyNotPower(colony, build.site as PowerKind) : null;
+    if (locked) { buildPanel.hint(locked); return; }
     const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
     const res = placeProject(world, colony.village, community, build.site, foot, facing);
     if (typeof res === 'string') { buildPanel.hint(`${res} Right-click or T to turn; Esc to stop.`); return; }
@@ -1152,7 +1156,7 @@ function frame() {
   camp.update(t, community.resources.wood > 0);
   const occupied = new Set<number>();
   for (const a of colony.agents) if (a.indoors && a.inside) occupied.add(a.inside);
-  plotsView.update(t, sky.night);
+  plotsView.update(t, sky.night, powered(colony));
   gatheringView.sync(colony);
   if (t - lastGround > 2) { lastGround = t; terrainGroup.userData.refreshGround?.(); }
   gatheringView.update(t, sky.night);
@@ -1354,6 +1358,21 @@ const veilDebug = {
       completeProject(w, v, colony.community, p);
       syncScene();
       return r;
+    }
+    return null;
+  },
+  /** Put up a building of this kind near the fire at once (the first place it fits), for looking at. */
+  buildNow(kind: PlaceKind, near = 8) {
+    const w = world;
+    for (let r = near; r < near + 20; r += 1.5) for (let a = 0; a < 6.28; a += 0.5) {
+      const x = w.campfire.x + Math.cos(a) * r, z = w.campfire.z + Math.sin(a) * r;
+      const { foot, facing } = footAt(kind, toTileX(w, x), toTileZ(w, z), 0);
+      const p = placeProject(w, colony.village, community, kind, foot, facing);
+      if (typeof p === 'string') continue;
+      completeProject(w, colony.village, community, p);
+      colony.village.projects = colony.village.projects.filter((q) => q !== p);
+      syncScene();
+      return { x, z };
     }
     return null;
   },

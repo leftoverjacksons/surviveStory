@@ -3240,3 +3240,33 @@ offence.
   when the network changes (daily).
 - **Debug:** `__game.restoreHome()` clears the nearest district with a
   house, restores the house and finishes it.
+
+### 24.17 Backlog: power from know-how (built)
+The user's backlog item (§23.2): "large solar arrays, homemade wooden and
+electric windmills, feeding the power network: learned by doing and built
+from salvage, not eras". `sim/power.ts`, `render/power.ts`.
+- **Know-how.** A new craft, `wiring`, learned by doing: +0.06 per haul
+  stripped from a ruin (copper, steel, glass), and a little while working
+  on a solar or turbine build. The first person to know it is news. The
+  windmill wants joinery (already learned at the workbench).
+- **Buildings** (build menu; locked, with the reason, until someone knows
+  how):
+
+  | Building | Cost | Size | Power (spring/summer/autumn/winter) | Also |
+  |---|---|---|---|---|
+  | Windmill (timber smock mill, four lattice sails) | 34 wood, 6 scrap | 3×3 | 1 / 1 / 1.5 / 1.5 | Field harvests +20% while one stands (`millFactor` in `gainFood('fields')`) |
+  | Solar array (salvaged panels on timber racks) | 8 wood, 8 scrap, 6 glass, 2 copper | 4×3 | 4 / 5 / 3 / 1.5 | |
+  | Wind turbine (homemade: steel mast, three blades) | 10 wood, 10 scrap, 3 steel, 3 copper | 2×2 | 2.5 / 2 / 3 / 4 | |
+
+  Sails and blades turn (`userData.spin`, kept out of the static merge).
+- **The grid.** Supply is 1 (the first little panel) plus the buildings
+  above. Demand: 1 per lived-in home, 2 for the hall, 2 for the tavern,
+  0.5 per workshop or trade.
+  - `powered` = supply ÷ demand, capped at 1.
+  - With any panel or turbine, people in homes gain 0.4 × powered morale
+    a day ("light to read by").
+  - The string lights glow at 25% + 75% × powered.
+  - The winter panel shows a Power bar once there is a grid.
+  - A log line when the grid first falls short, and when it catches up.
+- **Debug:** `__game.buildNow(kind)` places and finishes a building near
+  the fire.

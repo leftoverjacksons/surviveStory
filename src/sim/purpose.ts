@@ -21,7 +21,7 @@ import { exploredFraction } from './world';
 
 // ---------- know-how ----------
 
-export type Craft = 'joinery' | 'netmending';
+export type Craft = 'joinery' | 'netmending' | 'wiring';
 export const SKILLED = 0.5;
 
 export const skill = (s: Survivor, c: Craft) => s.skills?.[c] ?? 0;
