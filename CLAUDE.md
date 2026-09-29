@@ -218,6 +218,12 @@ reference: Tiny Glade.
     Wee night calls → favour or mischief with real costs, iron over doors), WISPS by default + FULL FORM in moments
     (`showSelf`, `Fae.moment`; placeholder figures = ghosted survivor figures; Blender figures saved for the user),
     the RESTLESS (laid-to-rest spirits drift to the hill; every 3rd quickens a Wee one). Not yet: the Strange. Published v38.
+  - FIGURE STUDIO (lab, separate from the game; `lab/figures/`, README there): local GUI (`npm run figures`,
+    http://localhost:5181/) for image(s) → Hunyuan3D-2mini/2mv shape (gen.py; CUDA, CPU offload < 7 GB, CPU, or the
+    HF Space) → rig.py (Blender: the game's skeleton, heat weights, image colours clustered into recolour slots) →
+    pack.mjs → library (`lab/figures/library/`) → "Send to game" copies into `src/assets/people/`. Setup:
+    `python lab/figures/setup.py`. Hunyuan outputs are prototype-only (licence excludes EU/UK/South Korea); TRELLIS
+    (MIT) is the candidate for shipped figures but needs a GPU. User's GPUs: RTX 2070 8 GB (home), RTX 3050 Ti 4 GB (laptop).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
