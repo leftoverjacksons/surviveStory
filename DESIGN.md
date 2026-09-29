@@ -2705,3 +2705,188 @@ Published v28 (§22.12, §23.3–23.5). Sorted by kind; nothing here is built.
   with an ethereal topside (ghostly buildings most humans can't see; seen
   with Sight or the Veil view), growing chamber by chamber: a second town,
   on equal terms with the village.
+
+### 23.7 Fixes after version 28 (built; not published)
+- *Bench:* `homes.ts#benchSpot` puts the yard bench on the chimney side of
+  the front, clear of the door (house-local x = −chimney·0.2W) and of the
+  steps, 0.55 in front of the wall. `save.ts` migration moves existing
+  benches.
+- *Fences, gates and beds on the walking grid* (`sim/hedges.ts`):
+  `world.hedge` marks built field fences (as far as built), yard fences
+  (sides and back), and beds, coops, sheds and woodpiles. `tileCost` adds
+  `HEDGE_COST` = 4 on those tiles, so paths go round or through a gate.
+  Nothing is impassable, so nobody is ever shut in. A field's own gate
+  stays open. Where people still cross one fence tile `GATE_AFTER` = 10
+  times, a gate is put in (`world.gates`, logged). It renders as posts, a
+  leaf left ajar, and sometimes an arch with a climber
+  (`plots.ts#gateMesh`). Fences leave a gap there. `syncHedges` runs daily.
+- *Desire paths:* `PATH_WEAR` 25 → 18, so they form sooner.
+  `world.pathMemory` holds max(memory·0.985, wear/LANE). Where the memory
+  is at least 0.3, wear is kept at memory·LANE·0.85, so a path survives the
+  seasons and is re-walked in spring. Worn ground is kept clear of snow
+  (ground shader).
+- *Shimmer (measured, then stopped at the user's request):*
+  `scripts/shots/flicker.mjs` measures a settled camera over 48 fixed-step
+  frames (`__game.flicker`, `fixedDt`). The metric is the fraction of
+  pixels changed and "flips" (back and forth). At camp, dusk, 3× speed:
+  changed pixels 3.98% → 1.87%, flips 0.29% → about 0.40% (within noise).
+  Away from camp: 1.1% changed, unchanged. Kept changes:
+  - the fire light and flames flicker in 8 Hz steps with small depth
+    (`util.ts#calmFlicker`);
+  - flames cast no shadow;
+  - the camera arrives exactly at its zoom and yaw goal.
+
+  Isolation showed the rest is the posterised grade (dusk) and shadows
+  (morning). Options, not taken: fewer grade bands at dusk, and snapping
+  the shadow camera to texels.
+
+## 24. Proposal: the Folk as equals, and village life (for discussion)
+This covers the user's notes in §23.6 ("Life in the village", "The Folk as
+equals") and ties them to B (§23.1): growth that is symbiotic and presses
+against the uncleared districts. Nothing here is built. The questions for
+the user are in §24.7.
+
+### 24.1 The principle: two towns, one ecology
+The village and the hill each grow, and each one's growth needs something
+only the other can give. Both then need room that only cleared districts
+provide. The pressure toward clearing comes from both societies, not from a
+quota. Each grows in its own register:
+
+| | The village (by day) | The hill (by night) |
+|---|---|---|
+| Lives | on land, in the open | underground, with an ethereal topside |
+| Makes | goods, food, buildings | dew, song, works |
+| Grows by | homes, trades, tiers | chambers |
+| Needs from the other | blessing: yields, luck, weather, health | offerings, festivals, Wild land, quiet, the living's company |
+| Needs from the ruins | materials, room, ruins restored | haunts laid to rest (the dead are the Folk's business too); old places reclaimed as Wild |
+
+### 24.2 The mound as a Nunnehi townhouse
+Today `folk.level` adds a being and raises its wants, but almost nothing
+visible changes. Proposed:
+
+- **Chambers.** Each growth adds one chamber, chosen by the hill from what
+  it lacks. Chambers are drawn only as a cutaway: the same interaction as
+  a roof cutaway, but downward.
+
+  | Chamber | What it does |
+  |---|---|
+  | Hearth-hall | Where they gather; the townhouse's council fire |
+  | Sleeping bowers | Room for more of them (moves the bower underground) |
+  | Dew-cellar | Stores dew |
+  | Song-gallery | Pipers practise; adds song |
+  | Root-archive | Their memory: lore, and the names of the village's dead |
+  | Nursery | Needed for hybrid children (§24.5) |
+  | Guest-room | Where a human may stay (§24.5) |
+
+- **The topside.** On the surface stand ghostly buildings: a townhouse roof
+  of light, lodges and bridges. Without Sight they are invisible: a faint
+  shimmer, like the ghost-tree shader. With Sight or the Veil view they
+  resolve. Survivors with high Sight comment on them.
+- **Equal terms.** The hill gets its own tier ladder, as the village has
+  (§21.6). Folk works (§21.8) become the hill's "build menu" at a larger
+  scale. The mound shows its growth as the village shows its homes.
+- **Growth wants room.** Each new chamber needs more Wild land within reach
+  (`landWanted`). The nearest land is often a haunted district. A district
+  laid to rest can be given to the Wild, or to the village, and that is the
+  choice §24.4 makes meaningful.
+
+### 24.3 Blessing and curse through the mycelium
+Standing already runs from soured to kin. Proposed: a visible **mycelium
+network** grows out from the hill under the ground, drawn in the Veil view
+as faint threads, and brighter where fed. Its reach is where the hill's
+mood is felt:
+
+- **Blessed tiles** (standing friendly or kin): fields yield more, trees
+  regrow faster, illness is rarer, and weather holds for festivals. Small,
+  steady effects of about 5–15%.
+- **Cursed tiles** (standing wary or soured): milk sours, tools go missing,
+  bad dreams, crops blighted in patches. These are nuisances, not
+  disasters, and they fit the "not combat-anxious" tone.
+- **Growth of the network:** it grows along Folk paths, the Wild, moon
+  gardens and cairns, and toward places the village honours (the shrine,
+  graves). Cutting in the Wild severs it.
+- **Uncleared districts block it.** A haunt is dead ground to the
+  mycelium. Clearing one lets the network, and so the blessing, reach
+  through. This is one concrete reason to clear.
+
+### 24.4 Cleared districts become places (the user's insistence, §23.2)
+A cleared district should be as usable as the starting site. Proposal:
+
+- The tile grid and zones cover the district fully once it is cleared, so
+  it can hold plots, fields, lanes, lights and bunting.
+- When a district is cleared, a council question asks what it becomes:
+  - **resettle it** (a second hamlet: ruins restored as homes, its own
+    green);
+  - **give it to the Wild** (the hill grows toward it, the mycelium
+    spreads, and ghost buildings rise over the ruins by night);
+  - **share it** (a village street with Folk works among the gardens:
+    slower for both, with the strongest blessing).
+- Each choice is permanent enough to matter, and each feeds a different
+  growth. This is the "press against uncleared zones" loop.
+
+### 24.5 Village life
+Bonds (`Bond`, friend/close/rival) and households already exist. Additions:
+
+- **Courtship to wedding.** A close bond between two unpartnered adults can
+  become courtship: time together at evenings, walks, small gifts. After
+  some days they may marry. The wedding is an event people attend: a
+  gathering on the green, a meal, a dance, then the couple forms or merges
+  a household. They may ask for a home (the tray, §23.4).
+- **Children.** A partnered household with room and food may have a child.
+  Children grow in game-years; with 32-day years, this is roughly 1 game
+  year = 1 life year, adjustable. Children play, help at small tasks, and
+  learn know-how from those they follow (`purpose.ts`).
+- **A school.** A building from the menu once there are several children.
+  Know-how spreads faster, and a teacher role appears. Children who
+  attended start adult life with some know-how.
+- **Festivals that happen.** People walk to the green, a fire is lit, food
+  is laid out, and there is dancing in rings (reusing the Folk dance
+  motion), with music and lanterns. It lasts the evening, and work stops.
+  Festivals also host weddings and naming days.
+- **Evenings out.** The tavern, the green, and porches with benches: more
+  visible leisure (fun, beauty and purpose, §20).
+
+### 24.6 Crossing between the peoples
+Ordered from lightest to deepest, each needing more standing:
+
+1. **Guests.** One of the Folk lodges with a household for a season (at
+   friendly standing or above), bringing a small blessing to that home.
+   A human may stay in the hill's guest-room and come back changed, with
+   more Sight, a gift, and perhaps months lost to time dilation (as with
+   "taken", §19.7).
+2. **Romance.** A human and one of the Folk can form a bond: meetings at
+   rings and bowers at night, noticed by the village, with Veil events
+   around it. It can end in:
+   - a handfasting at a festival, where the human now lives in both places;
+   - the human choosing the hill (they leave the village, alive, as the
+     existing `left`, and sometimes visit at full moons);
+   - heartbreak, if standing sours.
+3. **Hybrid children** ("changelings", in the old, fond sense). They need
+   the Nursery chamber and a handfasting. They have a greater gift (Sight,
+   healing, or speaking for both towns at councils). They are rare, at most
+   one or two per village.
+
+Grief, permadeath and the Veil's uncanny tone should stay intact. Crossing
+has costs: time lost, a person who drifts away, and a hill that can take
+offence.
+
+### 24.7 Questions for the user
+1. **Order.** The proposed order is:
+   1. festivals that happen, plus the wedding/courtship chain (visible and
+      cheap, built on existing bonds and households);
+   2. the townhouse chambers and ghost topside;
+   3. the mycelium blessing and curse;
+   4. what cleared districts become;
+   5. children and a school;
+   6. crossing between the peoples.
+
+   Or should the Folk side come first?
+2. **Children's pace.** Should children grow quickly (adult in about 4–6
+   game years), or should the village mostly grow by strangers arriving,
+   with children as a slow, rare joy?
+3. **Curse strength.** Only nuisances, or can a curse really hurt (a failed
+   harvest, an illness)?
+4. **Hybrids.** Rare and special (one or two per village), or a real
+   population over time?
+5. **Topside visibility.** Invisible without Sight, or always faintly
+   visible so the player can admire it?

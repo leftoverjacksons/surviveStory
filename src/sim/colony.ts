@@ -33,6 +33,7 @@ import { rareDaily, ruinToStrip, strip } from './rare';
 import { autopilotDaily } from './autopilot';
 import { requestsDaily, type Request } from './requests';
 import { committed } from './dilemmas';
+import { crossed, syncHedges } from './hedges';
 import { chronicleDaily, type Chronicle } from './chronicle';
 import { TRADES, clothFrom, clothed, finishBatch, needComfort, needRows, needTier, pickTrade, toolFactor, tradeDemand, tradesDaily } from './trades';
 import { createHaunts, hauntDaily, heapHaunted, senseDistrict, type Clearing, type Haunt, type TakenRecord } from './haunt';
@@ -166,6 +167,8 @@ export interface Colony {
   memo?: Record<string, number>;
   /** Asks waiting in the request tray (requests.ts). */
   requests?: Request[];
+  /** Crossings of fence tiles, toward putting a gate in (hedges.ts). */
+  fenceCross?: Record<number, number>;
 }
 
 /** Has this search come up empty recently? (See `hush`.) */
@@ -356,6 +359,10 @@ function walk(col: Colony, a: Agent, dt: number): boolean {
       if ((before < PATH_WEAR && before + 1 >= PATH_WEAR) || (before < LANE_WEAR && before + 1 >= LANE_WEAR)) w.wearVersion++;
     }
     const s = survivorOf(col, a.id);
+    if (crossed(col, tile) && !col.hints.has(`gate${Math.floor(dayOf(col) / 4)}`)) {
+      col.hints.add(`gate${Math.floor(dayOf(col) / 4)}`);
+      log(col.community, `${first(s)} got tired of climbing the fence in the same place, and put a gate in.`, 'info');
+    }
     if (reveal(w, a.x, a.z, s.role === 'scout' ? 11 : 7)) checkDiscoveries(col, s);
   }
   return a.pathI >= a.path.length;
@@ -2110,6 +2117,7 @@ function daily(col: Colony) {
   knowhowDaily(col);
   aspirationsDaily(col);
   requestsDaily(col);
+  syncHedges(col);
   col.unreachable.clear();
   arrivals(col);
   rebalanceWork(col);
@@ -2197,10 +2205,19 @@ function dailyTrees(col: Colony, lastSeason: Season) {
 }
 
 function dailyWear(col: Colony) {
-  // Unused paths slowly grow back over.
-  const wear = col.world.wear;
-  for (let i = 0; i < wear.length; i++) if (wear[i] > 0) wear[i] = wear[i] < 0.5 ? 0 : wear[i] * 0.93;
-  col.world.wearVersion++;
+  // Paths people have used a while are remembered (the memory fades over a year or so),
+  // and kept trodden and cleared through the seasons; the rest slowly grow back over.
+  const w = col.world, wear = w.wear;
+  const mem = (w.pathMemory && w.pathMemory.length === wear.length) ? w.pathMemory : (w.pathMemory = new Float32Array(wear.length));
+  for (let i = 0; i < wear.length; i++) {
+    if (wear[i] <= 0 && mem[i] <= 0) continue;
+    mem[i] = Math.max(mem[i] * 0.985, Math.min(1, wear[i] / LANE_WEAR));
+    const kept = mem[i] >= 0.3 ? mem[i] * LANE_WEAR * 0.85 : 0;
+    const next = wear[i] < 0.5 ? 0 : wear[i] * 0.93;
+    wear[i] = Math.max(next, kept);
+    if (mem[i] < 0.01) mem[i] = 0;
+  }
+  w.wearVersion++;
 }
 
 /** People who stay miserable for days eventually leave. */

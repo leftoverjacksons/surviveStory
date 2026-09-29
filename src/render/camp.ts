@@ -4,7 +4,7 @@ import type { Community } from '../sim/community';
 import { bedSpot } from '../sim/sites';
 import { heightAt, type World } from '../sim/world';
 import { CLOTH } from './people';
-import { glowTexture, lambert } from './util';
+import { glowTexture, lambert, calmFlicker } from './util';
 
 /**
  * The camp around the fire: flames, bedrolls, the stockpile (logs and food
@@ -66,6 +66,8 @@ export class Camp {
     pit.add(this.fireLight);
     pit.position.set(world.campfire.x, heightAt(world, world.campfire.x, world.campfire.z), world.campfire.z);
     pit.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
+    // Not the flames: inside the fire's own light, their changing shapes threw shimmering shadows on everything near.
+    for (const f of this.flames) f.castShadow = false;
     this.group.add(pit);
 
     // Stockpile: logs stacked in a rack, food in crates.
@@ -180,15 +182,16 @@ export class Camp {
   }
 
   update(t: number, fireLit: boolean) {
-    const flick = 1 + Math.sin(t * 13) * 0.12 + Math.sin(t * 29) * 0.08 + Math.sin(t * 5.3) * 0.1;
+    // The flames dance; the light they cast barely wavers (a flickering light makes lit ground and roofs glitter).
+    const flick = calmFlicker(t, 0, 0.025);
     const lit = fireLit ? 1 : 0.25;
     this.fireLight.intensity = 9 * flick * lit;
     if (++this.shadowTick % 6 === 0) this.fireLight.shadow.needsUpdate = true;
     this.flames.forEach((f, i) => {
-      f.scale.set(lit, flick * lit * (1 + Math.sin(t * (9 + i * 3)) * 0.15), lit);
+      f.scale.set(lit, lit * calmFlicker(t, i + 1, 0.2), lit);
       f.rotation.y = t * (1 + i);
     });
     this.flameHalo.scale.setScalar(2.2 * flick * lit);
-    for (const l of this.stones.values()) l.intensity = 1.1 + Math.sin(t * 11 + l.id) * 0.2;
+    for (const l of this.stones.values()) l.intensity = 1.1 * calmFlicker(t, l.id, 0.02);
   }
 }

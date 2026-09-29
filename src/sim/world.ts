@@ -30,7 +30,7 @@ export type ZoneKind = (typeof Zone)[keyof typeof Zone];
 export const Crop = { Untilled: 0, Tilled: 1, Growing: 2, Ripe: 3 } as const;
 
 /** Footfall thresholds: worn grass becomes a path, then a lane. */
-export const PATH_WEAR = 25;
+export const PATH_WEAR = 18;
 export const LANE_WEAR = 90;
 
 export interface Tree {
@@ -108,6 +108,13 @@ export interface World {
   /** Footfall per tile; decays daily. High wear becomes paths and lanes. */
   wear: Float32Array;
   wearVersion: number;
+  /** Fences, gates and garden beds for walking (hedges.ts): 0 none, 1 fence, 2 gate, 3 bed. */
+  hedge?: Uint8Array;
+  hedgeVersion?: number;
+  /** How well each tile is remembered as a path (0..1): kept up through the seasons (colony.ts#dailyWear). */
+  pathMemory?: Float32Array;
+  /** Gates the village wore through its fences, where people kept crossing (hedges.ts). */
+  gates?: { x: number; z: number; day: number }[];
   /** Field tiles: crop state (see Crop) and growth 0..1. */
   cropState: Uint8Array;
   cropGrowth: Float32Array;
@@ -171,6 +178,9 @@ export function tileCost(w: World, tx: number, tz: number): number {
   if (g === Ground.Asphalt || g === Ground.Concrete) c = 0.8;
   else if (g === Ground.Forest) c = 1.25;
   if (w.treeAt[i] >= 0) c += 0.9; // squeezing between trunks
+  // Climbing a fence or treading a bed: people go round, or through a gate (hedges.ts).
+  const hg = w.hedge?.[i];
+  if (hg === 1 || hg === 3) c += 4;
   const wear = w.wear[i];
   if (wear >= LANE_WEAR) c *= 0.8; else if (wear >= PATH_WEAR) c *= 0.9;
   return c;

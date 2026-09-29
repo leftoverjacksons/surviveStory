@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { heightAt, type World } from '../sim/world';
-import { glowTexture, makeRand } from './util';
+import { glowTexture, makeRand, calmFlicker } from './util';
 
 const GLOW = () => glowTexture();
 
@@ -122,7 +122,7 @@ export class Wisps {
         base.z + Math.cos(ph * w.freq.z) * 1.6,
       );
       p.y = heightAt(this.world, p.x, p.z) + 1.3 + Math.sin(ph * w.freq.y) * 0.6 + base.y;
-      const flicker = 0.85 + Math.sin(ph * 9.1) * 0.08 + Math.sin(ph * 23.7) * 0.07;
+      const flicker = 0.85 * calmFlicker(ph, 0, 0.06);
       w.halo.position.copy(p);
       w.halo.scale.setScalar((0.55 + night * 0.5) * flicker);
       (w.halo.material as THREE.SpriteMaterial).opacity = glow * 0.9;

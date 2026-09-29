@@ -355,6 +355,18 @@ export const YARD: Record<YardKind, { name: string; work: number; cost: Cost }> 
 };
 
 /** Where yard features go on a plot, and in what order the household wants them. */
+/**
+ * The bench by the front wall, at the end away from the door (the door is at
+ * house-local x = -chimney * 0.2W, and house-local x runs along the plot's
+ * frontage), so it never stands in the doorway or on the steps.
+ */
+export function benchSpot(plot: Plot): { u: number; v: number } {
+  const hs = plot.house;
+  const hu = dot({ x: plot.hc.x - plot.origin.x, z: plot.hc.z - plot.origin.z }, plot.t);
+  const hv = dot({ x: plot.hc.x - plot.origin.x, z: plot.hc.z - plot.origin.z }, plot.n);
+  return { u: hu + hs.chimney * (hs.W / 2 - 0.8), v: hv - hs.D / 2 - 0.55 };
+}
+
 export function planYard(plot: Plot, traits: Set<string>): YardItem[] {
   const hs = plot.house;
   const hu = dot({ x: plot.hc.x - plot.origin.x, z: plot.hc.z - plot.origin.z }, plot.t);
@@ -376,7 +388,8 @@ export function planYard(plot: Plot, traits: Set<string>): YardItem[] {
     items.push(item('beds', (span.lo + span.hi) / 2 - side * 0.6, yardV0 + 1.3, bw, 2.4));
   }
   items.push(item('woodpile', hu + side * (hs.W / 2 + 0.7), hv - hs.D * 0.1, 0.8, Math.min(2.2, hs.D * 0.5)));
-  items.push(item('bench', hu - hs.chimney * hs.W * 0.28, hv - hs.D / 2 - 0.55, 1.2, 0.4));
+  const b = benchSpot(plot);
+  items.push(item('bench', b.u, b.v, 1.2, 0.4));
   items.push(item('fence', 0, 0, 0, 0));
   if (yardV1 - yardV0 > 4) {
     const span = widthAt(yardV1 - 1.2);

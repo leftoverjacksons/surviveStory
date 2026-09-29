@@ -4,6 +4,8 @@ import { fieldOfTile, perimeter, pointInPolygon, type FieldPlot } from '../sim/f
 import { box, cyl, mat } from './kit';
 import { PIXEL, enhance, makeRand } from './util';
 import { mergeStatic } from './merge';
+import { gateNear } from '../sim/hedges';
+import { gateMesh, gatesOn } from './plots';
 
 function furrowTexture(): THREE.Texture {
   const size = 64;
@@ -53,7 +55,7 @@ export class FieldsView {
   /** Rebuild when fields change, at most about once a second. */
   sync(now = Infinity) {
     const w = this.world;
-    const key = `${w.zoneVersion}:${w.cropVersion}:${w.fields.map((f) => Math.floor(f.fence * 24)).join(',')}`;
+    const key = `${w.zoneVersion}:${w.cropVersion}:${w.fields.map((f) => Math.floor(f.fence * 24)).join(',')}:${w.gates?.length ?? 0}`;
     if (key === this.key) return;
     if (now - this.lastBuild < 1 && w.zoneVersion === this.tilesVersion) return;
     this.lastBuild = now;
@@ -252,11 +254,12 @@ function fieldFence(w: World, f: FieldPlot): THREE.Group {
       const d = (run * k) / n;
       if (Math.abs(d - gateAt) < 0.7) continue;
       const x = a.x + dx * d, z = a.z + dz * d, y = heightAt(w, x, z);
-      g.add(cyl(0.06, 0.95, post, x, y + 0.45, z, 5));
+      if (!gateNear(w, x, z, 0.75)) g.add(cyl(0.06, 0.95, post, x, y + 0.45, z, 5));
       if (k < n) {
         const d2 = (run * (k + 1)) / n;
         if (Math.abs((d + d2) / 2 - gateAt) < 0.7 + (d2 - d) / 2) continue;
         const mx = a.x + dx * (d + d2) / 2, mz = a.z + dz * (d + d2) / 2;
+        if (gateNear(w, mx, mz, 0.8)) continue; // a gate the village wore through
         const my = heightAt(w, mx, mz);
         for (const h of [0.45, 0.8]) {
           const r = box(0.05, 0.06, d2 - d, rail, mx, my + h + (rand() - 0.5) * 0.04, mz);
@@ -277,5 +280,6 @@ function fieldFence(w: World, f: FieldPlot): THREE.Group {
       g.add(gate);
     }
   }
+  for (const gt of gatesOn(w, [...f.pts, f.pts[0]])) g.add(gateMesh(w, gt.x, gt.z, gt.yaw));
   return g;
 }

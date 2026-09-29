@@ -104,6 +104,17 @@ export function shadowed<T extends THREE.Object3D>(o: T, cast = true, receive = 
   return o;
 }
 
+/**
+ * A calm flicker for firelight and candles (DESIGN §23.7): slow, small, and
+ * stepped at 8 updates a second, the cadence pixel art animates at. Fast,
+ * deep flicker made the lit ground and roofs glitter at pixel resolution
+ * (every change of light shifts the grade's brightness bands). ~1 ± `depth`.
+ */
+export function calmFlicker(t: number, seed = 0, depth = 0.06): number {
+  const s = Math.floor(t * 8) / 8 + seed * 7.13;
+  return 1 + depth * (Math.sin(s * 1.3) * 0.6 + Math.sin(s * 2.9 + 1.7) * 0.4);
+}
+
 /** Shared uniforms injected into world materials. */
 export const worldUniforms = {
   uTime: { value: 0 },
@@ -441,6 +452,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
         `#include <color_fragment>
         {
           float snowK = uSnow * smoothstep(0.35, 0.8, vUp) * (0.85 + 0.15 * vHash);
+          ${season === 'ground' ? '// Paths people keep are kept clear of snow (DESIGN §23.7).\n          snowK *= 1.0 - 0.8 * smoothstep(0.2, 0.6, texture2D(uWearTex, (vWP.xz + uFogSize * 0.5) / uFogSize).r);' : ''}
           ${SEASON_GLSL[season]}
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.94, 0.98), snowK);
           ${shade > 0 ? 'diffuseColor.rgb *= mix(0.7, 1.1, vShade * vShade * (3.0 - 2.0 * vShade));' : ''}

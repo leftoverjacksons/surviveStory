@@ -990,10 +990,13 @@ document.getElementById('game-btn')!.addEventListener('click', async () => {
   location.search = q.toString();
 });
 
+/** Measurement: a fixed frame step (seconds), with adaptive quality held (see flicker). */
+let fixedDt: number | null = null;
 function frame() {
-  const dt = Math.min(clock.getDelta(), 0.1);
+  const real = Math.min(clock.getDelta(), 0.1);
+  const dt = fixedDt ?? real;
   t += dt;
-  adaptQuality(dt);
+  if (fixedDt === null) adaptQuality(dt);
 
   // Simulation.
   renderer.info.reset();
@@ -1104,6 +1107,7 @@ function frame() {
   syncXray();
   const tDraw = performance.now();
   composer.render();
+  if (afterDraw) { const f = afterDraw; afterDraw = null; f(); }
   perf.draw += (performance.now() - tDraw - perf.draw) * 0.05;
   perf.calls = renderer.info.render.calls;
   perf.triangles = renderer.info.render.triangles;
@@ -1146,6 +1150,70 @@ requestAnimationFrame(() => {
 });
 
 // Exposed for automated checks and debugging.
+/** A one-shot callback run right after the next frame is drawn (the canvas is still readable). */
+let afterDraw: (() => void) | null = null;
+
+/**
+ * Shimmer metric (DESIGN §23.7): step game time as play does, render each
+ * frame, and compare consecutive frames of the finished image, with wind and
+ * moving things (people, animals, wisps) held still. `changed`: share of
+ * pixels whose brightness moved by more than 6/255; `flips`: share whose
+ * change reversed direction from one frame to the next (glitter).
+ */
+async function flicker(frames = 24, minutesPerFrame = 2 / 30, opts: { shadows?: boolean; grade?: boolean; map?: boolean } = {}) {
+  const was = { shadows: renderer.shadowMap.enabled, grade: grade.enabled };
+  if (opts.shadows !== undefined) renderer.shadowMap.enabled = opts.shadows;
+  if (opts.grade !== undefined) grade.enabled = opts.grade;
+  const wind = worldUniforms.uWind.value;
+  worldUniforms.uWind.value = 0;
+  fixedDt = 1 / 30; // as if running at 30 fps, however slowly this browser draws
+  t = 1000; // the same animation phase every time, so runs compare
+  const hidden = scene.children.filter((o) => ['people', 'herds'].includes(o.name) || (o as THREE.Points).isPoints || o === wisps.group);
+  for (const o of hidden) o.visible = false;
+  const gl = renderer.getContext();
+  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+  const buf = new Uint8Array(w * h * 4);
+  let prev: Float32Array | null = null, prevD: Float32Array | null = null;
+  let changed = 0, flips = 0, n = 0;
+  const heat = new Uint16Array(w * h);
+  for (let f = 0; f < frames; f++) {
+    tick(colony, minutesPerFrame);
+    await new Promise<void>((res) => { afterDraw = () => { gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf); res(); }; });
+    const lum = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) lum[i] = 0.3 * buf[i * 4] + 0.59 * buf[i * 4 + 1] + 0.11 * buf[i * 4 + 2];
+    if (prev) {
+      const d = new Float32Array(w * h);
+      let c = 0, fl = 0;
+      for (let i = 0; i < w * h; i++) {
+        d[i] = lum[i] - prev[i];
+        if (Math.abs(d[i]) > 6) c++;
+        if (prevD && Math.abs(d[i]) > 6 && Math.abs(prevD[i]) > 6 && Math.sign(d[i]) !== Math.sign(prevD[i])) { fl++; heat[i]++; }
+      }
+      changed += c / (w * h); if (prevD) { flips += fl / (w * h); n++; }
+      prevD = d;
+    }
+    prev = lum;
+  }
+  worldUniforms.uWind.value = wind;
+  for (const o of hidden) o.visible = true;
+  renderer.shadowMap.enabled = was.shadows; grade.enabled = was.grade;
+  fixedDt = null;
+  let map: string | undefined;
+  if (opts.map) {
+    // Where it flickers: white on the frame's own dimmed image (rows flipped: GL reads bottom-up).
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+    const cx = cv.getContext('2d')!, img = cx.createImageData(w, h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (h - 1 - y) * w + x, o = (y * w + x) * 4, v = Math.min(255, heat[i] * 60);
+      const base = (prev?.[i] ?? 0) * 0.35;
+      img.data[o] = Math.max(base, v); img.data[o + 1] = Math.max(base, v * 0.4); img.data[o + 2] = base; img.data[o + 3] = 255;
+    }
+    cx.putImageData(img, 0, 0);
+    map = cv.toDataURL('image/png');
+  }
+  return { changed: changed / Math.max(1, frames - 1), flips: flips / Math.max(1, n), pixels: w * h, map };
+}
+
 /** Frame statistics for profiling (see __game.stats). */
 const perf = { sim: 0, draw: 0, calls: 0, triangles: 0 };
 function stats() {
@@ -1229,7 +1297,7 @@ const veilDebug = {
     return toScreen(x, heightAt(world, x, z) + 1.1, z);
   },
 };
-Object.assign(window, { __game: { ...veilDebug, stats, addModel, setWoods, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
+Object.assign(window, { __game: { ...veilDebug, stats, addModel, setWoods, flicker, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
   place: (k: PlaceKind, x: number, z: number, turn = 0) => { const { foot, facing } = footAt(k, toTileX(world, x), toTileZ(world, z), turn); return placeProject(world, colony.village, community, k, foot, facing); },
   folkOrder: (k: never, x: number, z: number) => orderFolkWork(colony, k, x, z), folkWhy: (x: number, z: number) => whyNotFolkWork(colony, x, z),
   save: () => saveNow('manual'),

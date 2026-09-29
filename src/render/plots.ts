@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three';
 import { houseFloor, housePoint, plotFence, plotPoint, type Plot, type YardItem } from '../sim/homes';
+import { gateNear } from '../sim/hedges';
 import type { Village } from '../sim/buildings';
 import { footCenter } from '../sim/buildings';
 import { heightAt, idx, inBounds, toTileX, toTileZ, type World } from '../sim/world';
@@ -20,6 +21,51 @@ function place(world: World, plot: Plot, o: THREE.Object3D, u: number, v: number
   o.position.set(p.x, heightAt(world, p.x, p.z), p.z);
   // Local +z maps onto n: yaw = atan2(n.x, n.z).
   o.rotation.y = Math.atan2(plot.n.x, plot.n.z);
+}
+
+/**
+ * A gate the village wore through a fence (DESIGN §23.7): two taller posts,
+ * a crossbar or (for some) a little arch with a climber, and a gate left ajar.
+ * `yaw` runs along the fence.
+ */
+export function gateMesh(world: World, x: number, z: number, yaw: number): THREE.Group {
+  const g = new THREE.Group();
+  const h = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
+  const wood = mat('#6b4f33'), light = mat('#8a6a44');
+  for (const s of [-1, 1]) g.add(cyl(0.06, 1.25, wood, s * 0.55, 0.62, 0, 5));
+  if (h < 0.45) {
+    // An arch, and something climbing it.
+    for (let k = 0; k <= 6; k++) {
+      const a = Math.PI * (k / 6);
+      g.add(box(0.07, 0.07, 0.07, light, Math.cos(a) * 0.55, 1.25 + Math.sin(a) * 0.35, 0));
+    }
+    const leaf = mat(h < 0.2 ? '#6f8f45' : '#8a6aa0');
+    for (let k = 0; k < 5; k++) g.add(box(0.14, 0.1, 0.1, leaf, (k / 4 - 0.5) * 1.0, 1.3 + Math.sin(Math.PI * k / 4) * 0.3, 0.02));
+  } else g.add(box(1.2, 0.07, 0.07, light, 0, 1.2, 0));
+  // The gate itself, left a little open.
+  const leafG = new THREE.Group();
+  leafG.add(box(0.5, 0.06, 0.04, light, 0.25, 0.3, 0), box(0.5, 0.06, 0.04, light, 0.25, 0.7, 0), box(0.05, 0.5, 0.04, light, 0.45, 0.5, 0));
+  leafG.position.set(-0.5, 0, 0);
+  leafG.rotation.y = -0.7;
+  g.add(leafG);
+  g.position.set(x, heightAt(world, x, z), z);
+  g.rotation.y = yaw + Math.PI / 2;
+  return g;
+}
+
+/** Gates on a polyline (within reach of a segment), with the segment's direction. */
+export function gatesOn(world: World, path: { x: number; z: number }[]): { x: number; z: number; yaw: number }[] {
+  const out: { x: number; z: number; yaw: number }[] = [];
+  for (const gt of world.gates ?? []) {
+    for (let k = 0; k + 1 < path.length; k++) {
+      const a = path[k], b = path[k + 1];
+      const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+      const t = Math.max(0, Math.min(1, ((gt.x - a.x) * (b.x - a.x) + (gt.z - a.z) * (b.z - a.z)) / (len * len)));
+      const px = a.x + (b.x - a.x) * t, pz = a.z + (b.z - a.z) * t;
+      if (Math.hypot(px - gt.x, pz - gt.z) < 0.8) { out.push({ x: px, z: pz, yaw: Math.atan2(b.x - a.x, b.z - a.z) }); break; }
+    }
+  }
+  return out;
 }
 
 function fence(world: World, plot: Plot, progress: number, seed: number): THREE.Group {
@@ -41,10 +87,11 @@ function fence(world: World, plot: Plot, progress: number, seed: number): THREE.
     for (let i = 0; i <= n; i++) {
       const x = a.x + dx * (len * i) / n, z = a.z + dz * (len * i) / n;
       const y = heightAt(world, x, z);
-      g.add(cyl(0.05, 0.85 + rand() * 0.1, i % 2 ? wood : dark, x, y + 0.43, z, 5));
+      if (!gateNear(world, x, z, 0.75)) g.add(cyl(0.05, 0.85 + rand() * 0.1, i % 2 ? wood : dark, x, y + 0.43, z, 5));
       if (i < n) {
-        // A woven panel between posts.
+        // A woven panel between posts (not across a gate).
         const mx = a.x + dx * (len * (i + 0.5)) / n, mz = a.z + dz * (len * (i + 0.5)) / n;
+        if (gateNear(world, mx, mz, 0.8)) continue;
         const panel = box(0.06, 0.5, len / n - 0.08, weave, mx, heightAt(world, mx, mz) + 0.4, mz);
         panel.rotation.y = yaw;
         panel.rotation.z = (rand() - 0.5) * 0.06;
@@ -52,6 +99,7 @@ function fence(world: World, plot: Plot, progress: number, seed: number): THREE.
       }
     }
   }
+  for (const gt of gatesOn(world, path)) g.add(gateMesh(world, gt.x, gt.z, gt.yaw));
   return g;
 }
 
@@ -473,7 +521,7 @@ export class PlotsView {
       const fp = fenceItem?.progress ?? 0;
       const fid = `f${plot.id}`;
       live.add(fid);
-      this.upsert(fid, `${Math.floor(fp * 20)}`, () => {
+      this.upsert(fid, `${Math.floor(fp * 20)}:${this.world.gates?.length ?? 0}`, () => {
         const g = new THREE.Group();
         g.userData.plotId = plot.id;
         if (fp < 1) g.add(stakes(this.world, plot));

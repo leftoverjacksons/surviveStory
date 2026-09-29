@@ -12,6 +12,7 @@
  * can't fill in; older saves are then refused rather than half-loaded.
  */
 import type { Colony } from './colony';
+import { benchSpot } from './homes';
 
 export const SAVE_VERSION = 1;
 
@@ -53,4 +54,6 @@ function migrate(col: Colony) {
   col.folk.song ??= 0;
   col.community.logCount ??= col.community.log.length;
   col.requests ??= [];
+  // Benches were once set in front of the door (DESIGN §23.7): move them along the wall.
+  for (const p of col.village.plots) for (const y of p.yard) if (y.kind === 'bench') Object.assign(y, benchSpot(p));
 }

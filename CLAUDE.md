@@ -181,6 +181,10 @@ reference: Tiny Glade.
     gardens/fences + auto gates, desire paths, move/deconstruct, living festivals, relationships and
     Folk romance/hybrids, blessing/curse, the mound as an underground Nunnehi townhouse). Next steps
     being agreed with the user.
+  - FIXES AFTER v28 §23.7 BUILT (bench clear of door; `sim/hedges.ts`: fences/beds cost to cross, desire
+    gates and arches; remembered snow-free desire paths; calm fire flicker; `scripts/shots/flicker.mjs`).
+    Shimmer chase stopped at the user's request. NOT published. Next: design proposal §24 (Folk as equals +
+    village life), then move/deconstruct, staging (A), B.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

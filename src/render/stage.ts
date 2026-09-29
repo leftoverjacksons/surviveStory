@@ -189,6 +189,10 @@ export class IsoCamera {
     const k = 1 - Math.exp(-dt * 8);
     this.yaw += (this.yawGoal - this.yaw) * k;
     this.zoom += (this.zoomGoal - this.zoom) * k;
+    // Arrive exactly, instead of creeping by fractions of a pixel for a second more:
+    // any continuous change of scale or angle re-samples every texture (glitter).
+    if (Math.abs(this.zoomGoal - this.zoom) < 0.002 * this.zoomGoal) this.zoom = this.zoomGoal;
+    if (Math.abs(this.yawGoal - this.yaw) < 0.0015) this.yaw = this.yawGoal;
     const c = this.camera;
     const horiz = Math.cos(ISO_PITCH) * this.distance;
     c.position.set(
