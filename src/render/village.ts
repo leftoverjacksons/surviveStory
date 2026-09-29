@@ -589,8 +589,15 @@ function localBeds(kind: string, tier: number): { x: number; z: number }[] {
 }
 
 /** The hall: a long table down the middle of the old shelter, with benches both sides. */
-function hallSeats(site: Site): Slot[] {
-  const T = site.hallTable;
+function hallSeats(site: Site): Slot[] { return tableSeats(site.hallTable); }
+
+/** A built commons hall (DESIGN §29): the long table runs down its length. */
+function builtHallTable(world: World, b: Building): Site['hallTable'] {
+  const c = footCenter(world, b.foot);
+  return { x: c.x, z: c.z, len: Math.max(b.foot.w, b.foot.d) - 2, axis: b.foot.w >= b.foot.d ? 'x' : 'z' };
+}
+
+function tableSeats(T: Site['hallTable']): Slot[] {
   const out: Slot[] = [];
   const n = Math.max(2, Math.floor((T.len - 0.6) / 0.78) + 1);
   for (let i = 0; i < n; i++) for (const s of [-1, 1]) {
@@ -632,8 +639,8 @@ export function bedSlot(world: World, village: Village, b: Building, index: numb
 
 /** Where someone sits indoors (eating, or spending the evening): seat `index`. */
 export function seatSlot(world: World, village: Village, b: Building, index: number): Slot | null {
-  void world;
   if (b.kind === 'store') { const seats = hallSeats(village.site); return seats[index % seats.length]; }
+  if (b.kind === 'hall') { const seats = tableSeats(builtHallTable(world, b)); return seats[index % seats.length]; }
   if (b.kind === 'home') {
     const plot = village.plots.find((x) => x.id === b.plot);
     if (!plot) return null;
@@ -693,7 +700,7 @@ export class VillageView {
       case 'cellar': g = cellarMesh(W + 0.2, D + 0.2, tier, p); break;
       case 'dome': g = domeMesh(W + 0.2, D + 0.2, p, growth, (f.tx * 7349 + f.tz * 131) >>> 0); break;
       case 'shrine': g = shrineMesh(W, D, tier, p, seed, glow); break;
-      case 'toolshop': case 'tailor': case 'smokehouse': case 'tavern': g = tradeMesh(kind, W, D, tier, p, (f.tx * 7349 + f.tz * 131) >>> 0, clad, glow); break; // same look as a site and when finished
+      case 'toolshop': case 'tailor': case 'smokehouse': case 'tavern': case 'hall': g = tradeMesh(kind, W, D, tier, p, (f.tx * 7349 + f.tz * 131) >>> 0, clad, glow); break; // same look as a site and when finished
       case 'annex': g = leanTo(W + 0.3, D + 0.3, p, glow); break;
       case 'windmill': g = windmillMesh(p, seed); break;
       case 'solar': g = solarMesh(W, D, p); break;
@@ -820,9 +827,16 @@ export class VillageView {
     const v = this.village;
     const live = new Set<string>();
     const st = v.buildings.find((b) => b.kind === 'store')!;
+    // Pulled down (DESIGN §29): nothing of it is drawn (main.ts hides the site's own meshes).
+    if (st.gone) {
+      this.store.fallen.visible = false;
+      if (this.roofDone) { this.group.remove(this.roofDone); this.roofDone = null; }
+      if (this.storeInterior) { this.group.remove(this.storeInterior); this.storeInterior = null; }
+      this.storeInteriorKey = 'gone';
+    }
     this.store.door.material = mat(st.level >= 1 ? '#6b4f33' : '#141816', false);
-    this.store.fallen.visible = st.level < 2 && this.roofs.mode === 'shown';
-    if (st.level >= 2 && !this.roofDone) {
+    this.store.fallen.visible = st.level < 2 && this.roofs.mode === 'shown' && !st.gone;
+    if (st.level >= 2 && !this.roofDone && !st.gone) {
       this.roofDone = roofPatch(this.village.site, 1);
       this.roofDone.userData.roofGroup = true;
       mergeStatic(this.roofDone);
@@ -832,7 +846,7 @@ export class VillageView {
     // Inside the shelter: junk before it's cleared, cots after, a long table once it's the hall.
     const site = this.village.site;
     const S = site.shelter;
-    const ikey = `${st.level}:${st.beds}`;
+    const ikey = st.gone ? 'gone' : `${st.level}:${st.beds}`;
     const hall = st.level >= 3;
     if (ikey !== this.storeInteriorKey) {
       this.storeInteriorKey = ikey;
@@ -908,7 +922,7 @@ export class VillageView {
       // An upgrade in progress keeps the old building standing until it's done.
       const id = `b${b.id}`;
       live.add(id);
-      const key = `${b.kind}${b.tier}:${Math.round(b.growth * 5)}`;
+      const key = `${b.kind}${b.tier}:${Math.round(b.growth * 5)}${b.kind === 'kitchen' && !v.site.kitchenCovered ? ':open' : ''}`;
       this.upsert(id, key, (glow) => {
         const g = this.meshFor(b.kind, b.tier, b.foot, b.facing, 1, b.growth, b.id, glow, b.clad);
         g.userData.buildingId = b.id;
@@ -990,7 +1004,7 @@ export class VillageView {
     const dt = t - this.lastSpin; this.lastSpin = t;
     for (const s of this.spinners) s.rotation.z -= (s.userData.spin as number) * Math.min(0.1, Math.max(0, dt));
     const st = this.village.buildings.find((b) => b.kind === 'store')!;
-    for (const m of this.store.glow) m.visible = lit && occupied.has(st.id);
+    for (const m of this.store.glow) m.visible = lit && occupied.has(st.id) && !st.gone;
     for (const b of this.village.buildings) {
       const e = this.entries.get(`b${b.id}`);
       if (!e) continue;

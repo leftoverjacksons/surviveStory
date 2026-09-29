@@ -4,7 +4,7 @@ import {
   dayOfSeason, daysToFullMoon, daysUntilWinter, isFullMoon, seasonOf, yearOf, DAYS_PER_SEASON, SEASON_NAMES, WEATHER_NAMES,
 } from '../sim/calendar';
 import { powerDemand, powerSupply } from '../sim/power';
-import { placeKindOf, whyNotCancel, whyNotTakeDown } from '../sim/dismantle';
+import { homeImprove, improveHome, placeKindOf, repairShelter, shelterRepair, whyNotCancel, whyNotTakeDown } from '../sim/dismantle';
 import { nextGathering } from '../sim/gatherings';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
@@ -190,6 +190,11 @@ export class Hud {
       if (go && !go.disabled) act.onClear(Number(go.dataset.clear), [...this.team], this.fae ?? undefined);
       const give = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-give]');
       if (give) act.onGive(Number(give.dataset.district), give.dataset.give as 'village' | 'folk' | 'shared');
+      const rp = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-repair]');
+      if (rp && !rp.disabled) {
+        const b = this.col.village.buildings.find((x) => x.id === Number(rp.dataset.repair));
+        if (b) { if (b.kind === 'store') repairShelter(this.col); else improveHome(this.col, b); this.renderInspect(); }
+      }
       // Taking down, moving, calling off: a second click confirms (no browser dialogs in the artifact frame).
       const tk = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-takedown]');
       if (tk && !tk.disabled) {
@@ -517,7 +522,7 @@ export class Hud {
         facts.push(['Caught this year', `${Math.round(col.ledger.fishing ?? 0)} food`]);
       }
       if (b.kind === 'store') {
-        facts.push(['State', ['Derelict', 'Cleared', 'Roof patched', 'Hall'][b.level] ?? '']);
+        facts.push(['State', b.gone ? 'Pulled down; the stores are kept at the stockpile' : ['Derelict', 'Cleared', 'Roof patched', 'Hall'][b.level] ?? '']);
         facts.push(['This place', col.village.site.perk]);
         // What the scrap pile actually is, and where it came from.
         const byMat = new Map<string, { n: number; from: Map<string, number> }>();
@@ -597,10 +602,18 @@ export class Hud {
     }
     const whyDown = whyNotTakeDown(this.col, b, false);
     const whyMove = whyNotTakeDown(this.col, b, true) ?? (placeKindOf(b) || b.kind === 'home' ? null : 'This can\'t be placed again.');
-    if (whyDown === 'The shelter the village started from stays.') return '';
     const lived = b.kind === 'home' && this.col.village.households.some((h) => h.home === b.id);
+    // Repair (DESIGN §29): the found shelter's next step, or a home's next improvement.
+    const fix = b.kind === 'store' ? shelterRepair(this.col) : homeImprove(this.col, b);
+    const repair = fix ? `<button type="button" data-repair="${b.id}" ${fix.why ? `disabled title="${esc(fix.why)}"` : `title="${esc(fix.tip)}"`}>${esc(fix.label)}</button>` : '';
+    if (b.kind === 'store') {
+      if (b.gone) return '';
+      return `<div class="row" style="margin-top:8px">${repair}
+        ${btn('down', 'Pull down', 'Click again: pull it down', whyDown, `A long job: builders pull ${this.col.village.site.shelterName} down for a great deal of salvage, and its ground is freed. The stores are kept at the stockpile after.`)}
+        ${btn('move', 'Move (new hall)', 'Click again: pull down, raise a hall', whyMove, 'Pull it down, and place a commons hall wherever you like: the village eats and gathers there instead.')}</div>`;
+    }
     const old = b.ruin !== undefined;
-    return `<div class="row" style="margin-top:8px">${btn('down', old ? 'Pull down' : 'Take down', old ? 'Click again: pull it down' : 'Click again: take it down', whyDown,
+    return `<div class="row" style="margin-top:8px">${repair}${btn('down', old ? 'Pull down' : 'Take down', old ? 'Click again: pull it down' : 'Click again: take it down', whyDown,
       old ? 'Builders pull it down for the salvage in its walls; the ground is freed.' : `Builders dismantle it; half of what it was made of comes back.${lived ? ' The family waits first in line for a new plot.' : ''}`)}
       ${old ? '' : btn('move', 'Move', 'Click again: move it', whyMove, b.kind === 'home' ? 'Builders take it apart and keep every piece; draw the family a new plot and it goes up there.' : 'Builders take it apart and keep every piece; then place it again wherever you like.')}</div>`;
   }

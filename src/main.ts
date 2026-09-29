@@ -43,7 +43,7 @@ import { MyceliumView } from './render/mycelium';
 import { myceliumDaily } from './sim/mycelium';
 import { powered, whyLocked } from './sim/power';
 import { markHeap, razeRuin, razeYield, whyNotRaze } from './sim/salvage';
-import { cancelProject, keepStanding, placeKindOf, takeDown } from './sim/dismantle';
+import { cancelProject, keepStanding, placeKindOf, pullDownShelter, takeDown } from './sim/dismantle';
 import { markDepave } from './sim/depave';
 import { TownhouseView } from './render/townhouse';
 import { GatheringView } from './render/gathering';
@@ -157,6 +157,11 @@ for (const r of station.roofs) if (r !== station.store.fallen) roofs.addRoof(r);
 roofs.addRoof(vines.roofs);
 for (const m of station.cutMaterials) roofs.addCutMaterial(m);
 roofs.addCutMaterial(vines.walls.material as THREE.Material);
+/** The found shelter pulled down (DESIGN §29): the site's old buildings leave the scene. */
+const siteGone = () => !!colony.village.buildings.find((b) => b.kind === 'store')?.gone;
+function syncSiteGone() {
+  if (siteGone() && station.group.parent) scene.remove(station.group, vines.walls, vines.roofs);
+}
 const trees = new TreeField(world);
 trees.group.name = 'trees';
 scene.add(trees.group);
@@ -247,6 +252,7 @@ function syncScene() {
   people.sync(community.survivors, colony.agents);
   camp.sync(community, colony.items, colony.beds);
   villageView.sync();
+  syncSiteGone();
   plotsView.sync(seasonIndex(colony.community.day));
   heaps.sync();
   fields.sync();
@@ -1011,7 +1017,7 @@ canvas.addEventListener('pointerup', (e) => {
     if (d) { hud.inspect({ district: d.id }); return; }
   }
   // Not a person: a building?
-  const bh = raycaster.intersectObjects([villageView.group, plotsView.group, station.group], true)[0];
+  const bh = raycaster.intersectObjects(siteGone() ? [villageView.group, plotsView.group] : [villageView.group, plotsView.group, station.group], true)[0];
   let q: THREE.Object3D | null = bh?.object ?? null;
   while (q && q.userData.buildingId === undefined && q.userData.projectId === undefined && q.userData.plotId === undefined) q = q.parent;
   if (q?.userData.plotId !== undefined) {
@@ -1028,7 +1034,7 @@ canvas.addEventListener('pointerup', (e) => {
     const S = world.site.shelter, K = world.site.kitchen;
     const st = colony.village.buildings.find((b) => b.kind === 'store')!;
     const kitchen = colony.village.buildings.find((b) => b.kind === 'kitchen');
-    if (Math.abs(p.x - S.x) < S.w / 2 + 0.4 && Math.abs(p.z - S.z) < S.d / 2 + 0.6) { hud.inspect({ building: st.id }); return; }
+    if (!st.gone && Math.abs(p.x - S.x) < S.w / 2 + 0.4 && Math.abs(p.z - S.z) < S.d / 2 + 0.6) { hud.inspect({ building: st.id }); return; }
     if (kitchen && Math.abs(p.x - K.x) < 5.6 && Math.abs(p.z - K.z) < 3.6) { hud.inspect({ building: kitchen.id }); return; }
   }
   hud.inspect(null);
@@ -1265,6 +1271,7 @@ function frame() {
     people.sync(community.survivors, colony.agents);
     camp.sync(community, colony.items, colony.beds);
     villageView.sync();
+    syncSiteGone();
     plotsView.sync(seasonIndex(colony.community.day));
     heaps.sync();
     fields.sync(t);
@@ -1424,6 +1431,25 @@ const veilDebug = {
     return r;
   },
   /** Clear the nearest district with a house, restore the house and finish it (DESIGN §24.16). Returns the ruin. */
+  /** Pull the found shelter down at once, and (with a point) raise a commons hall near it, built (DESIGN §29). */
+  pullDown(x?: number, z?: number) {
+    const st = colony.village.buildings.find((b) => b.kind === 'store')!;
+    if (!st.gone) pullDownShelter(colony, st);
+    if (x !== undefined && z !== undefined) {
+      const w = world, v = colony.village;
+      for (let r = 0; r < 14; r++) for (let a = 0; a < 16; a++) {
+        const { foot, facing } = footAt('hall', toTileX(w, x + Math.cos(a) * r), toTileZ(w, z + Math.sin(a) * r), 0);
+        if (!canPlace(w, v, 'hall', foot).ok) continue;
+        const p = placeProject(w, v, community, 'hall', foot, facing);
+        if (typeof p === 'string') continue;
+        completeProject(w, v, community, p);
+        syncScene();
+        return p.foot;
+      }
+    }
+    syncScene();
+    return null;
+  },
   /** Light a hamlet fire beside a point, built at once (DESIGN §28). Returns where, or null. */
   hamlet(x: number, z: number) {
     const w = world, v = colony.village;

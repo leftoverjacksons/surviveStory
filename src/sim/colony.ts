@@ -15,8 +15,7 @@ import {
 } from './calendar';
 import {
   assignBeds, bedsTotal, completeProject, heatNeed, storageCapacity, STORE_PER_HEAD, createVillage, footCenter, hasBuilt, materialsReady,
-  outstanding, plan, store, MAX_ACTIVE, newProject, GARDEN_YIELD, MATERIALS, type Building, type Material, type Project, type Village,
-} from './buildings';
+  outstanding, plan, store, MAX_ACTIVE, newProject, GARDEN_YIELD, MATERIALS, type Building, type Material, type Project, type Village, hallOf } from './buildings';
 import {
   SITE_CREW, YARD, homeComfort, homeOf, householdName, householdOf, householdsDaily, onHomeBuilt, planHome, plotPoint,
   type Plot,
@@ -864,20 +863,20 @@ function goInside(a: Agent, b: Building) {
 }
 
 const plotById = (col: Colony, id: number | undefined) => col.village.plots.find((p) => p.id === id);
-const hallOpen = (col: Colony) => store(col.village).level >= 3;
+const hallOpen = (col: Colony) => !!hallOf(col.village);
 
 /** Where to eat: supper at home for those who have one, else the hall, the kitchen, or the fire. */
 function mealPlace(col: Colony, a: Agent, s: Survivor): { place: MealPlace; building: number; spot: Point } {
   const v = col.village;
   const h = hourOf(col);
   const home = homeOf(v, s.id);
-  const st = store(v);
   const supper = h >= 16 || h < 9;
   if (home && (supper || habit(col, s.id) < 30)) {
     const sociable = s.traits.includes('storyteller') || a.needs.social < 35;
     if (!(hallOpen(col) && sociable && habit(col, s.id + 7) < 50)) return { place: 'home', building: home.id, spot: home.door };
   }
-  if (hallOpen(col) && supper) return { place: 'hall', building: st.id, spot: st.door };
+  const hall = hallOf(v);
+  if (hall && supper) return { place: 'hall', building: hall.id, spot: hall.door };
   // Fishers out at the pond eat smoked fish by the hut rather than walk home.
   if (s.role === 'fisher') {
     for (const f of v.fisheries) {
@@ -916,8 +915,8 @@ function eveningPlace(col: Colony, a: Agent, s: Survivor): { place: 'fire' | 'ho
   // The tavern: most evenings, for whoever isn't home with their own.
   const tavern = v.buildings.find((b) => b.kind === 'tavern');
   if (tavern && habit(col, s.id * 11 + 5) < 55) return { place: 'tavern', building: tavern.id, spot: tavern.door };
-  const st = store(v);
-  if (hallOpen(col) && (season === 'winter' || col.weather === 'rain' || col.weather === 'snow')) return { place: 'hall', building: st.id, spot: st.door };
+  const hall = hallOf(v);
+  if (hall && (season === 'winter' || col.weather === 'rain' || col.weather === 'snow')) return { place: 'hall', building: hall.id, spot: hall.door };
   return { place: 'fire', building: 0, spot: seatOf(col, a) };
 }
 
@@ -950,7 +949,7 @@ function pickDismantle(col: Colony, a: Agent): Task | null {
   for (const t of col.village.takedowns ?? []) {
     const b = buildingById(col, t.building);
     if (!b) continue;
-    if (col.agents.filter((o) => o !== a && o.task?.kind === 'dismantle' && o.task.building === b.id).length >= 2) continue;
+    if (col.agents.filter((o) => o !== a && o.task?.kind === 'dismantle' && o.task.building === b.id).length >= (b.kind === 'store' ? 4 : 2)) continue;
     if (setDest(col, a, b.door.x, b.door.z, true)) return { kind: 'dismantle', building: b.id, stage: 'go' };
   }
   return null;
@@ -1086,8 +1085,8 @@ function pickLeisure(col: Colony, a: Agent, s: Survivor): Task | null {
       }
     }
   }
-  const st = store(col.village);
-  const spot = hallOpen(col) && (season === 'winter' || col.weather === 'rain') ? st.door : seatOf(col, a);
+  const hall = hallOf(col.village);
+  const spot = hall && (season === 'winter' || col.weather === 'rain') ? hall.door : seatOf(col, a);
   return setDest(col, a, spot.x, spot.z) ? { kind: 'leisure', what: 'cards', stage: 'go', t: 0 } : null;
 }
 
@@ -1638,7 +1637,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         a.activity = { fish: 'Off to the pond with a line', herbs: 'Wandering out into the meadow', cards: 'Looking for someone to play cards with', play: 'Running about' }[t.what];
         if (walk(col, a, dt)) {
           t.stage = 'do';
-          if (t.what === 'cards' && hallOpen(col) && Math.hypot(a.x - store(col.village).door.x, a.z - store(col.village).door.z) < 1.5) goInside(a, store(col.village));
+          { const hall = hallOf(col.village); if (t.what === 'cards' && hall && Math.hypot(a.x - hall.door.x, a.z - hall.door.z) < 1.5) goInside(a, hall); }
         }
         return;
       }

@@ -14,13 +14,15 @@
  * - the fishing works: they come down together (move them by painting the
  *   Fishing zone at another pond or shore);
  * - a restored house of the old world: pulled down for its salvage.
- * The fire and the stockpile are moved in hearth.ts. Only the found shelter
- * the village started in, an old building of the site, stays.
+ * The fire and the stockpile are moved in hearth.ts. The found shelter the
+ * village started in can be pulled down too (DESIGN §29): a long job and a
+ * great deal of salvage; "moving" it raises a commons hall where the player
+ * chooses. Its record stays as the village's stores (`Building.gone`).
  */
 import type { Colony } from './colony';
 import { log } from './community';
-import { DEFS, type Building, type Cost, type Project, type SiteKind } from './buildings';
-import { idx, inBounds } from './world';
+import { DEFS, HOME_UPGRADE_COST, newProject, store, type Building, type Cost, type Project, type SiteKind } from './buildings';
+import { idx, inBounds, tileX, tileZ, toTileX, toTileZ } from './world';
 import { finishRaze } from './salvage';
 
 export interface Takedown {
@@ -47,7 +49,13 @@ function workOf(b: Building): number {
 /** Why this building can't be taken down (or moved), or null if it can. */
 export function whyNotTakeDown(col: Colony, b: Building, moving = false): string | null {
   const v = col.village;
-  if (b.kind === 'store') return 'The shelter the village started from stays.';
+  if (b.kind === 'store') {
+    // The found shelter (DESIGN §29): it can be pulled down; "moving" it means raising a commons hall elsewhere.
+    if (b.gone) return 'It is already gone.';
+    if (moving && v.buildings.some((x) => x.kind === 'hall')) return 'There is already a commons hall.';
+    if ((v.takedowns ?? []).some((t) => t.building === b.id)) return 'It is already coming down.';
+    return null;
+  }
   if (b.ruin !== undefined && moving) return 'An old building can\'t be moved; it can be pulled down for its salvage.';
   if (FISHING.includes(b.kind) && moving) return 'The fishing works come down together; paint the Fishing zone where you want the new ones.';
   if (b.kind !== 'home' && b.ruin === undefined && !madeOf(b)) return 'That can\'t be taken down.';
@@ -61,9 +69,10 @@ const FISHING = ['jetty', 'fishhut', 'netshed', 'boat'];
 export function takeDown(col: Colony, b: Building, moving = false): string | null {
   const why = whyNotTakeDown(col, b, moving);
   if (why) return why;
-  (col.village.takedowns ??= []).push({ building: b.id, work: 0, need: Math.round(workOf(b) * 0.4), moving });
+  (col.village.takedowns ??= []).push({ building: b.id, work: 0, need: b.kind === 'store' ? SHELTER_WORK : Math.round(workOf(b) * 0.4), moving });
   const h = b.kind === 'home' ? col.village.households.find((x) => x.id === b.household) : undefined;
-  log(col.community, b.ruin !== undefined ? `${b.name} is to be pulled down for what's in its walls.`
+  log(col.community, b.kind === 'store' ? `${cap(col.village.site.shelterName)} is to be pulled down: a long job, and a great deal of salvage.${moving ? ' A new commons hall will go up where it was chosen.' : ''}`
+    : b.ruin !== undefined ? `${b.name} is to be pulled down for what's in its walls.`
     : moving ? `${b.name} is to be moved: they'll take it apart carefully and keep every piece.${h ? ' The family will wait first in line for a new plot.' : ''}`
     : `${b.name} is to come down. Half of it can be used again.${h ? ' The family will wait first in line for a new plot.' : ''}`, 'info');
   return null;
@@ -81,6 +90,7 @@ export function finishTakedown(col: Colony, t: Takedown) {
   v.takedowns = (v.takedowns ?? []).filter((x) => x !== t);
   const b = v.buildings.find((x) => x.id === t.building);
   if (!b) return;
+  if (b.kind === 'store') { pullDownShelter(col, b); return; }
   // A restored old building: pulled down for its salvage (salvage.ts), its home plot freed.
   if (b.ruin !== undefined) {
     const r = w.ruins[b.ruin];
@@ -135,6 +145,120 @@ export function finishTakedown(col: Colony, t: Takedown) {
   log(col.community, `${b.name} is down${back.length ? `: ${back.join(', ')} back in the stores` : ''}.${t.moving ? ' It waits in pieces for wherever it goes next.' : ''}`, 'good');
 }
 
+/** Work to pull down the found shelter (minutes). */
+export const SHELTER_WORK = 900;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * The found shelter is down (DESIGN §29). Its record stays as the village's
+ * stores (so the stores keep counting), but the building is gone: no beds,
+ * no hall, its ground free, a great deal of salvage in. The kitchen, if it
+ * stood under its roof, stands in the open now.
+ */
+export function pullDownShelter(col: Colony, b: Building) {
+  const v = col.village, w = col.world, res = col.community.resources;
+  b.gone = true;
+  b.beds = 0;
+  v.bedsDirty = true;
+  const scrap = 40, wood = 12;
+  res.scrap += scrap; res.wood += wood;
+  v.salvaged[`old walls|${v.site.shelterName}`] = (v.salvaged[`old walls|${v.site.shelterName}`] ?? 0) + scrap;
+  // Free its ground: the shelter and what stood round it on the site (pumps, sheds, canopy), as worldgen blocked it.
+  for (const r of v.site.blockers) {
+    for (let tz = toTileZ(w, r.z0 - 0.4); tz <= toTileZ(w, r.z1 + 0.4); tz++) for (let tx = toTileX(w, r.x0 - 0.4); tx <= toTileX(w, r.x1 + 0.4); tx++) {
+      if (!inBounds(w, tx, tz)) continue;
+      const x = tileX(w, tx), z = tileZ(w, tz);
+      if (x > r.x0 - 0.4 && x < r.x1 + 0.4 && z > r.z0 - 0.4 && z < r.z1 + 0.4) { const i = idx(w, tx, tz); w.blocked[i] = 0; w.deck[i] = 0; w.deckY[i] = 0; }
+    }
+  }
+  v.site.kitchenCovered = false;
+  // Repairs still to do on it are dropped; what was brought for them goes back.
+  for (const p of v.projects.filter((x) => !x.done && x.target === b.id)) {
+    for (const m of ['wood', 'scrap', 'glimmer', 'glass', 'copper', 'steel'] as const) res[m] += p.delivered[m] ?? 0;
+    v.projects = v.projects.filter((x) => x !== p);
+  }
+  // Anyone inside steps out.
+  for (const a of col.agents) if (a.inside === b.id) { a.x = b.door.x; a.z = b.door.z; a.indoors = false; a.inside = 0; }
+  // Its stores are kept at the stockpile now.
+  const sp = w.stockpile;
+  b.door = { x: (sp.x0 + sp.x1) / 2, z: sp.z1 + 0.8 };
+  b.inside = { x: (sp.x0 + sp.x1) / 2, z: (sp.z0 + sp.z1) / 2 };
+  w.zoneVersion++;
+  log(col.community, `${cap(v.site.shelterName)} is down: ${scrap} scrap and ${wood} wood brought in from its walls, and the ground it stood on is open. The stores are kept at the stockpile now.`, 'good');
+}
+
+// ---------- repairing the found shelter (DESIGN §29): the player can ask for the next step at once ----------
+
+/** The next repair the found shelter wants, and why it can't be done now (or null). */
+export function shelterRepair(col: Colony): { label: string; tip: string; why: string | null } | null {
+  const v = col.village, st = store(v);
+  if (!st || st.gone || st.level >= 3) return null;
+  const doing = (k: string) => v.projects.some((p) => !p.done && p.kind === k);
+  const busy = (v.takedowns ?? []).some((t) => t.building === st.id) ? 'It is coming down.' : null;
+  if (st.level === 0) return { label: 'Clear it out', tip: `Clear the junk out of ${v.site.shelterName} so people can sleep in it.`, why: busy ?? (doing('clear_store') ? 'They are already clearing it.' : null) };
+  if (st.level === 1) return { label: 'Patch the roof', tip: `Patch the fallen roof (${v.site.patch.wood} wood, ${v.site.patch.scrap} scrap): warmer, and more beds.`, why: busy ?? (doing('patch_roof') ? 'They are already patching it.' : null) };
+  const hall = v.buildings.some((b) => b.kind === 'hall') ? 'There is already a commons hall.' : null;
+  return { label: `Make it ${v.site.hallName}`, tip: `Cots out, a long table in (${HALL_WOOD} wood): supper together on cold nights, and a place to talk.`, why: busy ?? hall ?? (col.community.resources.wood < HALL_WOOD ? `Needs ${HALL_WOOD} wood.` : null) };
+}
+
+const HALL_WOOD = 8;
+
+/** Do the next repair (queue it, or make the hall at once). Returns why not, or null. */
+export function repairShelter(col: Colony): string | null {
+  const r = shelterRepair(col);
+  if (!r) return 'Nothing to repair.';
+  if (r.why) return r.why;
+  const v = col.village, st = store(v);
+  if (st.level === 0) {
+    newProject(v, { kind: 'clear_store', tier: 0, name: v.site.clear.name, foot: st.foot, facing: 0, cost: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 }, workNeeded: 480, target: st.id, clearTrees: [] });
+  } else if (st.level === 1) {
+    newProject(v, { kind: 'patch_roof', tier: 0, name: v.site.patch.name, foot: st.foot, facing: 0, cost: { wood: v.site.patch.wood, scrap: v.site.patch.scrap, glimmer: 0, glass: 0, copper: 0, steel: 0 }, workNeeded: 360, target: st.id, clearTrees: [] });
+  } else {
+    col.community.resources.wood -= HALL_WOOD;
+    shelterToHall(col);
+  }
+  return null;
+}
+
+/** A home the player asks to improve: patched up (level 1), then a glasshouse and panels (level 2). */
+export function homeImprove(col: Colony, b: Building): { label: string; tip: string; why: string | null } | null {
+  const v = col.village;
+  if (b.kind !== 'home' || b.ruin !== undefined || b.level >= 2) return null;
+  const cost = HOME_UPGRADE_COST(b.level);
+  const label = b.level === 0 ? 'Patch it up' : 'Add a glasshouse';
+  const tip = b.level === 0 ? `Patch the shack up properly (${cost.wood} wood, ${cost.scrap} scrap): warmer, more comfortable.`
+    : `A glasshouse on the sunny side and panels from the old roofs (${cost.wood} wood, ${cost.scrap} scrap, ${cost.glass} glass, ${cost.copper} copper).`;
+  let why: string | null = null;
+  if (v.projects.some((p) => !p.done && p.kind === 'upgrade' && p.target === b.id)) why = 'They are already at it.';
+  else if ((v.takedowns ?? []).some((t) => t.building === b.id)) why = 'It is coming down.';
+  else if (b.level === 1 && (v.needTier ?? 0) < 2) why = 'Nobody knows how yet: the village is still meeting plainer needs.';
+  else if (b.level === 1 && (col.community.resources.glass < cost.glass || col.community.resources.copper < cost.copper)) why = 'Needs glass and copper, stripped from a cleared district.';
+  return { label, tip, why };
+}
+
+/** Queue the home's next improvement. Returns why not, or null. */
+export function improveHome(col: Colony, b: Building): string | null {
+  const r = homeImprove(col, b);
+  if (!r) return 'Nothing to improve.';
+  if (r.why) return r.why;
+  newProject(col.village, {
+    kind: 'upgrade', tier: 1, name: b.level === 0 ? `Patch up ${b.name}` : `Glasshouse for ${b.name}`,
+    foot: b.foot, facing: b.facing, cost: HOME_UPGRADE_COST(b.level), workNeeded: b.level === 0 ? 1400 : 2600, target: b.id, clearTrees: [],
+  });
+  return null;
+}
+
+/** The old shelter becomes the village's hall (also a council outcome). */
+export function shelterToHall(col: Colony) {
+  const v = col.village, st = store(v), c = col.community;
+  st.level = 3;
+  st.beds = 2;
+  st.name = v.site.hallName;
+  v.bedsDirty = true;
+  log(c, `The cots came out of ${v.site.shelterName} and a long table went in. ${cap(v.site.hallName)}: supper on cold nights, and a place to talk.`, 'good');
+  for (const s of c.survivors) if (s.alive) s.morale = Math.min(100, s.morale + 4);
+}
+
 /** A home's plot goes with it: the land is open again. */
 function freePlot(col: Colony, b: Building) {
   const v = col.village, w = col.world;
@@ -187,4 +311,4 @@ export function cancelProject(col: Colony, p: Project): string | null {
 }
 
 /** The kind to place again after a move, if it is one the build menu knows. */
-export const placeKindOf = (b: Building): SiteKind | null => (b.kind in DEFS && b.kind !== 'annex' && b.kind !== 'store' && b.kind !== 'home' && b.ruin === undefined && !FISHING.includes(b.kind) ? b.kind as SiteKind : null);
+export const placeKindOf = (b: Building): SiteKind | null => b.kind === 'store' ? 'hall' : (b.kind in DEFS && b.kind !== 'annex' && b.kind !== 'home' && b.ruin === undefined && !FISHING.includes(b.kind) ? b.kind as SiteKind : null);

@@ -61,7 +61,7 @@ export function powerDemand(col: Colony): number {
   let d = 0;
   for (const b of v.buildings) {
     if (b.kind === 'home' && b.household) d += 1;
-    else if (b.kind === 'store' && b.level >= 3) d += 2;
+    else if ((b.kind === 'store' && b.level >= 3 && !b.gone) || b.kind === 'hall') d += 2;
     else if (b.kind === 'tavern') d += 2;
     else if (b.kind === 'workshop' || b.kind === 'toolshop' || b.kind === 'tailor' || b.kind === 'smokehouse') d += 0.5;
   }

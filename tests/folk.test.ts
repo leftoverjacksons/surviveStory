@@ -14,8 +14,9 @@ describe('the Folk', () => {
       const w = generateWorld(20 + k, undefined, kind);
       const m = w.folk.mound;
       const d = Math.hypot(m.x, m.z);
-      expect(d).toBeGreaterThan(24);
-      expect(d).toBeLessThan(46);
+      // Beyond a buffer of open land (DESIGN §29), but not out of reach.
+      expect(d).toBeGreaterThan(44);
+      expect(d).toBeLessThan(62);
       // A real hill, standing above its own foot.
       const foot = heightAt(w, m.x + Math.cos(m.door) * (m.r + 1.5), m.z + Math.sin(m.door) * (m.r + 1.5));
       expect(heightAt(w, m.x, m.z) - foot).toBeGreaterThan(1.2);

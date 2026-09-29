@@ -16,9 +16,9 @@ function grown(seed = 2): Colony {
 const target = (col: Colony) => col.village.buildings.find((b) => b.kind === 'workshop' || b.kind === 'hut' || b.kind === 'cellar')!;
 
 describe('taking down, moving and calling off (DESIGN §24.13)', () => {
-  it('the found shelter stays', () => {
+  it('the found shelter can be pulled down too (DESIGN §29)', () => {
     const col = createColony(generateWorld(2), createCommunity(2));
-    expect(whyNotTakeDown(col, store(col.village))).toMatch(/shelter/);
+    expect(whyNotTakeDown(col, store(col.village))).toBeNull();
   });
 
   it('a building taken down is gone, its ground is free, and half of it comes back', () => {

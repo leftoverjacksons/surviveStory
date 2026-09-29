@@ -3752,3 +3752,60 @@ the village takes becomes a hamlet with its own fire.
   - festivals at a hamlet;
   - a hamlet's own green and lanes laid out from its fire;
   - hamlet-specific councils.
+
+### §29. Full agency over the found shelter; a buffer before the Folk
+
+The user, after v41: "can we not move the starting building? i feel like
+everything should be deconstructable or moveable ... a right click menu to
+give you options to repair, deconstruct, move etc. full agency" and "move
+the wild territory and mounds a little further away from the starting human
+area ... having a buffer zone where the player decides how to or to close
+that gap at all is a choice".
+
+- **The found shelter can come down** (`dismantle.ts`):
+  - Right-click it: *Pull down* (a long job, `SHELTER_WORK` 900 minutes, up
+    to four builders) or *Move (new hall)*, which pulls it down and opens
+    placement for a **Commons hall** (`DEFS.hall`, 6×4, 36 wood and 14 scrap).
+  - When it is down (`pullDownShelter`): `Building.gone` is set, its beds
+    go to 0, 40 scrap and 12 wood come in (recorded as salvage from it),
+    and every tile the site blocked is open again (the shelter and what
+    stood round it: pumps, sheds, canopy). A kitchen under the station
+    canopy stands in the open (and gets its own pergola). Repairs still
+    queued on it are dropped, and what was brought for them goes back.
+  - Its record stays as the village's stores, so planning gates keyed on
+    its level still hold. Its door moves to the stockpile.
+  - The site's meshes leave the scene (`main.ts#syncSiteGone`), and
+    right-clicks no longer find it.
+- **The hall role** moves to `hallOf(v)`: a built Commons hall if there is
+  one, else the old shelter at level 3 if it still stands. Suppers,
+  evenings, cards, the feast aspiration and power demand all read it. The
+  built hall has a long table down its length (`seatSlot`).
+- **Repair from the card** (`shelterRepair` / `repairShelter`): the
+  shelter offers its next step at once (*Clear it out*, *Patch the roof*,
+  *Make it the hall* for 8 wood). The council's commons proposal calls the
+  same `shelterToHall`. Homes offer *Patch it up* / *Add a glasshouse*
+  (`homeImprove` / `improveHome`: the same upgrade projects the planner
+  makes, gated by need tier and glass and copper).
+- **The buffer** (`folk.ts#layFolkLand`, `townhouse.ts`):
+  - The Great Hill is placed 26–34 beyond the Ring, never within 44 of
+    the map centre. A relaxed pass (any bearing, 46–62 out) runs before
+    the last resort.
+  - Measured over 24 seeds and all five sites: 42–60 from the village fire
+    (previously about 24–44). The Ring is 14–28 from the fire, so open land
+    lies between the Ring and the Wild. Every seed still has both starting
+    knowes.
+  - Knowes may not rise within `KNOWE_KEEP_OFF` (30) plus their radius of
+    the village fire, except in Folk country.
+  - Closing the gap is the player's choice: clearing, zoning, or giving
+    districts to the Folk.
+- **Checks:**
+  - `tests/shelter.test.ts` covers repair, the hall step, pull-down effects,
+    move → hall, home improvement and the knowe keep-off.
+  - `tests/folk.test.ts` checks hill distance of 44–62.
+  - A 3-village one-year soak raised no flags.
+  - Debug hook: `__game.pullDown(x?, z?)` pulls down at once and raises a
+    hall near (x, z).
+- **Not yet:**
+  - the hall's own interior furniture (it seats people, but the table is
+    not drawn inside);
+  - moving the site's wrecks.

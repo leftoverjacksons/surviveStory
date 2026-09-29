@@ -24,8 +24,8 @@ export type FisheryKind = 'jetty' | 'fishhut' | 'netshed' | 'boat';
 export type TradeKind = 'toolshop' | 'tailor' | 'smokehouse' | 'tavern';
 export const TRADE_KINDS: TradeKind[] = ['toolshop', 'tailor', 'smokehouse', 'tavern'];
 const isTradeKind = (k: string): k is TradeKind => (TRADE_KINDS as string[]).includes(k);
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'hearth' | TradeKind | FisheryKind | PowerKind;
-export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'hearth' | TradeKind | 'upgrade' | FisheryKind | PowerKind;
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'hearth' | 'hall' | TradeKind | FisheryKind | PowerKind;
+export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'hearth' | 'hall' | TradeKind | 'upgrade' | FisheryKind | PowerKind;
 export const FISHERY_KINDS: FisheryKind[] = ['jetty', 'fishhut', 'netshed', 'boat'];
 export type Tier = 0 | 1;
 
@@ -41,6 +41,8 @@ export interface Footprint { tx: number; tz: number; w: number; d: number }
 
 export interface Building {
   id: number;
+  /** The found shelter, pulled down (DESIGN §29): its record stays as the village's stores, the building is gone. */
+  gone?: boolean;
   kind: BuildingKind;
   tier: Tier;
   foot: Footprint;
@@ -182,6 +184,7 @@ export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_st
   solar:      { name: ['Solar array', 'Solar array'], w: 4, d: 3, cost: [c(8, 8, 0, { glass: 6, copper: 2 }), c(8, 8, 0, { glass: 6, copper: 2 })], work: [600, 600] },
   sawpit:     { name: ['Saw pit', 'Saw pit'], w: 3, d: 2, cost: [c(12, 4), c(12, 4)], work: [420, 420] },
   hearth:     { name: ['Hamlet fire', 'Hamlet fire'], w: 2, d: 2, cost: [c(6, 2), c(6, 2)], work: [90, 90] },
+  hall:       { name: ['Commons hall', 'Commons hall'], w: 6, d: 4, cost: [c(36, 14), c(36, 14)], work: [1400, 1400] },
   turbine:    { name: ['Wind turbine', 'Wind turbine'], w: 2, d: 2, cost: [c(10, 10, 0, { steel: 3, copper: 3 }), c(10, 10, 0, { steel: 3, copper: 3 })], work: [800, 800] },
 };
 
@@ -212,6 +215,16 @@ function footOfRect(w: World, x0: number, z0: number, wid: number, dep: number):
 }
 
 export const store = (v: Village) => v.buildings.find((b) => b.kind === 'store')!;
+/**
+ * Where the hall is (DESIGN §29): a commons hall built for it, or the found
+ * shelter made into one (if it still stands). None, if neither.
+ */
+export function hallOf(v: Village): Building | undefined {
+  const built = v.buildings.find((b) => b.kind === 'hall');
+  if (built) return built;
+  const st = store(v);
+  return st && st.level >= 3 && !st.gone ? st : undefined;
+}
 /** Beds anyone could sleep in: shared beds, plus homes up to their household's size (and empty homes). */
 export const bedsTotal = (v: Village) => v.buildings.reduce((n, b) => {
   if (b.kind !== 'home' || !b.household) return n + b.beds;
@@ -338,7 +351,7 @@ export function storageCapacity(v: Village): number {
     + v.buildings.filter((b) => b.kind === 'fishhut').length * 50;
 }
 
-export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'kitchen' | 'hearth' | TradeKind | PowerKind;
+export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'kitchen' | 'hearth' | 'hall' | TradeKind | PowerKind;
 
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
@@ -435,14 +448,14 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   const traits = new Set(alive(com).flatMap((s) => s.traits));
   const wants: (() => Project | null)[] = [];
 
-  if (st.level === 0 && !has('clear_store')) {
+  if (st.level === 0 && !st.gone && !has('clear_store')) {
     wants.push(() => newProject(v, {
       kind: 'clear_store', tier: 0, name: v.site.clear.name, foot: st.foot, facing: 0,
       cost: zero(), workNeeded: 480, target: st.id, clearTrees: [],
     }));
   }
   const shelter = () => {
-    if (st.level === 1 && !has('patch_roof')) {
+    if (st.level === 1 && !st.gone && !has('patch_roof')) {
       return newProject(v, {
         kind: 'patch_roof', tier: 0, name: v.site.patch.name, foot: st.foot, facing: 0,
         cost: c(v.site.patch.wood, v.site.patch.scrap), workNeeded: 360, target: st.id, clearTrees: [],
@@ -607,6 +620,7 @@ export const PLACEABLE: { kind: SiteKind; blurb: string }[] = [
   { kind: 'smokehouse', blurb: 'At the back of a household\'s yard: one of them puts up food in smoke and jars. Preserves never spoil.' },
   { kind: 'tavern', blurb: 'Somewhere to go of an evening: company, a fiddle, something to drink.' },
   { kind: 'dome', blurb: 'A geodesic greenhouse: food all year, even in winter. Glass and steel from a cleared district.' },
+  { kind: 'hall', blurb: 'A new commons hall: a long room for suppers on cold nights and talk of an evening, built where you choose. For a village that has pulled down (or moved on from) the building it started in.' },
   { kind: 'hearth', blurb: 'A second fire, for a district the village has resettled: the households who live near it gather there of an evening instead of walking back to the old fire. Only in a cleared district that is the village\'s (or shared), well away from other fires.' },
   { kind: 'sawpit', blurb: 'A pit and a trestle for a two-man saw (joiners build it). Logs are sawn into boards faster than they are split at the block, and less is wasted.' },
   { kind: 'windmill', blurb: 'Wooden sails on a timber tower (joiners build it). It grinds the grain, so every harvest goes a fifth further, and turns a small dynamo for the lights.' },

@@ -120,6 +120,22 @@ export function tradeMesh(kind: string, W: number, D: number, tier: number, p: n
       }
       break;
     }
+    case 'hall': {
+      // The commons hall (DESIGN §29): a long salvage-clad hall with a porch, the village's table inside.
+      g.add(body(W, D - 0.6, Math.max(1, tier), p, seed, clad, glow, { wall: 2.5, porch: true, pitch: 0.5, chimney: 1 }));
+      if (k > 0) {
+        const front = (D - 0.6) / 2 + 0.3;
+        for (const x of [-W / 2 + 0.9, W / 2 - 0.9]) {
+          g.add(box(1.3, 0.08, 0.3, wood, x, 0.42, front + 0.55));
+          for (const dx of [-0.5, 0.5]) g.add(box(0.08, 0.4, 0.26, dark, x + dx, 0.2, front + 0.55));
+        }
+        // A noticeboard by the door, and a bell on a post.
+        g.add(box(0.9, 0.6, 0.05, mat('#8a7a5a'), 0.9, 1.3, front + 0.05));
+        g.add(box(0.1, 2.4, 0.1, dark, W / 2 + 0.3, 1.2, front + 0.3));
+        g.add(cyl(0.14, 0.22, iron, W / 2 + 0.3, 2.2, front + 0.3, 8));
+      }
+      break;
+    }
   }
   return g;
 }

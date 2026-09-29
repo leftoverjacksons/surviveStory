@@ -231,6 +231,9 @@ reference: Tiny Glade.
     RESETTLING §28: HAMLET FIRE (`DEFS.hearth`, build menu; only in a village/shared cleared district, ≥28 from other fires;
     `hearth.ts#fires/fireFor/whyNotHamletFire`); people gather at the fire nearest their home (`seatOf`); autopilot lays one
     (`autopilotHamlet`). §27 + §28 published v41.
+    §29 BUILT (not published): the found shelter can be repaired from its card, pulled down (`Building.gone`,
+    `pullDownShelter`) or "moved" (a Commons hall, `DEFS.hall`, `hallOf`); homes offer Improve. The Great Hill
+    sits 42–60 from the fire (buffer), knowes keep `KNOWE_KEEP_OFF` from it.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

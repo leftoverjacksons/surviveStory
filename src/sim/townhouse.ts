@@ -34,6 +34,8 @@ export interface Knowe {
   level: number;
 }
 
+/** How far knowes keep from the village's fire (the buffer, DESIGN §29). */
+export const KNOWE_KEEP_OFF = 30;
 /** A knowe's hill: about the old mound's size. */
 export const KNOWE_R = 3.4;
 /** How many of the Folk the hall under the Great Hill houses, and each knowe. */
@@ -144,6 +146,8 @@ function siteWhy(col: Colony, x: number, z: number, r: number): number | string 
   // Round the hill, or in a district given to the Folk (or shared): their country (DESIGN §26).
   if (d0 > m.r + r + 24 && !inFolkCountry(col, x, z)) return 'Too far from the Great Hill: the knowes stand round it, or in a district given to the Folk.';
   if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < r + 5) return 'Too close to the Ring.';
+  // The buffer between the peoples (DESIGN §29): the Folk don't close it by themselves.
+  if (Math.hypot(x - w.campfire.x, z - w.campfire.z) < KNOWE_KEEP_OFF + r && !inFolkCountry(col, x, z)) return 'Too close to the village: the land between is left open.';
   if (knowes(f).some((k) => Math.hypot(k.x - x, k.z - z) < k.r + r + 1)) return 'Too close to another knowe.';
   if (f.works.some((k) => Math.hypot(k.x - x, k.z - z) < r + 1)) return 'One of their works stands there.';
   if (v.buildings.some((b) => Math.hypot(b.inside.x - x, b.inside.z - z) < r + 4)) return 'Too close to the village\'s buildings.';

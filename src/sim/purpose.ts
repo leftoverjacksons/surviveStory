@@ -14,7 +14,7 @@
  */
 import type { Colony } from './colony';
 import { alive, log, remember, withRng, type Community, type Survivor } from './community';
-import { hasBuilt } from './buildings';
+import { hallOf, hasBuilt } from './buildings';
 import { householdOf, plotOf } from './homes';
 import type { Rng } from './rng';
 import { exploredFraction } from './world';
@@ -87,7 +87,7 @@ function fulfilled(col: Colony, s: Survivor, a: Aspiration): boolean {
     }
     case 'explore': return exploredFraction(col.world) >= (a.base ?? 0) + 0.1;
     case 'veil': return (s.metEntity ?? -1) >= a.since;
-    case 'feast': return col.council.festivalUntil > (a.since - 1) * 1440 || v.buildings.some((b) => b.kind === 'store' && b.level >= 3);
+    case 'feast': return col.council.festivalUntil > (a.since - 1) * 1440 || !!hallOf(v);
   }
 }
 

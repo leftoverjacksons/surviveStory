@@ -54,12 +54,14 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
   // If nothing fits every wish, the good ground farthest from the old districts.
   let fallback: { x: number; z: number; far: number } | null = null;
   for (let k = 0; k < 400; k++) {
-    const a = ringA + rng.range(-0.6, 0.6) * (k < 120 ? 1 : k < 260 ? 2 : 3), d = ringD + rng.range(17, 25);
+    // Well out beyond the Ring (DESIGN §29): a buffer of open land between the village and the Wild, for the player to close or keep.
+    const a = ringA + rng.range(-0.6, 0.6) * (k < 120 ? 1 : k < 260 ? 2 : 3), d = ringD + rng.range(26, 34);
     const x = Math.cos(a) * d, z = Math.sin(a) * d;
     if (segmentDist(x, z, w.fairyRing.x, w.fairyRing.z) < 17) continue;
     const tx = toTileX(w, x), tz = toTileZ(w, z);
     if (!inBounds(w, tx, tz)) continue;
-    if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 18) continue;
+    if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 26) continue;
+    if (Math.hypot(x, z) < 44) continue;
     const far = Math.min(99, ...w.districts.map((q) => Math.hypot(x - q.x, z - q.z)));
     let ok = true, forest = 0;
     for (let dz = -9; dz <= 9 && ok; dz++) for (let dx = -9; dx <= 9; dx++) {
@@ -74,7 +76,26 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
     const score = forest + rng.range(0, 12);
     if (!best || score > best.score) best = { x, z, score };
   }
-  const at = best ?? fallback ?? { x: w.fairyRing.x * 1.7, z: w.fairyRing.z * 1.7 };
+  // Still nothing: any bearing, the same buffer, only the hill's own footing asked for.
+  if (!best && !fallback) {
+    for (let k = 0; k < 600; k++) {
+      const a = ringA + rng.range(-Math.PI, Math.PI), d = rng.range(46, 62);
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      const tx = toTileX(w, x), tz = toTileZ(w, z);
+      if (!inBounds(w, tx - 9, tz - 9) || !inBounds(w, tx + 9, tz + 9)) continue;
+      if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 20) continue;
+      let ok = true, forest = 0;
+      for (let dz = -9; dz <= 9 && ok; dz++) for (let dx = -9; dx <= 9; dx++) {
+        const i = idx(w, tx + dx, tz + dz), g = w.ground[i];
+        if (Math.hypot(dx, dz) <= GREAT_HILL_R + 0.5 && (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete || w.blocked[i])) { ok = false; break; }
+        if (g === Ground.Forest) forest++;
+      }
+      if (!ok) continue;
+      const score = forest - Math.abs(a - ringA) * 20 + rng.range(0, 12);
+      if (!best || score > best.score) best = { x, z, score };
+    }
+  }
+  const at = best ?? fallback ?? { x: w.fairyRing.x * 2.4, z: w.fairyRing.z * 2.4 };
   const mound: Mound = {
     x: at.x, z: at.z, r: GREAT_HILL_R, name: MOUND_NAMES[Math.abs(seed) % MOUND_NAMES.length],
     // The door looks toward the Ring.
