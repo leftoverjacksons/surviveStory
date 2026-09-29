@@ -3030,3 +3030,30 @@ offence.
   it is doing, and how it grows.
 - **Next:** what cleared districts become (§24.4), then children and a
   school (§24.5), then crossing between the peoples (§24.6).
+
+### 24.11 The user's answers to §24.7 (after version 31)
+- **Children take as long as it really takes to grow up.** No accelerated
+  growth: one year of age per game year (32 days), so a child born in
+  year 2 comes of age around year 20. This may be sped up later. It
+  needs survivors to age with the calendar; today age is fixed at
+  arrival.
+- **Lineage in the Crusader Kings manner:** notable families, a slow
+  build, a story that emerges. Planned:
+  - family names carried down;
+  - a family tree per person;
+  - houses that become known for something (a craft, the Sight, service
+    to the council, kinship with the Folk);
+  - heirs to homes and plots;
+  - the chronicle telling the families' story.
+- **Hybrid children:** somewhat rare, at most 5–10% of the children.
+- **Topside visibility:** keep as built (§24.9).
+- **Finite scrap:** not met in play yet; deferred. The user's thought:
+  exhaustion could be what pushes the village to take territory, which
+  fits district-only materials (§21.7) and B.
+- **Survivor figures:** less lanky, more realistic, then decimated.
+  Proposed timing: together with children, since children need a child
+  build of the same figure (one pipeline: proportions, child variant,
+  decimation).
+- **Order kept:** cleared districts (§24.4) → move and deconstruct →
+  figures and children with lineage → crossing between the peoples →
+  staging (A) → B.
