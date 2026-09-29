@@ -3981,3 +3981,23 @@ world: a craft learned, a material found, a need felt, a district cleared.
     stripping in place costs two round trips for a car, so towing only
     pays when a wreck is in the way.
   - Test: `tests/wrecks.test.ts` ("autopilot and wrecks").
+
+### §34. Playtest notes on v44 (the user's; to do)
+
+The user, sitting down with v44 ("before anything, just sharing thoughts"):
+1. **People at the fire sit in mid-air.** Likely cause: seat heights taken
+   from the wrong ground (the old fire's spot after a move, or a hamlet's).
+   To reproduce.
+2. **Plot drawing is hard to read.** The user's idea:
+   - the cursor is a yellow-shaded ground tile;
+   - the border being drawn is shown as the ground tiles it will run
+     through, lit up, until the shape is closed.
+3. **"I can't build plots over rocks?"** Rocks and rubble are hard blocks
+   for plots today. Proposal: rocks allowed in the yard, and split and
+   cleared by builders where the house itself must stand.
+4. **An uncleared building crossed a fairy path to the Ring.** A
+   world-generation ordering bug: Folk paths are not routed around ruins
+   (or ruins are placed over paths).
+5. **Deer get stuck on things.** Screenshot: two deer overlapping each other
+   on a rock or stump. Likely: grazing targets and movement ignore blocked
+   tiles and each other.
