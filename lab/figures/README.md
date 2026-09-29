@@ -1,44 +1,85 @@
-# Figure lab
+# Figure Studio (lab)
 
-An experiment, kept apart from the game: image → 3D mesh → the game's skeleton
-and clips → compared beside the current figures at the game's camera and
-pixel scale. Nothing in `src/` imports this folder, and `vite build` doesn't
-include it.
+A local tool, kept apart from the game, for turning character images into
+figures on the survivors' skeleton: image → 3D mesh → the game's skeleton and
+clips → compared beside the current figures at the game's camera and pixel
+scale → a library → optionally into the game. Nothing in `src/` imports this
+folder, and the game's `vite build` doesn't include it.
 
-## Pipeline
+## Setup (once, on the machine that will generate)
 
-1. **Generate** a mesh from one image (`gen_cpu.py`): Hunyuan3D-2mini
-   shape model, on CPU. No texture model; colour comes from the image in step 2.
-2. **Rig** (`rig.py`, Blender's Python module `bpy`):
-   - normalise to the survivors' height;
-   - voxel-remesh, then decimate to about 3k triangles;
-   - build the game's bone table, fitted to the mesh's hip and shoulder width;
-   - apply Blender's automatic (heat) weights;
-   - project the image's colours onto the mesh from the front, smooth them,
-     and cluster them into 5 named slots (`skin`, `hair`, `boot`, `cloth_N`).
-3. **Pack** (`pack.mjs`): the same slot/meshopt packing as
-   `scripts/characters.mjs`, written to `lab/figures/out/` (git-ignored).
-4. **View** (`index.html`, `viewer.ts`): `npx vite`, then open `/lab/figures/`.
-   - Every figure goes through the game's own `makeCharacter` and `anims.glb`.
-   - The camera is the game's: orthographic, 30 units at zoom 1; pixel mode at
-     1/3 resolution.
-   - `?raw` keeps a candidate's own clothing colours.
-   - `node lab/figures/shot.mjs <dir> [clip] [query]` saves screenshots
-     (game default zoom, game max zoom, lineup, and 4 poses of the newest figure).
+Needs: Python 3.11 (3.10–3.12 work, but only 3.11 installs Blender's module;
+otherwise an installed Blender 4.2+ is used), git, Node (the repo's
+`npm install`).
 
 ```
-S=<scratch dir with venvs and a clone of Tencent-Hunyuan/Hunyuan3D-2>
-HY3D_REPO=$S/hy2 $S/hyenv/bin/python lab/figures/gen_cpu.py image.png mesh.glb 30 192 --flash
-$S/bpyenv/bin/python lab/figures/rig.py mesh.glb image.png work/lab_x.glb
-node lab/figures/pack.mjs work/lab_x.glb
+python lab/figures/setup.py        # add --cpu to ignore an NVIDIA GPU
+npm run figures                    # then open http://localhost:5181/
 ```
 
-`gen_cpu.py` is the Hunyuan3D-2 repo's `minimal_demo.py` reduced to shape only:
-`Hunyuan3DDiTFlowMatchingPipeline.from_pretrained('tencent/Hunyuan3D-2mini',
-subfolder='hunyuan3d-dit-v2-mini', device='cpu', dtype=float32)`, then
-`enable_flashvdm()` with the VAE cast to float32. The environment is CPU
-PyTorch, `diffusers transformers einops omegaconf trimesh pymeshlab
-opencv-python-headless accelerate rembg onnxruntime`.
+`setup.py` creates `lab/figures/.venv-gen` (PyTorch with CUDA 12.4 when
+`nvidia-smi` is present), `.venv-bpy` (Blender's module), `.hy3d` (the
+Hunyuan3D-2 code) and `config.json` (the paths; edit it to point elsewhere).
+All of these are git-ignored. Model weights (2–7 GB) download on the first
+figure. For the Hugging Face Space backend, set `HF_TOKEN` before
+`npm run figures` (a free account's token raises the GPU quota).
+
+### Which machine
+
+| Machine | Expected |
+|---|---|
+| NVIDIA with 8 GB or more (e.g. RTX 2070) | Runs fully on the GPU, fp16; tens of seconds a figure (estimate) |
+| NVIDIA with 4–6 GB (e.g. RTX 3050 Ti laptop) | Whole-model CPU offload, switched on automatically below 7 GB; slower, **untested** |
+| CPU only | Works: about 2.5–4.5 min a figure (measured below) |
+| Hugging Face Space | No local GPU needed; free quota is a few figures a day |
+
+## Using it
+
+1. **Drop a front view** (and, if you have one, a back view) into the left
+   panel. Paste works too. The name fills in from the file name.
+   - Best input: one character, full body, A-pose (arms 30–45° out), plain
+     background, front view, drawn to the game's proportions (head about 1:7).
+2. Pick the **body** (man, woman or child; it sets the game's pool) and
+   **Make figure**. The job runs generate → rig → pack. The log is in the
+   right panel.
+3. The figure appears in the view beside three current figures, playing the
+   game's clips. **Pixel (game)** shows it as in the game (zoom 0.6–3.2 is the
+   game's range). **Own colours** keeps its clothing colours; off shows how the
+   game re-colours it per survivor.
+4. **Colour slots**: each colour region gets a role. The game re-colours
+   `skin`, `hair` and `cloth` per survivor and keeps `boot`, `hat`, `pack` and
+   `strap`. Fix any wrong ones and choose **Apply slot names** (re-rigs, about
+   35 s).
+5. **Generate again** with another seed or quality, or **Rig again** with
+   other triangle and slot counts.
+6. **Add to library** copies it to `lab/figures/library/` (committed, with
+   `library.json`: source, generator, licence). **Send to game** (two clicks)
+   copies it into `src/assets/people/` as `man_*`, `woman_*` or `child_*`, where
+   the game's figure pools pick it up. Nothing reaches the game without that
+   step.
+
+## Pieces
+
+- **`server.py`**: the backend, standard library only. Holds figures in
+  `work/<id>/` (git-ignored) and runs one job at a time.
+- **`gen.py`**: image(s) → mesh.
+  - Backend `local`: Hunyuan3D-2mini (one view) or 2mv (front + back), shape
+    only; `turbo` (5 steps) or `full` (30); FlashVDM decoding; CUDA fp16 with
+    offload below 7 GB, or CPU fp32.
+  - Backend `space`: a Hugging Face Space through gradio_client.
+  - Saves cut-outs (background removed) for the colour step.
+- **`rig.py`**: Blender. Normalises and remeshes to about 3k triangles, fits
+  the game's skeleton, applies heat weights, and colours from the front (and
+  back) view, clustered into named slots (`--names` overrides them; `--slots`
+  writes them out for the UI).
+- **`pack.mjs`**: the game's slot and meshopt packing (as in
+  `scripts/characters.mjs`).
+- **`app.ts`, `stage.ts`, `index.html`, `vite.config.ts`**: the page. It uses
+  the game's `makeCharacter` and `anims.glb` under the game's camera
+  (orthographic, 30 units at zoom 1; pixel mode at 1/3 resolution).
+- **`start.mjs`**: starts the server and the page (`npm run figures`).
+- **`studio-test.mjs`**: drives the studio end to end with Playwright:
+  upload, wait for the pipeline, add to the library, and take screenshots.
 
 ## Measurements (4-core CPU container, no GPU; 2026-09-29)
 
@@ -48,6 +89,7 @@ opencv-python-headless accelerate rembg onnxruntime`.
 | Diffusion, 30 steps | 259 s (about 8.5 s per step) |
 | Volume decode, octree 256, plain | about 15 min (849 chunks at 1.1 s) |
 | Volume decode, octree 192, FlashVDM | 8 s |
+| Turbo model (5 steps) + FlashVDM, whole generation | 154 s |
 | Rig, weights, colour, export (`rig.py`) | about 35 s |
 
 - **Output:** 117k faces, decimated to 3,000; the packed `.glb` is 57 KB (the
