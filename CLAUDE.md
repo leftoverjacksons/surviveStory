@@ -231,10 +231,10 @@ reference: Tiny Glade.
     RESETTLING §28: HAMLET FIRE (`DEFS.hearth`, build menu; only in a village/shared cleared district, ≥28 from other fires;
     `hearth.ts#fires/fireFor/whyNotHamletFire`); people gather at the fire nearest their home (`seatOf`); autopilot lays one
     (`autopilotHamlet`). §27 + §28 published v41.
-    §29 BUILT (not published): the found shelter can be repaired from its card, pulled down (`Building.gone`,
+    §29 BUILT (published v42): the found shelter can be repaired from its card, pulled down (`Building.gone`,
     `pullDownShelter`) or "moved" (a Commons hall, `DEFS.hall`, `hallOf`); homes offer Improve. The Great Hill
     sits 42–60 from the fire (buffer), knowes keep `KNOWE_KEEP_OFF` from it.
-    §30 BUILT (not published): WRECKS right-click card (strip/leave/tow to yard/tow elsewhere/stop), emptied wrecks
+    §30 BUILT (published v42): WRECKS right-click card (strip/leave/tow to yard/tow elsewhere/stop), emptied wrecks
     vanish and free their tiles (`clearHeap`, `heapTiles`), TOWING (`towHeap`, `tow` task, `Heap.tow`, `yardSpot`;
     the nearest free people come). The station car is now a normal wreck. Next: electric carts, parts with provenance.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
