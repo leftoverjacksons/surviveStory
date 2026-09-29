@@ -1146,7 +1146,7 @@ function frame() {
   phenomena.update(t, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   folkView.update(t, sky.night, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   townhouse.update(t, sky.night);
-  myceliumView.update(t);
+  myceliumView.update(t, sky.night, sightK, veilView || !!veil);
   keepOut.update();
   if (veil) {
     // The team stands where they stand in the Veil.

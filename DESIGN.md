@@ -3360,9 +3360,16 @@ brighter pulses running from the centre to the tips.
   - A dim grey-violet with slow, sparse pulses while they curse.
 - **Motion:** a slow sideways sway that grows along each strand; gaussian
   pulses travel outward (5 units/s, every 22 units).
-- **Visibility:** in the Veil view only, as before. It is now drawn through
-  trees and roofs, since most of it runs under the Wild's canopy.
-  Unexplored ground no longer shows it (the old lines leaked into the fog).
+- **Visibility** (the user, after the first redraw: faint for those with
+  high Sight, and barely visible at night by default):
+  - *Veil view:* full strength, drawn through trees and roofs, since most
+    of it runs under the Wild's canopy.
+  - *Through the eyes of a selected survivor with Sight ≥ 45:* a faint
+    glow, 0.12–0.42 of full strength by Sight, weaker by day.
+  - *Anyone, at night:* 0.13 of full strength.
+  - Outside the Veil view it is hidden by trees and roofs like anything on
+    the ground.
+  - Unexplored ground never shows it (the old lines leaked into the fog).
 - Debug hook: `__game.spread(days, standing)` grows the network.
 
 ### 25.2 Four kinds of being (proposal)
@@ -3392,6 +3399,13 @@ peoples' beings directly: they belong to a living tradition.
      - move the woodpile a yard;
      - lead someone astray (today's `led`).
    - Mischief grows as standing falls; at *kin* it is mostly play.
+   - The user: small nuisances are fine for now, but mischief must truly
+     affect the world and the relationship. Every act has a real, visible
+     cost or a changed thing in the world (a missing tool slows work, a
+     moved woodpile is walked to, soured milk is food lost). It is
+     remembered by whoever it happened to, and colours their view of the
+     Folk. Answering it (an offering, a word at the hill, a broken rule
+     mended) changes standing.
    - Today's `hob` and `sprite` become Wee Folk.
 3. **The Restless** (spirits of the dead): today's district spirits
    (`haunt.ts`: remnant, hedge, lamp, hollow). They are not long-lived.

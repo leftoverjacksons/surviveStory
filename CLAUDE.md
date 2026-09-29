@@ -211,7 +211,8 @@ reference: Tiny Glade.
     → `split` task at the chopping block or saw pit; `world.ts#woodyard`). Next: electric carts.
     ORDER: cleared districts (§24.4) → move/deconstruct → figures + children + lineage → crossing → A → B.
     THE FOLK REDESIGN (DESIGN §25, user's direction after v36): MYCELIUM REDRAWN §25.1 (built: tree from the hill,
-    curved tapered lavender ribbons, sway + outward pulses, through trees, explored ground only; `__game.spread`).
+    curved tapered lavender ribbons, sway + outward pulses, explored ground only; full in the Veil view, faint for
+    a selected high-Sight survivor, barely at night; `__game.spread`). Published v37.
     PROPOSAL §25.2–25.4 awaiting the user: four kinds (Gentry, Wee Folk, the Restless, the Strange), wisp by default
     and full form in moments, Great Hill ×2 + knowes (two-storey sub-mounds) replacing chambers.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,

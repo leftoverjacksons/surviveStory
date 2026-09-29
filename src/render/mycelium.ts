@@ -268,17 +268,31 @@ export class MyceliumView {
     u.uPulse.value = mood < 0 ? 0.5 : 1;
   }
 
-  update(t: number) {
+  /**
+   * How much of it shows: all of it in the Veil view; otherwise a faint glow
+   * through the eyes of someone with high Sight (strongest at night), and
+   * barely anything to anyone on a dark night.
+   */
+  static strength(night: number, sight: number, veilView: boolean, veil: number): number {
+    if (veilView) return veil;
+    const seer = sight >= 0.45 ? (0.12 + 0.3 * (sight - 0.45) / 0.55) * (0.35 + 0.65 * night) : 0;
+    return Math.max(night * 0.13, seer);
+  }
+
+  update(t: number, night = 0, sight = 0, veilView = false) {
     const veil = worldUniforms.uVeil.value;
     if (!this.col.mycelium) return;
     const sk = `${this.col.mycelium.version}|${Math.sign(folkMood(this.col))}`;
     if (sk !== this.stoolKey) { this.stoolKey = sk; this.rebuildStools(); }
-    this.veins.visible = veil > 0.05;
+    const show = MyceliumView.strength(night, sight, veilView, veil);
+    this.veins.visible = show > 0.02;
     if (!this.veins.visible) return;
     // Rebuilt when the network grows, the mood turns, or more ground is explored (about once a day).
     const key = `${sk}|${this.col.community.day}`;
     if (key !== this.key) { this.key = key; this.rebuild(); }
     this.mat.uniforms.uTime.value = t;
-    this.mat.uniforms.uOpacity.value = veil;
+    this.mat.uniforms.uOpacity.value = show;
+    // Outside the Veil view it lies under trees and roofs like anything else on the ground.
+    this.mat.depthTest = !veilView;
   }
 }
