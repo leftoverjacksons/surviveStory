@@ -56,3 +56,19 @@ describe('wrecks: strip, tow, clear (DESIGN §30)', () => {
     for (const i of heapTiles(w, car)) expect(w.blocked[i]).toBe(1);
   });
 });
+
+describe('autopilot and wrecks (DESIGN §33)', () => {
+  it('strips the wrecks in the village first, one at a time, until none are left near a fire', () => {
+    const col = createColony(generateWorld(5, undefined, 'station'), createCommunity(5));
+    col.village.autoPlan = true; col.village.autopilot = true;
+    const w = col.world, f = w.campfire;
+    const near = () => w.heaps.filter((h) => h.scrap > 0 && Math.hypot(tileX(w, h.tx) - f.x, tileZ(w, h.tz) - f.z) < 18);
+    const before = near().length;
+    expect(before).toBeGreaterThan(0);
+    for (let d = 0; d < 12 && near().length; d++) {
+      tick(col, 1440);
+      expect(w.heaps.filter((h) => h.marked && h.scrap > 0).length).toBeLessThanOrEqual(1);
+    }
+    expect(near().length).toBeLessThan(before);
+  }, 120000);
+});

@@ -11,7 +11,8 @@ import { roundField } from './fields';
 import { STORE_PER_HEAD, canPlace, footAt, placeProject } from './buildings';
 import { HAMLET_APART, fires, whyNotHamletFire } from './hearth';
 import { NEAR, fulfilled, grantWork, requestsOf } from './requests';
-import { Zone, idx, paintZone, toTileX, toTileZ, zoneAllowed, type World } from './world';
+import { Zone, idx, paintZone, tileX, tileZ, toTileX, toTileZ, zoneAllowed, type World } from './world';
+import { markHeap } from './salvage';
 import { DAYS_PER_SEASON } from './calendar';
 import { alive, communityMorale } from './community';
 import { FOLK_SUITED, canClear, finish, giveDistrict, startClearing, type Clearing } from './haunt';
@@ -70,6 +71,7 @@ export function autopilotDaily(col: Colony) {
   autopilotFolk(col);
   autopilotRequests(col);
   autopilotHamlet(col);
+  autopilotWrecks(col);
   // More Home ground when households find no room.
   if ((col.village.noPlotDay ?? -9) >= c.day - 1) {
     // Next to the village, not out in the woods: plots are found anywhere on Home ground now.
@@ -185,4 +187,16 @@ function autopilotHamlet(col: Colony) {
       if (typeof placeProject(w, v, c, 'hearth', foot, facing) !== 'string') { log(c, 'Autopilot laid a fire for the new hamlet.', 'info'); return; }
     }
   }
+}
+
+/** Wrecks and heaps standing in the village are stripped first, one at a time, to clear the ground (DESIGN §33). */
+function autopilotWrecks(col: Colony) {
+  const w = col.world;
+  if (w.heaps.some((h) => h.marked && h.scrap > 0)) return;
+  const near = w.heaps
+    .filter((h) => h.scrap > 0 && !h.tow)
+    .map((h) => ({ h, d: Math.min(...fires(col).map((f) => Math.hypot(tileX(w, h.tx) - f.x, tileZ(w, h.tz) - f.z))) }))
+    .filter((x) => x.d < 18)
+    .sort((a, b) => a.d - b.d)[0];
+  if (near) markHeap(col, near.h); // markHeap says so in the log
 }

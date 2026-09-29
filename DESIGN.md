@@ -3946,3 +3946,38 @@ world: a craft learned, a material found, a need felt, a district cleared.
   - Seed 7 on autopilot, day 31: the hamlet fire, smokehouse, glass dome and
     toolmaker's shop are marked *new*.
   - `tests/unlocks.test.ts`.
+
+### §33. Clean-up after v43 (the open list)
+
+- **Ruins in the cutaway.**
+  - Each ruin now carries its own cut height: 1.15 above its floor, rounded
+    to 25 cm (`ruins.ts#buildDistrict`, `userData.cutAt`).
+  - `mergeStatic` gives parts with a cut height a copy of the material that
+    cuts there (`roofs.ts#cutMaterialFor`, `merge.ts#cutAtOf`). So ruins
+    merge only with ruins cut at the same height.
+  - Checked on the highest ruin on seed 7: walls cut at knee height above
+    its floor.
+  - Draw calls for the old world: 12 with the change against 13 without
+    (seed 1, farm, day 8).
+- **"The view doesn't refresh while paused":** not a bug.
+  - The scene syncs every 0.25 s of real time whatever the speed.
+  - The stale frames were the screenshot harness's (about 1 fps and a fixed
+    dt), where a sync takes several frames.
+- **Commons hall furniture:** a long table with cups, benches both sides
+  and an iron stove, seen in the cutaway (`trades.ts`, the `hall` case).
+  The hall is now in the tree-clearance table, with the saw pit, windmill,
+  solar array, turbine and hamlet fire (`clearance.ts#TOP`). Before this,
+  trees grew through all of them.
+- **Seed 6 slowness: not reproducible.**
+  - On autopilot to day 200: 90–200 ms per day, rising with population (28
+    at day 200), and no slow days.
+  - Scrap no longer runs out (8 heaps left at day 200).
+  - The earlier 3–5 s days (§22.12) were probably removed by later work;
+    which change did it is not known.
+- **Autopilot and wrecks** (`autopilot.ts#autopilotWrecks`):
+  - Wrecks and heaps within 18 of any fire are marked to be stripped, one
+    at a time, which clears the village's ground.
+  - It does not tow. Towing costs 60 + 5 × distance minutes, while
+    stripping in place costs two round trips for a car, so towing only
+    pays when a wreck is in the way.
+  - Test: `tests/wrecks.test.ts` ("autopilot and wrecks").
