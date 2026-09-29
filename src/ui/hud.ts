@@ -3,6 +3,7 @@ import { dayOf, fireWood, hourOf } from '../sim/colony';
 import {
   dayOfSeason, daysToFullMoon, daysUntilWinter, isFullMoon, seasonOf, yearOf, DAYS_PER_SEASON, SEASON_NAMES, WEATHER_NAMES,
 } from '../sim/calendar';
+import { placeKindOf, whyNotCancel, whyNotTakeDown } from '../sim/dismantle';
 import { nextGathering } from '../sim/gatherings';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
@@ -74,6 +75,10 @@ export interface HudActions {
   onFolkFocus(focus: FolkFocus): void;
   onClear(haunt: number, team: number[], fae?: number): void;
   onGive(district: number, to: 'village' | 'folk' | 'shared'): void;
+  /** Take down or move a building, change one's mind, or call off a project (DESIGN §24.13). */
+  onTakeDown(building: number, moving: boolean): void;
+  onKeep(building: number): void;
+  onCallOff(project: number): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -85,6 +90,8 @@ export class Hud {
   private labelsOn = true;
   private labelEls = new Map<number, HTMLDivElement>();
   private killArmed = false;
+  /** A take-down, move or call-off waiting for its confirming second click. */
+  private armed = '';
   private selected = 0;
   private lastLog = -1;
   private rosterKey = '';
@@ -175,6 +182,19 @@ export class Hud {
       if (go && !go.disabled) act.onClear(Number(go.dataset.clear), [...this.team], this.fae ?? undefined);
       const give = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-give]');
       if (give) act.onGive(Number(give.dataset.district), give.dataset.give as 'village' | 'folk' | 'shared');
+      // Taking down, moving, calling off: a second click confirms (no browser dialogs in the artifact frame).
+      const tk = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-takedown]');
+      if (tk && !tk.disabled) {
+        const key = `${tk.dataset.takedown}:${tk.dataset.id}`;
+        if (this.armed !== key) { this.armed = key; this.renderInspect(); return; }
+        this.armed = '';
+        const id = Number(tk.dataset.id);
+        if (tk.dataset.takedown === 'down') act.onTakeDown(id, false);
+        else if (tk.dataset.takedown === 'move') act.onTakeDown(id, true);
+        else if (tk.dataset.takedown === 'keep') act.onKeep(id);
+        else if (tk.dataset.takedown === 'calloff') act.onCallOff(id);
+        this.renderInspect();
+      }
     });
     $('council-open').addEventListener('click', () => { this.councilOpen = true; this.councilKey = ''; this.renderCouncil(); });
     $('council').addEventListener('click', (e) => {
@@ -521,7 +541,8 @@ export class Hud {
       } else if (b.kind !== 'store' && b.kind !== 'kitchen' && b.kind !== 'lantern') facts.push(['Built from', build]);
       html = `<h3>${esc(cap(b.name))}<button type="button" id="inspect-close">Close</button></h3>
         <div class="what">${esc(BUILDING_INFO[b.kind] ?? '')}</div>
-        <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>`;
+        <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
+        ${this.takedownRow(b as Building)}`;
     } else if (t.folk) {
       html = this.folkCard();
     } else if (t.district !== undefined) {
@@ -531,11 +552,35 @@ export class Hud {
       if (!p || p.done) { this.inspecting = null; el.hidden = true; return; }
       html = `<h3>${esc(p.name)}<button type="button" id="inspect-close">Close</button></h3>
         <div class="what">Under construction. ${esc(BUILDING_INFO[p.kind] ?? '')}</div>
-        <div class="facts"><span>Status</span><b>${esc(this.status(p))}</b></div>`;
+        <div class="facts"><span>Status</span><b>${esc(this.status(p))}</b></div>
+        ${this.callOffRow(p)}`;
     }
     if (el.innerHTML !== html) el.innerHTML = html;
     el.hidden = false;
   }
+  /** Take down / Move, or how far along it is (DESIGN §24.13). A second click confirms. */
+  private takedownRow(b: Building): string {
+    const td = (this.col.village.takedowns ?? []).find((x) => x.building === b.id);
+    const btn = (kind: string, label: string, armedLabel: string, why: string | null, tip: string) => {
+      const armed = this.armed === `${kind}:${b.id}`;
+      return `<button type="button" data-takedown="${kind}" data-id="${b.id}" ${why ? `disabled title="${esc(why)}"` : `title="${esc(tip)}"`}>${armed ? armedLabel : label}</button>`;
+    };
+    if (td) {
+      return `<div class="h" style="margin-top:8px">${td.moving ? 'Being taken apart to move' : 'Coming down'} · ${Math.round((td.work / td.need) * 100)}%</div>
+        <div class="row">${btn('keep', 'Keep it standing', 'Click again to keep it', null, 'Change your mind: it stays up.')}</div>`;
+    }
+    const whyDown = whyNotTakeDown(this.col, b, false), whyMove = placeKindOf(b) ? whyNotTakeDown(this.col, b, true) : 'This can\'t be placed again from the build menu.';
+    if (whyDown === 'The shelter the village started from stays.') return '';
+    return `<div class="row" style="margin-top:8px">${btn('down', 'Take down', 'Click again: take it down', whyDown, 'Builders dismantle it; half of what it was made of comes back.')}
+      ${btn('move', 'Move', 'Click again: move it', whyMove, 'Builders take it apart and keep every piece; then place it again wherever you like.')}</div>`;
+  }
+
+  private callOffRow(p: Project): string {
+    const why = whyNotCancel(p);
+    const armed = this.armed === `calloff:${p.id}`;
+    return `<div class="row" style="margin-top:8px"><button type="button" data-takedown="calloff" data-id="${p.id}" ${why ? `disabled title="${esc(why)}"` : 'title="Everything brought for it goes back to the stores."'}>${armed ? 'Click again: call it off' : 'Call it off'}</button></div>`;
+  }
+
   private districtCard(id: number): string {
     const col = this.col, d = col.world.districts[id];
     const hi = col.haunts.findIndex((x) => x.district === id);

@@ -3,6 +3,7 @@
  * what the community builds next and where. Survivors make these choices;
  * the player only shapes the home zone.
  */
+import type { Takedown } from './dismantle';
 import { autoBackyard, isBackyard } from './backyard';
 import type { Colony } from './colony';
 import { alive, log, type Community } from './community';
@@ -142,6 +143,8 @@ export interface Village {
   autoClearDay?: number;
   /** The village plans and places its own buildings (tests, probes). Off in the game: the player places them. */
   autoPlan?: boolean;
+  /** Buildings being taken down or moved (dismantle.ts). */
+  takedowns?: Takedown[];
 }
 
 interface Def { name: [string, string]; w: number; d: number; cost: [Cost, Cost]; work: [number, number]; beds?: [number, number] }

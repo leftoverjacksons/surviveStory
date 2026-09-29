@@ -3092,3 +3092,35 @@ offence.
   - ghost lights over ruins given to the Folk;
   - the autopilot using the brush;
   - the council asking about a district, rather than the district card.
+
+### 24.13 Move, take down, call off (built)
+- **Right-click** a building (a click, not a drag; right-drag still turns
+  the camera) to open its card. The card has **Take down** and **Move**;
+  an unfinished building's card has **Call it off**. Every action needs a
+  second click to confirm, since browser dialogs are blocked in the
+  artifact frame.
+- **Take down** (`sim/dismantle.ts`, `village.takedowns`, the builders'
+  `dismantle` task, at most 2 to a building). Dismantling takes 40% of the
+  building's original work. When done:
+  - the building is removed and anyone inside steps out;
+  - its footprint is unblocked (a home frees its house tiles, and its
+    plot is released);
+  - half its kind's cost comes back to the stores, with the amounts
+    logged.
+
+  **Keep it standing** cancels while it's in progress.
+- **Move** does the same, but returns the whole cost, and the build menu
+  opens straight away to place the same kind elsewhere. The move costs
+  labour, not materials.
+- **Call it off** returns everything delivered to an unfinished project,
+  frees its tiles, and releases its tree reservations.
+- **Not yet:**
+  - the found shelter and kitchen;
+  - fishing works;
+  - restored ruins;
+  - homes someone lives in (take down only when empty; homes can't be
+    moved, since they're tied to their plots);
+  - calling off a home under construction;
+  - moving a backyard trade.
+- **Measured** (tests): a scrap workbench comes down within about 16
+  game hours with one builder, and returns 5 wood and 3 scrap.

@@ -42,6 +42,7 @@ import {
 } from './veil';
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
+import { finishTakedown } from './dismantle';
 import { DEPAVE_WORK, finishDepave, nearestDepave } from './depave';
 import { blessingGrowth, createMycelium, myceliumDaily, sever, type Mycelium } from './mycelium';
 import { activeGathering, courtshipDaily, gatherSpot, gatheringsTick, joined, type Gathering } from './gatherings';
@@ -69,6 +70,7 @@ export type Task =
   | { kind: 'eat'; stage: 'go' | 'eat'; t: number; place: MealPlace; building: number }
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern' | 'water'; building: number }
+  | { kind: 'dismantle'; building: number; stage: 'go' | 'work' }
   | { kind: 'depave'; tile: number; stage: 'go' | 'work'; t: number }
   | { kind: 'gather'; g: number; stage: 'go' | 'be'; slot: number; ate?: boolean }
   | { kind: 'craft'; building: number; stage: 'go' | 'work'; t: number }
@@ -910,6 +912,17 @@ function yardSpot(plot: Plot, i: number, a: Agent): Point {
   return plotPoint(plot, y.u + side, y.v - y.d / 2 - 0.5);
 }
 
+/** Take down (or move) a building the player marked (dismantle.ts): at most two to a building. */
+function pickDismantle(col: Colony, a: Agent): Task | null {
+  for (const t of col.village.takedowns ?? []) {
+    const b = buildingById(col, t.building);
+    if (!b) continue;
+    if (col.agents.filter((o) => o !== a && o.task?.kind === 'dismantle' && o.task.building === b.id).length >= 2) continue;
+    if (setDest(col, a, b.door.x, b.door.z, true)) return { kind: 'dismantle', building: b.id, stage: 'go' };
+  }
+  return null;
+}
+
 /** Break up a square of marked paving (depave.ts): the nearest one nobody else is on. */
 function pickDepave(col: Colony, a: Agent): Task | null {
   const w = col.world;
@@ -1134,7 +1147,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
       if (committed(col, 'all_hands')) { t = pickTree(col, a) ?? pickForage(col, a) ?? pickHaul(col, a); break; }
       t = pickHaul(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
         ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickBuild(col, a)
-        ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
+        ?? pickDismantle(col, a) ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
     case 'farmer':
       t = pickFarm(col, a) ?? pickGarden(col, a) ?? pickFence(col, a) ?? pickForage(col, a) ?? pickDepave(col, a) ?? pickHaul(col, a);
@@ -1400,6 +1413,22 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         a.needs.social = Math.min(100, a.needs.social + dt * ((t.place === 'hall' || t.place === 'tavern' ? 25 : mates.length ? 20 : 6) / 60));
       }
       if (!isEvening(hourOf(col))) endTask(col, a);
+      return;
+    }
+    case 'dismantle': {
+      const td = (col.village.takedowns ?? []).find((x) => x.building === t.building);
+      const b = buildingById(col, t.building);
+      if (!td || !b) return endTask(col, a);
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = `Going to take down ${b.name.toLowerCase()}`;
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      face(a, b.inside);
+      a.anim = 'build';
+      td.work += dt * workRate(s, 'builder', col);
+      a.activity = `${td.moving ? 'Taking apart' : 'Taking down'} ${b.name.toLowerCase()} · ${Math.min(99, Math.round((td.work / td.need) * 100))}%`;
+      if (td.work >= td.need) { finishTakedown(col, td); endTask(col, a); }
       return;
     }
     case 'depave': {

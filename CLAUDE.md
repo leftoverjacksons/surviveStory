@@ -197,7 +197,8 @@ reference: Tiny Glade.
     (no speed-up, for now), Crusader Kings-style lineage/notable families, hybrids ≤5–10% of children, scrap
     exhaustion deferred (may push territory), figures: less lanky + decimate, together with children.
     DEPAVE + SHARE BUILT §24.12 (`sim/depave.ts`, Depave brush, `depave` task, terrain redraws on `groundVersion`,
-    district owner 'shared'). NOT published.
+    district owner 'shared'). Published v32.
+    MOVE / TAKE DOWN / CALL OFF BUILT §24.13 (`sim/dismantle.ts`, right-click → card, second-click confirm). NOT published.
     ORDER: cleared districts (§24.4) → move/deconstruct → figures + children + lineage → crossing → A → B.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network

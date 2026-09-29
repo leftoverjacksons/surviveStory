@@ -39,6 +39,7 @@ import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
 import { digChamber } from './sim/townhouse';
 import { MyceliumView } from './render/mycelium';
+import { cancelProject, keepStanding, placeKindOf, takeDown } from './sim/dismantle';
 import { markDepave } from './sim/depave';
 import { TownhouseView } from './render/townhouse';
 import { GatheringView } from './render/gathering';
@@ -314,6 +315,22 @@ const hud = new Hud(colony, {
     enterVeil(r);
   },
   onGive(district, to) { giveDistrict(colony, district, to); hud.render(); },
+  onTakeDown(id, moving) {
+    const b = colony.village.buildings.find((x) => x.id === id);
+    if (!b) return;
+    const why = takeDown(colony, b, moving);
+    if (why) return;
+    // Moving: place the same kind again straight away (its materials come back when it's down).
+    const kind = moving ? placeKindOf(b) : null;
+    if (kind) setBuild({ kind: 'place', site: kind, turn: 0 });
+    hud.render();
+  },
+  onKeep(id) { keepStanding(colony, id); hud.render(); },
+  onCallOff(id) {
+    const p = colony.village.projects.find((x) => x.id === id);
+    if (p && !cancelProject(colony, p)) { hud.inspect(null); syncScene(); }
+    hud.render();
+  },
 });
 
 const roofBtn = document.getElementById('roof-btn')!;
@@ -801,6 +818,26 @@ const raycaster = new THREE.Raycaster();
 raycaster.layers.enableAll();
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+/** The building (or house going up) under the pointer, shown in the card; false if none. */
+function inspectBuildingAt(clientX: number, clientY: number): boolean {
+  const r = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, iso.camera);
+  const bh = raycaster.intersectObjects([villageView.group, plotsView.group], true)[0];
+  let q: THREE.Object3D | null = bh?.object ?? null;
+  while (q && q.userData.buildingId === undefined && q.userData.projectId === undefined && q.userData.plotId === undefined) q = q.parent;
+  if (!q) return false;
+  if (q.userData.plotId !== undefined) {
+    const pid = q.userData.plotId as number;
+    const home = colony.village.buildings.find((b) => b.plot === pid && b.kind === 'home');
+    const proj = colony.village.projects.find((x) => !x.done && x.plot === pid);
+    if (home) hud.inspect({ building: home.id }); else if (proj) hud.inspect({ project: proj.id }); else return false;
+    return true;
+  }
+  hud.inspect(q.userData.buildingId !== undefined ? { building: q.userData.buildingId } : { project: q.userData.projectId });
+  return true;
+}
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, sx: e.clientX, sy: e.clientY });
@@ -867,7 +904,10 @@ canvas.addEventListener('pointerup', (e) => {
     setOmen(false);
     return;
   }
-  if (!p || p.button !== 0 || Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 6) return;
+  if (!p || Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 6) return;
+  // A right-click on a building opens its card, where it can be taken down or moved (DESIGN §24.13).
+  if (p.button === 2) { inspectBuildingAt(e.clientX, e.clientY); return; }
+  if (p.button !== 0) return;
   // A click: try to select a survivor.
   const r = canvas.getBoundingClientRect();
   const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
