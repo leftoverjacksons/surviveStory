@@ -1428,6 +1428,8 @@ const veilDebug = {
   },
   /** Mark paving to be broken up (DESIGN §24.12). */
   depave: (x: number, z: number, r: number) => markDepave(world, x, z, r, true),
+  /** Clear a district and give it away (DESIGN §26): 'village', 'folk' or 'shared'. */
+  give(district: number, to: 'village' | 'folk' | 'shared') { const h = colony.haunts.find((x) => x.district === district); if (!h) return; h.state = 'cleared'; h.owner = null; const d = world.districts[district]; reveal(world, d.x, d.z, 22); giveDistrict(colony, district, to); syncScene(); hud.render(); },
   /** Grow the mycelium n days (and set the Folk's standing, if given). */
   spread(n = 10, standing?: number) { if (standing !== undefined) colony.folk.standing = standing; for (let i = 0; i < n; i++) myceliumDaily(colony); },
   /** Grow the hill n times, each raising a knowe (DESIGN §25.3). */

@@ -3633,3 +3633,51 @@ player is asked where.
     - the Folk land test raises the level until land is short;
     - the chronicle test allows two alike lines on a day (two lanterns
       finished).
+
+## 26. Cleared districts become places, and the Folk grow into them (after version 39)
+The rest of §24.4, and the core of B. The user (after v39) asked me to
+choose from the list. They are doing character work on another branch, so
+the character files are left alone (`render/characters.ts`,
+`render/people.ts`, `scripts/blender/`, `assets/people/`).
+
+### 26.1 Built
+- **The council asks** (`dilemmas.ts`, question `district`). The first
+  council after a district is cleared asks who should have it (once per
+  district, most pressing first):
+  - **Resettle it: the village's.** Its salvage, roofs and ground to zone
+    and build on; builders favour it.
+  - **Give it to the Folk.** It becomes the Wild; high Sight and fondness
+    for the Folk favour it.
+  - **Share it.** Empathy favours it.
+
+  The answer is `giveDistrict`, as the district card already did; the
+  card's buttons still work. Autopilot still gives districts at once.
+- **Their country** (`townhouse.ts#folkDistricts`, `inFolkCountry`,
+  radius 14): districts given to the Folk or shared are their country
+  beyond the hill.
+  - Knowes may rise there, whatever the distance from the Great Hill (the
+    placement tool allows it, with the reason given otherwise). When their
+    country is freer of trees than the hill's surroundings, the Folk's own
+    choice (`knoweSite`) goes there.
+  - The mycelium's roots run from the hill to each such district (hubs at
+    0.7), so the network reaches it and branches on.
+- **They live in its old buildings** (`folkRuins`, `roomFor`). Each standing
+  ruin in a district given to the Folk houses 2 of them. It counts toward
+  Rest and toward what the next knowe must be.
+  - Drawn (`render/townhouse.ts#ruinHome`): each such ruin as the Folk keep
+    it, whole in light, with a pale roof, warm windows and a lit door. It
+    follows the lodges' visibility rules (a shimmer; clear with Sight at
+    night; plain in the Veil view).
+- **The push toward the districts** (`lookingToward`): when a growth finds
+  no room for a knowe, the news says where their lights drift at dusk:
+  the nearest district still haunted.
+- The Folk card has a "Their country" line: the hill, the knowes, the
+  districts, the ruins they live in, and their room.
+- Debug hook: `__game.give(district, 'village' | 'folk' | 'shared')` clears
+  a district and gives it.
+- **Tests:** `tests/country.test.ts`.
+
+### 26.2 Next
+- **Resettle, for the village:** a second hearth and green in a district
+  given to the village, so households can live there with their own
+  evening fire. This is its own round.

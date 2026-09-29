@@ -105,6 +105,8 @@ function capacity(col: Colony): { cap: Float32Array; hub: Float32Array; source: 
     for (let i = 0; i <= n; i++) { const t = i / n; const c = cellAt(my, w, ax + (bx - ax) * t, az + (bz - az) * t); if (c >= 0) { cap[c] = Math.max(cap[c], v); hub[c] = Math.max(hub[c], v); } }
   };
   for (const k of col.folk.knowes ?? []) root(m.x, m.z, k.x, k.z, 0.8);
+  // And to each district given to them or shared (DESIGN §26): their country beyond the hill.
+  for (const h of col.haunts) if (h.state === 'cleared' && (h.owner === 'folk' || h.owner === 'shared')) root(m.x, m.z, w.districts[h.district].x, w.districts[h.district].z, 0.7);
   const toRing = w.folk.paths[0];
   if (toRing?.length) {
     for (let i = 1; i < toRing.length; i++) root(toRing[i - 1].x, toRing[i - 1].z, toRing[i].x, toRing[i].z, 0.75);

@@ -56,11 +56,21 @@ export const knoweCount = (f: FolkSociety, kind: KnoweKind) => knowes(f).filter(
 /** How many of the Folk the settlement can house. */
 export const housing = (f: FolkSociety) => HALL_HOUSES + knowes(f).length * KNOWE_HOUSES;
 
+/** How many of the Folk each old building in a district given to them can house (DESIGN §26). */
+export const RUIN_HOUSES = 2;
+/** The old buildings the Folk live in: every standing ruin in a district given to them. */
+export function folkRuins(col: Colony) {
+  const theirs = new Set(col.haunts.filter((h) => h.state === 'cleared' && h.owner === 'folk').map((h) => h.district));
+  return col.world.ruins.filter((r) => theirs.has(r.district) && !r.razed && !r.restored);
+}
+/** Room for the Folk: the hall, the knowes, and the ruins of their districts. */
+export const roomFor = (col: Colony) => housing(col.folk) + folkRuins(col).length * RUIN_HOUSES;
+
 /** What the hill lacks most: the next knowe's character. */
 export function nextKnowe(col: Colony): KnoweKind {
   const f = col.folk;
   const has = (k: KnoweKind) => knoweCount(f, k) > 0;
-  if (housing(f) < f.beings.length + 2) return 'dwelling';
+  if (roomFor(col) < f.beings.length + 2) return 'dwelling';
   if (!has('dewcellar') && f.dew < 12) return 'dewcellar';
   if (!has('gallery') && f.song < 12) return 'gallery';
   if (!has('archive') && col.community.survivors.some((s) => !s.alive && !s.departed && !s.taken)) return 'archive';
@@ -93,6 +103,15 @@ export function knoweSite(col: Colony, r = KNOWE_R): { x: number; z: number } | 
     }
     if (best && best.score < ring * 1.5 + 3) break;
   }
+  // Their country beyond the hill: districts given to them or shared (DESIGN §26), when nearer the hill is full or rough.
+  for (const d of folkDistricts(col)) for (let ring = 0; ring < 4; ring++) for (let k = 0; k < 24; k++) {
+    const a = (k / 24) * Math.PI * 2 + n * 0.53, dd = 3 + ring * 3.2;
+    const x = d.x + Math.cos(a) * dd, z = d.z + Math.sin(a) * dd;
+    const trees = siteTrees(col, x, z, r);
+    if (trees < 0) continue;
+    const score = trees * 3 + 4 + ring;
+    if (!best || score < best.score) best = { x, z, score };
+  }
   return best ? { x: best.x, z: best.z } : null;
 }
 
@@ -102,12 +121,28 @@ function siteTrees(col: Colony, x: number, z: number, r: number): number {
   return typeof why === 'number' ? why : -1;
 }
 
+/** Districts given to the Folk or shared with them (DESIGN §26): their country beyond the hill. */
+export const FOLK_COUNTRY_R = 14;
+export function folkDistricts(col: Colony) {
+  return col.haunts.filter((h) => h.state === 'cleared' && (h.owner === 'folk' || h.owner === 'shared')).map((h) => col.world.districts[h.district]);
+}
+export const inFolkCountry = (col: Colony, x: number, z: number) => folkDistricts(col).some((d) => Math.hypot(d.x - x, d.z - z) <= FOLK_COUNTRY_R);
+
+/** Where the Folk look when there's no room left: the nearest district still haunted (the push to clear, B). */
+export function lookingToward(col: Colony): string | null {
+  const w = col.world, m = w.folk.mound;
+  const open = col.haunts.filter((h) => h.state !== 'cleared').map((h) => w.districts[h.district]);
+  open.sort((a, b) => Math.hypot(a.x - m.x, a.z - m.z) - Math.hypot(b.x - m.x, b.z - m.z));
+  return open[0]?.name ?? null;
+}
+
 /** Why a knowe can't stand here (a reason), or how many trees it would take in. */
 function siteWhy(col: Colony, x: number, z: number, r: number): number | string {
   const w = col.world, f = col.folk, v = col.village, m = w.folk.mound;
   const d0 = Math.hypot(x - m.x, z - m.z);
   if (d0 < m.r + r + 1) return 'Too close to the Great Hill.';
-  if (d0 > m.r + r + 24) return 'Too far from the Great Hill: the knowes stand round it.';
+  // Round the hill, or in a district given to the Folk (or shared): their country (DESIGN §26).
+  if (d0 > m.r + r + 24 && !inFolkCountry(col, x, z)) return 'Too far from the Great Hill: the knowes stand round it, or in a district given to the Folk.';
   if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < r + 5) return 'Too close to the Ring.';
   if (knowes(f).some((k) => Math.hypot(k.x - x, k.z - z) < k.r + r + 1)) return 'Too close to another knowe.';
   if (f.works.some((k) => Math.hypot(k.x - x, k.z - z) < r + 1)) return 'One of their works stands there.';

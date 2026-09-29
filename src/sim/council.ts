@@ -22,7 +22,8 @@ export type ProposalKind =
   | 'build' | 'festival' | 'wild_ring' | 'rest_day' | 'open_gates' | 'close_gates' | 'offering' | 'grove' | 'home' | 'commons'
   | 'folk_festival' | 'folk_land' | 'folk_amends'
   // Answers to a dilemma (dilemmas.ts)
-  | 'take_all' | 'take_one' | 'send_on' | 'land_elsewhere' | 'land_refuse' | 'all_hands' | 'ration' | 'trust' | 'side_a' | 'side_b' | 'mend' | 'not_now';
+  | 'take_all' | 'take_one' | 'send_on' | 'land_elsewhere' | 'land_refuse' | 'all_hands' | 'ration' | 'trust' | 'side_a' | 'side_b' | 'mend' | 'not_now'
+  | 'district_village' | 'district_folk' | 'district_shared';
 
 export interface Proposal {
   id: number;

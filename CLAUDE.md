@@ -221,6 +221,11 @@ reference: Tiny Glade.
     §25.6 (published v39): new villages start with the mycelium grown through the Wild to the Ring (`growMycelium`, Folk roots
     as hubs) and a settlement (dwelling + dew knowe, Wee band); a growth asks WHERE the knowe rises (Asks tray → knowe tool,
     `placeKnowe`; the Folk choose after 3 days; autopilot at once); new knowes get a trunk at once (`reachKnowe`).
+    DESIGN §26 (after v39; user doing CHARACTER WORK ON ANOTHER BRANCH: don't touch render/characters.ts, render/people.ts,
+    scripts/blender/, assets/people/): the council asks who a cleared district belongs to (dilemma `district`); Folk/shared
+    districts are THEIR COUNTRY (`folkDistricts`, knowes may rise there, mycelium roots to them), they live in its ruins
+    (`folkRuins`, `roomFor`, ghost homes drawn), no room → lights drift toward the nearest haunted district. NOT published yet.
+    Next: resettle (a second hearth for the village).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

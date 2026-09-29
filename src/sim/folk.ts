@@ -11,7 +11,7 @@
  * - The player guides what they give their nights to: the woods, the
  *   village (night chores), or their own home (the mound grows).
  */
-import { KNOWES, KNOWE_WAIT, housing, knoweCount, knoweDue, letFolkChoose, settleFolk, townhouseDaily, homeOf, type Knowe, type KnoweKind } from './townhouse';
+import { KNOWES, KNOWE_WAIT, roomFor, inFolkCountry, knoweCount, knoweDue, letFolkChoose, lookingToward, settleFolk, townhouseDaily, homeOf, type Knowe, type KnoweKind } from './townhouse';
 import { HAUNT_RADIUS } from './haunt';
 import { faeDaily, feel, gentryFeel, gentryView, isGentry, opinionOf, restlessTick, sway, visitTarget, weeVisit, type Restless } from './fae';
 import type { Colony } from './colony';
@@ -475,7 +475,7 @@ export function folkDaily(col: Colony) {
   // A knowe nobody chose a place for: after a few days the Folk choose for themselves.
   if (f.pendingKnowe && col.community.day - f.pendingKnowe.since >= KNOWE_WAIT) {
     const k = letFolkChoose(col);
-    news(col, k ? `The Folk of ${m.name} stopped waiting and chose for themselves: overnight ${k.name} rose beside the hill.` : `The Folk of ${m.name} could find no room for another knowe.`, 'strange');
+    news(col, k ? `The Folk of ${m.name} stopped waiting and chose for themselves: overnight ${k.name} rose ${inFolkCountry(col, k.x, k.z) ? 'in their country beyond the hill' : 'beside the hill'}.` : `The Folk of ${m.name} could find no room for another knowe.${lookingToward(col) ? ` Their lights hang at the edge of ${lookingToward(col)} at night.` : ''}`, 'strange');
   }
 
   withRng(col.community, (rng) => {
@@ -504,7 +504,7 @@ export function folkDaily(col: Colony) {
         if (f.pendingKnowe) news(col, `${f.met ? fae.name : 'Someone new'} has come to live at ${m.name}, and the Folk mean to raise a new knowe: ${KNOWES[f.pendingKnowe.kind].name.toLowerCase()}. Where should it rise? (Asks tray: choose, or let them.)`, 'good');
         else news(col, !f.met ? `There are more lights around ${m.name} at dusk than there used to be${k ? ', and the ground beside it has risen into a new green hill' : ''}.`
           : k ? `${fae.name} has come to live at ${m.name}. Overnight a new hill rose beside it: ${k.name}, ${KNOWES[k.kind].name.toLowerCase()}. The Folk are growing.`
-          : `${fae.name} has come to live at ${m.name}. There is no room left round the hill for another knowe.`, 'good');
+          : `${fae.name} has come to live at ${m.name}, but there is no room left round the hill for another knowe.${lookingToward(col) ? ` At dusk their lights drift toward ${lookingToward(col)}, and hang at its edge.` : ''}`, 'good');
         addWork(col, rng);
       }
     }
@@ -598,7 +598,7 @@ export function folkNeeds(col: Colony): FolkNeed[] {
   const n = (k: FolkWorkKind) => done.filter((x) => x.kind === k).length;
   return [
     { id: 'room', label: 'Room', met: f.land >= landWanted(f), hint: 'Land left to the Wild around the hill.', gate: false },
-    { id: 'rest', label: 'Rest', met: housing(f) + n('bower') * 2 >= f.beings.length + 1, hint: 'Room in the hall and the knowes (or a bower for every two more), and one spare for whoever comes next.', gate: true },
+    { id: 'rest', label: 'Rest', met: roomFor(col) + n('bower') * 2 >= f.beings.length + 1, hint: 'Room in the hall, the knowes and the ruins of their districts (or a bower for every two more), and one spare for whoever comes next.', gate: true },
     { id: 'dance', label: 'Dance', met: n('ring') >= 1 + Math.floor(f.level / 3), hint: 'A dancing ring (another every third growth).', gate: true },
     { id: 'light', label: 'Light', met: n('lantern') >= 1 + Math.floor(f.level / 2), hint: 'Glow-lanterns along their paths, more as the hill grows.', gate: true },
     { id: 'gifts', label: 'Gifts', met: col.community.day - f.offeredDay <= 3, hint: 'An offering at the door in the last three days.', gate: false },

@@ -9,7 +9,7 @@ import { nextGathering } from '../sim/gatherings';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
-import { KNOWES, housing, knowes } from '../sim/townhouse';
+import { KNOWES, folkDistricts, folkRuins, housing, knowes, roomFor } from '../sim/townhouse';
 import { QUICKEN, faeView, isGentry, opinionOf, viewWord, villageFeeling } from '../sim/fae';
 import { folkMood, reachShare } from '../sim/mycelium';
 import { FOLK_WORKS, folkNeeds, landWanted, standingWord, type FolkFocus } from '../sim/folk';
@@ -680,6 +680,10 @@ export class Hud {
       const share = (pts: { x: number; z: number }[]) => `${Math.round(reachShare(col, pts) * 100)}%`;
       const what = mood > 0 ? `a blessing (growth up to +${Math.round(15 * mood)}%)` : mood < 0 ? 'a curse (blight, sour stores, bad dreams)' : 'neither blessing nor curse while they are wary';
       facts.push(['Their mycelium', `Reaches ${share(fields)} of the fields and ${share(homes)} of the homes: ${what}. It grows along the Wild, their paths and works, and from Sacred ground and the shrine once it gets there; uncleared districts are dead ground. (Seen in the Veil view.)`]);
+    }
+    {
+      const country = folkDistricts(col), lived = folkRuins(col).length;
+      facts.push(['Their country', `The Great Hill and ${knowes(f).length} knowe${knowes(f).length === 1 ? '' : 's'}${country.length ? `; ${country.map((d) => d.name).join(', ')}${lived ? ` (they live in ${lived} of its old buildings)` : ''}` : ''}. Room for ${roomFor(col)} of them. Districts given to them (or shared) become their country: knowes may rise there, and the mycelium runs out to them.`]);
     }
     if ((f.restless?.length ?? 0) + (f.memory ?? 0) > 0) {
       const on = f.restless?.length ?? 0, mem = f.memory ?? 0;
