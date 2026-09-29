@@ -121,7 +121,7 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
   const path = new Uint8Array(w.w * w.h);
   const paths: Point[][] = [];
   const doorPt = { x: mound.x + Math.cos(mound.door) * (mound.r + 0.6), z: mound.z + Math.sin(mound.door) * (mound.r + 0.6) };
-  const lay = (from: Point, to: Point, bend: number) => {
+  const curve = (from: Point, to: Point, bend: number) => {
     const pts: Point[] = [];
     const mx = (from.x + to.x) / 2, mz = (from.z + to.z) / 2;
     const len = Math.hypot(to.x - from.x, to.z - from.z) || 1;
@@ -132,16 +132,34 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
       const t = s / n, u = 1 - t;
       pts.push({ x: u * u * from.x + 2 * u * t * cx + t * t * to.x, z: u * u * from.z + 2 * u * t * cz + t * t * to.z });
     }
+    return pts;
+  };
+  const tilesOf = (pts: Point[]) => {
+    const out = new Set<number>();
     for (let s = 0; s < pts.length - 1; s++) {
       const a = pts[s], b = pts[s + 1];
       const l = Math.hypot(b.x - a.x, b.z - a.z);
       for (let d = 0; d <= l; d += 0.4) {
         const x = a.x + ((b.x - a.x) * d) / l, z = a.z + ((b.z - a.z) * d) / l;
         const tx = toTileX(w, x), tz = toTileZ(w, z);
-        if (inBounds(w, tx, tz) && w.ground[idx(w, tx, tz)] !== Ground.Water) path[idx(w, tx, tz)] = 1;
+        if (inBounds(w, tx, tz) && w.ground[idx(w, tx, tz)] !== Ground.Water) out.add(idx(w, tx, tz));
       }
     }
-    paths.push(pts);
+    return out;
+  };
+  // A path never runs through a building of the old world (or rubble): the bend asked for if it's clear,
+  // else the nearest bend that is, else the one that crosses least (DESIGN §34).
+  const lay = (from: Point, to: Point, bend: number) => {
+    let best: { pts: Point[]; tiles: Set<number>; hits: number } | null = null;
+    for (const b of [bend, ...[4, -4, 8, -8, 12, -12, 16, -16, 22, -22].map((k) => bend + k)]) {
+      const pts = curve(from, to, b), tiles = tilesOf(pts);
+      let hits = 0;
+      for (const i of tiles) if (w.blocked[i]) hits++;
+      if (!best || hits < best.hits) best = { pts, tiles, hits };
+      if (hits === 0) break;
+    }
+    for (const i of best!.tiles) path[i] = 1;
+    paths.push(best!.pts);
   };
   const ring = w.fairyRing;
   const toRing = Math.atan2(ring.z - doorPt.z, ring.x - doorPt.x);
