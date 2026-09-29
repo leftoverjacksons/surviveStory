@@ -10,7 +10,7 @@ import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../s
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
 import { KNOWES, housing, knowes } from '../sim/townhouse';
-import { faeView, isGentry, opinionOf, viewWord, villageFeeling } from '../sim/fae';
+import { QUICKEN, faeView, isGentry, opinionOf, viewWord, villageFeeling } from '../sim/fae';
 import { folkMood, reachShare } from '../sim/mycelium';
 import { FOLK_WORKS, folkNeeds, landWanted, standingWord, type FolkFocus } from '../sim/folk';
 import { FAE_UNIT, FOLK_SUITED, canAskFolk, canClear, veilCost } from '../sim/haunt';
@@ -680,6 +680,10 @@ export class Hud {
       const share = (pts: { x: number; z: number }[]) => `${Math.round(reachShare(col, pts) * 100)}%`;
       const what = mood > 0 ? `a blessing (growth up to +${Math.round(15 * mood)}%)` : mood < 0 ? 'a curse (blight, sour stores, bad dreams)' : 'neither blessing nor curse while they are wary';
       facts.push(['Their mycelium', `Reaches ${share(fields)} of the fields and ${share(homes)} of the homes: ${what}. It grows along the Wild, their paths and works, and from Sacred ground and the shrine once it gets there; uncleared districts are dead ground. (Seen in the Veil view.)`]);
+    }
+    if ((f.restless?.length ?? 0) + (f.memory ?? 0) > 0) {
+      const on = f.restless?.length ?? 0, mem = f.memory ?? 0;
+      facts.push(['The Restless', `${on ? `${on} on their way to the hill by night (pale lights)` : 'None on the road'}; the hill has taken in ${mem}. Every ${QUICKEN}, one of the Wee Folk quickens (${QUICKEN - (mem % QUICKEN)} to go). Spirits laid to rest in a clearing come; banished ones never do.`]);
     }
     facts.push(['Dew · song', `${Math.floor(f.dew)} · ${Math.floor(f.song)} (sprites and moon gardens gather dew; pipers and rings make song)`]);
     const orders = f.works.filter((k) => k.built !== undefined);

@@ -229,7 +229,7 @@ const people = new People(world);
 people.group.name = 'people';
 scene.add(people.group);
 // Character models load in the background; until then people are simple figures.
-loadCharacters().then((kit) => { people.setKit(kit); lightPeopleLayer(scene); }).catch((e) => console.warn('characters:', e));
+loadCharacters().then((kit) => { people.setKit(kit); folkView.setKit(kit); lightPeopleLayer(scene); }).catch((e) => console.warn('characters:', e));
 
 /** Trees make room for buildings (finished or planned). */
 let clearanceKey = '';

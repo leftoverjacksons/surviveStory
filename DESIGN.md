@@ -3372,7 +3372,7 @@ brighter pulses running from the centre to the tips.
   - Unexplored ground never shows it (the old lines leaked into the fog).
 - Debug hook: `__game.spread(days, standing)` grows the network.
 
-### 25.2 Four kinds of being (proposal)
+### 25.2 Four kinds of being (built, §25.5; the Strange not yet)
 The user's outline, with the folklore it draws on:
 - the Irish *aos sí* / Tuatha Dé Danann for the tall ones;
 - the Cherokee Nunnehi (immortal, human-sized, living in townhouses under
@@ -3435,7 +3435,7 @@ courtship, an offering accepted, being met on a path.
   survivors (tall and pale; child-height with different silhouettes),
   drawn translucent and glowing.
 
-### 25.3 The Great Hill and its knowes (proposal)
+### 25.3 The Great Hill and its knowes (built, §25.5)
 The townhouse chambers (§24.9) are abandoned for a settlement:
 - **The Great Hill:** the main mound at about double today's radius
   (3.6 → ~7). It holds the hearth-hall (council, dances, the Gentry's
@@ -3470,3 +3470,127 @@ The townhouse chambers (§24.9) are abandoned for a settlement:
 4. The Restless return to the hill and quicken new Wee ones.
 5. New Gentry and Wee figures (Blender).
 6. The Strange: later.
+
+### 25.5 What was built (steps 1–4 of §25.4)
+The user (after version 37): mischief as proposed for now, but it must truly
+affect the world and the relationship; placeholder figures for the Folk,
+with character work in Blender saved for later.
+
+**Step 1: the Great Hill and its knowes** (`sim/townhouse.ts`,
+`render/townhouse.ts`, `folk.ts#raiseHill`):
+- **The Great Hill:** radius 7.2 (was 3.6), 3.6 high.
+  - It sits farther out: 17–25 beyond the Ring, at least 18 from it.
+  - The Wild's radius is 14; land wanted is 420 + 80 per growth.
+  - The back path is extended to keep its length.
+- **Knowes:** one is raised at each growth (the chambers are gone).
+  - Each is real ground: `raiseHill` only ever lifts the heights, and the
+    terrain redraws on `World.heightVersion`.
+  - Trees on the footprint are taken in (the `swallowed` event: no stump,
+    no fall). The land round it becomes the Wild, and it is revealed.
+  - Sites: round the hill, fewest trees first. They avoid the village's
+    zones, plots, buildings and paving, the Folk's paths and works, the
+    Ring, other knowes, ruins, and uncleared districts.
+- **Housing:** the hall houses 6, each knowe 5 (`settleFolk`). The Gentry
+  live in the hall; the Wee Folk live in the knowes, and walk home to
+  their own at dawn.
+- **Characters** (what the chambers did): dwelling, dew, pipers' (song),
+  root-archive (grief), nursery (growth), guest (one more night chore).
+- **Drawn:**
+  - A seven-sided hall lodge on the crown.
+  - On each knowe, a round lodge facing the hill, with its character
+    beside it.
+  - In the Veil view, lower floors glow underground, joined by faint
+    root-like tunnels (curved; straight ones read as bolts).
+  - The Folk card shows a plan of the hill and its knowes: who lives
+    where, on hover.
+- The mycelium treats knowes as hubs, so its trunks run out to them.
+- Old saves: chambers become knowes.
+
+**Step 2: the Gentry and the Wee Folk** (`sim/fae.ts`):
+- The elders and pipers are Gentry; hobs and sprites are Wee Folk.
+- **Opinions:**
+  - The Gentry hold opinions of the village's people (`Fae.of`) and of
+    each other (`Fae.kin`, fixed per pair to start).
+  - Meeting one: +15. An offering: +1.5 from every one of the Gentry.
+    Dancing with them: +4. A tree cut in the Wild: −10.
+  - When cross, they lead astray whoever they like least (half the time);
+    when friendly, they borrow a favourite. The Folk card lists who each
+    is fond of or cold to.
+  - Now and then the log carries a word about their own loves and
+    quarrels.
+- **Everyone's feeling for the Folk** (`Survivor.fae`, −100..100) is moved
+  by what happens to them, and is remembered.
+  - It gates offerings at the hill: none below −20, more when fond.
+  - It is shown on the person card once it is strong.
+  - The village's mean feeling moves the Folk's standing by 1% of it
+    each day.
+- **Saucers at dusk** (20:00): households whose strongest voice is fond,
+  or that were hit by mischief in the last 3 days, leave milk and bread
+  (0.5 food).
+- **The Wee Folk's nights:** from 20:00 to 04:00 a Wee one may call at a
+  house (one call each a night).
+  - A saucer is repaid with a favour: an hour on a site, a row weeded,
+    kindling (+2 wood), or a mended gate and a good night's sleep.
+  - With no saucer, mischief may follow: 55% if soured, 30% if wary, 12%
+    if friendly, 8% if kin. There is a nightly cap of 1 + level/2.
+  - Real costs when the Folk are cross:
+    - tools up a tree (that person works at ×0.7 all day);
+    - a larder soured (2–5 food);
+    - a woodpile carried off (3–6 wood, left in a ditch to be hauled
+      back);
+    - nets knotted (half a catch that day);
+    - bad dreams (−25 rest, −3 morale).
+  - Among friends it is play: hair braided with meadowsweet, boots on the
+    roof.
+  - The person it happened to thinks worse of the Folk (−4 to −6; the
+    household half that), and remembers it.
+- **Iron over the door:** when a household's strongest voice falls to −45,
+  a horseshoe goes up (standing −1). No mischief and no favours there
+  until they come round (feeling ≥ 0).
+- The old daily soured-stores mischief is replaced by this.
+
+**Step 3: wisps, and full form in moments** (`render/folk.ts`,
+`folk.ts#showSelf`, `Fae.moment`):
+- **By default** each being is a wisp, and only for those who can perceive
+  them (by Sight, as before).
+  - The Gentry: large, slow, at head height.
+  - The Wee Folk: small, quick, low, flitting.
+- **In moments** they take full form for everyone:
+  - meeting someone (at the door);
+  - an offering taken (one of the Wee Folk bows at the door);
+  - dancing at the Ring;
+  - leading someone off (the Gentry, where the person is taken).
+- The figure grows out of the wisp with a flickering shimmer, and fades
+  back. The clearest-sighted see a faint figure (0.45) even outside
+  moments. Names show while the figure is clear.
+- **Placeholder figures** (the user will make the real ones): the
+  survivors' own figures, drawn as additive ghosts.
+  - The Gentry: an adult build, 2.0 m tall, slimmed to 0.86.
+  - The Wee Folk: the child build, 0.6–0.8 m.
+  - Walk and Idle clips. A capsule stands in until the figures load.
+
+**Step 4: the Restless** (`fae.ts#sendHome`, `restlessTick`):
+- Spirits laid to rest or unravelled in a clearing become pale lights
+  that drift toward the hill from 20:00 to 05:00 (0.35 units a minute,
+  wandering a little), and go in at its door.
+- Each one taken in adds to the hill's memory (+1 standing). Every third
+  quickens a new Wee one, "with a look of" the last.
+- Banished spirits never come; befriended ones join the Folk at once, as
+  before. The Folk card shows those on the road and those taken in.
+
+**Tests:** `tests/townhouse.test.ts` (rewritten), `tests/fae.test.ts`.
+- Test changes from the new world:
+  - `folk.test.ts` checks the reaction to taken land with the next daily
+    update (a council gave land back the same day).
+  - `homes.test.ts` meals ignores someone the Folk borrowed until they are
+    home.
+  - `lineage.test.ts` finds the baby by age (a newcomer came the same day).
+  - `trades.test.ts` checks the tier reached, not the last day's tier.
+- Fix found on the way: with all hands at the woodpile (a council
+  commitment), idle builders no longer drift onto building sites.
+
+**Soak** (6 villages × 2 years): nobody died, no stalls. In the second
+winter: 16 people, morale 77, 9.7 homes, the Folk hill at level 1.7.
+
+**Not yet:** the Strange; the real Folk figures (Blender, the user's);
+council emissaries in full form.

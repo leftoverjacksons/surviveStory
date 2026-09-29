@@ -213,8 +213,11 @@ reference: Tiny Glade.
     THE FOLK REDESIGN (DESIGN §25, user's direction after v36): MYCELIUM REDRAWN §25.1 (built: tree from the hill,
     curved tapered lavender ribbons, sway + outward pulses, explored ground only; full in the Veil view, faint for
     a selected high-Sight survivor, barely at night; `__game.spread`). Published v37.
-    PROPOSAL §25.2–25.4 awaiting the user: four kinds (Gentry, Wee Folk, the Restless, the Strange), wisp by default
-    and full form in moments, Great Hill ×2 + knowes (two-storey sub-mounds) replacing chambers.
+    FOLK STEPS 1–4 BUILT §25.5: Great Hill r 7.2 + KNOWES raised in the terrain per growth (`sim/townhouse.ts`, `raiseHill`,
+    `heightVersion`, `swallowed` event), GENTRY/WEE (`sim/fae.ts`: opinions `Fae.of/kin`, `Survivor.fae`, saucers at dusk,
+    Wee night calls → favour or mischief with real costs, iron over doors), WISPS by default + FULL FORM in moments
+    (`showSelf`, `Fae.moment`; placeholder figures = ghosted survivor figures; Blender figures saved for the user),
+    the RESTLESS (laid-to-rest spirits drift to the hill; every 3rd quickens a Wee one). Not yet: the Strange. Published v38.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

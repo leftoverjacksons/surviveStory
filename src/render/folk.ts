@@ -11,10 +11,13 @@ import { alive } from '../sim/community';
 import { folkReading, standingWord, type Fae, type FolkWork } from '../sim/folk';
 import { Ground, heightAt, idx, inBounds, toTileX, toTileZ } from '../sim/world';
 import { enhance, glowTexture, lambert, makeRand, shadowed, worldUniforms } from './util';
+import { makeCharacter, type Character, type CharacterKit } from './characters';
+import { isGentry } from '../sim/fae';
 
 type Reading = 'none' | 'chill' | 'luminous' | 'coherent';
 const ORDER: Reading[] = ['none', 'chill', 'luminous', 'coherent'];
-const HEIGHT: Record<Fae['kind'], number> = { hob: 0.75, sprite: 0.5, elder: 1.25, piper: 0.95 };
+/** Full-form heights: the Gentry taller than people; the Wee Folk knee to hip high. */
+const HEIGHT: Record<Fae['kind'], number> = { hob: 0.8, sprite: 0.6, elder: 2.05, piper: 1.95 };
 const COLOR: Record<Fae['kind'], string> = { hob: '#ffd9a0', sprite: '#bff7ea', elder: '#e8e2ff', piper: '#d8ffb8' };
 
 let glow: THREE.Texture | null = null;
@@ -24,10 +27,28 @@ function halo(color: string, size: number, opacity: number): THREE.Sprite {
   s.scale.setScalar(size);
   return s;
 }
-const additive = (color: THREE.ColorRepresentation, opacity: number) =>
-  new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
 
-interface Being { group: THREE.Group; reading: Reading; label?: HTMLDivElement; phase: number; mats: THREE.Material[] }
+/**
+ * One of the Folk on screen (DESIGN §25.2): a wisp by default (a soft light;
+ * the Gentry's large, slow and at head height, the Wee Folk's small, quick
+ * and low), and a full form they take in moments: a ghostly figure that
+ * grows out of the wisp with a shimmer and fades back into it.
+ */
+interface Being {
+  group: THREE.Group;
+  wisp: THREE.Sprite;
+  core: THREE.Sprite;
+  /** The full form, and its animation (placeholder: a survivor figure, ghosted). */
+  form: THREE.Object3D | null;
+  ch?: Character;
+  clip?: string;
+  formMat: THREE.MeshBasicMaterial;
+  /** 0 = wisp, 1 = full form; eased toward what the moment calls for. */
+  shown: number;
+  label?: HTMLDivElement;
+  phase: number;
+  kit: boolean;
+}
 
 const ORDER_MAT = new THREE.MeshBasicMaterial({ color: '#c9b8ff', transparent: true, opacity: 0.45, depthWrite: false });
 const ORDER_LIT = new THREE.MeshBasicMaterial({ color: new THREE.Color('#e6dcff').multiplyScalar(2), toneMapped: false });
@@ -43,6 +64,16 @@ export class FolkView {
   private key = '';
   private rand = makeRand(31);
   private stone = enhance(lambert('#b9b4a4'), { surface: 'auto' });
+  private kit: CharacterKit | null = null;
+  private lastT = 0;
+  private restless = new Map<number, THREE.Sprite>();
+
+  /** The figures (loaded after the scene): beings built before get theirs on the next frame. */
+  setKit(kit: CharacterKit) {
+    if (!kit.outfits.length) return;
+    this.kit = kit;
+    for (const [id, b] of this.beings) { this.drop(b); this.beings.delete(id); }
+  }
   private darkStone = enhance(lambert('#8d8878'), { surface: 'auto' });
 
   constructor(private col: Colony, private labels: HTMLElement) {
@@ -254,53 +285,58 @@ export class FolkView {
     return best;
   }
 
-  private build(fae: Fae, reading: Reading): Being {
+  private build(fae: Fae): Being {
     const g = new THREE.Group();
-    const b: Being = { group: g, reading, phase: this.rand() * 10, mats: [] };
-    if (reading === 'none') return b;
     const color = COLOR[fae.kind];
-    const light = halo(color, reading === 'chill' ? 0.7 : 1.6, reading === 'chill' ? 0.55 : 0.35);
-    light.position.y = reading === 'chill' ? 0.6 : HEIGHT[fae.kind] * 0.6;
-    g.add(light);
-    if (reading !== 'chill') {
-      const strong = reading === 'coherent';
-      const mat = additive(new THREE.Color(color).multiplyScalar(strong ? 0.8 : 0.5), strong ? 0.7 : 0.4);
-      const h = HEIGHT[fae.kind];
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(h * 0.16, h * 0.4, 3, 8), mat);
+    const gentry = isGentry(fae);
+    const wisp = halo(color, gentry ? 1.5 : 0.7, 0.5);
+    const core = halo('#ffffff', gentry ? 0.35 : 0.2, 0.9);
+    g.add(wisp, core);
+    const formMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(0.75), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    const b: Being = { group: g, wisp, core, form: null, formMat, shown: 0, phase: this.rand() * 10, kit: !!this.kit };
+    const h = HEIGHT[fae.kind];
+    if (this.kit) {
+      // Placeholder figures (the user will make their own later): a survivor, ghosted. The Gentry tall and slight; the Wee Folk a child's build, small.
+      const pool = this.kit.outfits.filter((o) => o.child === !gentry);
+      const outfit = (pool.length ? pool : this.kit.outfits)[fae.id % Math.max(1, (pool.length ? pool : this.kit.outfits).length)];
+      const ch = makeCharacter(outfit, { skin: fae.id, hair: fae.id * 3, hue: 0.5, tall: 1 }, formMat);
+      const k = h / (outfit.height * ch.scale);
+      ch.root.scale.set(ch.scale * k * (gentry ? 0.86 : 1.1), ch.scale * k, ch.scale * k * (gentry ? 0.86 : 1.1));
+      b.ch = ch;
+      b.form = ch.root;
+      g.add(ch.root);
+    } else {
+      // Until the figures load: a simple glowing shape.
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(h * 0.16, h * 0.4, 3, 8), formMat);
       body.position.y = h * 0.42;
-      const head = new THREE.Mesh(new THREE.SphereGeometry(h * 0.15, 10, 8), mat);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(h * 0.15, 10, 8), formMat);
       head.position.y = h * 0.86;
-      g.add(body, head);
-      if (fae.kind === 'elder') {
-        const hood = new THREE.Mesh(new THREE.ConeGeometry(h * 0.2, h * 0.3, 8), mat);
-        hood.position.y = h * 1.02;
-        g.add(hood);
-      }
-      if (fae.kind === 'sprite') {
-        for (const sd of [-1, 1]) {
-          const wing = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.24), additive(color, strong ? 0.45 : 0.25));
-          (wing.material as THREE.MeshBasicMaterial).side = THREE.DoubleSide;
-          wing.position.set(sd * 0.16, h * 0.62, -0.04);
-          wing.userData.wing = sd;
-          g.add(wing);
-        }
-      }
-      b.mats.push(mat);
-      if (strong && fae.known) {
-        const el = document.createElement('div');
-        el.className = 'label spirit';
-        el.textContent = fae.name.replace(/^the /, 'The ');
-        this.labels.appendChild(el);
-        b.label = el;
-      }
+      const f = new THREE.Group();
+      f.add(body, head);
+      b.form = f;
+      g.add(f);
     }
+    if (b.form) b.form.visible = false;
     return b;
+  }
+
+  private play(b: Being, name: string) {
+    if (!b.ch || b.clip === name) return;
+    const clip = this.kit?.clips.get(name) ?? this.kit?.clips.get('Idle');
+    if (!clip) return;
+    const next = b.ch.mixer.clipAction(clip);
+    const prev = b.clip ? b.ch.mixer.clipAction(this.kit!.clips.get(b.clip)!) : null;
+    next.reset().play();
+    if (prev) next.crossFadeFrom(prev, 0.3, false);
+    b.clip = name;
   }
 
   private drop(b: Being) {
     this.beingsGroup.remove(b.group);
     b.label?.remove();
-    b.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+    b.formMat.dispose();
+    for (const s of [b.wisp, b.core]) s.material.dispose();
+    if (!b.ch) b.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
   }
 
   update(t: number, night: number, viewer: number, camera: THREE.Camera, width: number, height: number) {
@@ -314,33 +350,78 @@ export class FolkView {
 
     const live = new Set<number>();
     const tmp = new THREE.Vector3();
+    const minute = this.col.minute;
+    const dt = Math.min(0.1, Math.max(0, t - this.lastT));
+    this.lastT = t;
     for (const fae of f.beings) {
       if (fae.act === 'in') continue;
       live.add(fae.id);
       const reading = this.readingOf(fae, viewer);
       let b = this.beings.get(fae.id);
-      if (!b || b.reading !== reading) {
+      if (!b || b.kit !== !!this.kit) {
         if (b) this.drop(b);
-        b = this.build(fae, reading);
+        b = this.build(fae);
         this.beings.set(fae.id, b);
         this.beingsGroup.add(b.group);
       }
       const g = b.group;
+      const gentry = isGentry(fae);
+      const h = HEIGHT[fae.kind];
+      // Full form in a moment, for anyone; a faint one to the clearest-sighted; otherwise a wisp.
+      const moment = (fae.moment ?? 0) > minute;
+      const want = moment ? 1 : reading === 'coherent' ? 0.45 : 0;
+      b.shown += (want - b.shown) * Math.min(1, dt * 1.6);
+      const seen = moment ? 1 : reading === 'none' ? 0 : 1;
       const dance = fae.act === 'dance' ? 0.25 : 0;
-      const bob = Math.abs(Math.sin(t * (fae.act === 'walk' ? 7 : 2) + b.phase)) * (fae.act === 'walk' ? 0.08 : 0.04) + dance * Math.abs(Math.sin(t * 5 + b.phase));
-      g.position.set(fae.x + Math.sin(t * 3 + b.phase) * dance, heightAt(w, fae.x, fae.z) + bob + (fae.kind === 'sprite' ? 0.35 + Math.sin(t * 2 + b.phase) * 0.1 : 0), fae.z + Math.cos(t * 3 + b.phase) * dance);
-      g.rotation.y = fae.act === 'walk' ? Math.atan2(fae.to.x - fae.x, fae.to.z - fae.z) : t * (fae.act === 'dance' ? 2 : 0.2) + b.phase;
-      for (const c of g.children) if (c.userData.wing) c.rotation.y = (c.userData.wing as number) * (0.4 + Math.sin(t * 14 + b.phase) * 0.35);
+      const walking = fae.act === 'walk';
+      // A wisp drifts; a figure walks on the ground.
+      const drift = (1 - b.shown);
+      const bob = Math.sin(t * (gentry ? 1.1 : 3.3) + b.phase) * (gentry ? 0.12 : 0.18) * drift + dance * Math.abs(Math.sin(t * 5 + b.phase)) * b.shown;
+      const flit = gentry ? 0 : drift * 0.35;
+      g.position.set(fae.x + Math.sin(t * 2.3 + b.phase) * flit + Math.sin(t * 3 + b.phase) * dance, heightAt(w, fae.x, fae.z), fae.z + Math.cos(t * 1.9 + b.phase) * flit + Math.cos(t * 3 + b.phase) * dance);
+      g.rotation.y = walking ? Math.atan2(fae.to.x - fae.x, fae.to.z - fae.z) : fae.act === 'dance' ? t * 2 + b.phase : g.rotation.y;
       // Easier to see at night; by day only as a shimmer.
-      const vis = 0.35 + 0.65 * night;
-      g.children.forEach((c) => { const m = (c as THREE.Mesh).material as THREE.Material & { opacity: number }; if (m && m.userData.base === undefined) m.userData.base = m.opacity; if (m) m.opacity = m.userData.base * vis; });
-      if (b.label) {
-        tmp.set(g.position.x, g.position.y + HEIGHT[fae.kind] + 0.9, g.position.z).project(camera);
+      const vis = seen * (0.35 + 0.65 * night);
+      const wispY = (gentry ? h * 0.75 : 0.45) + bob;
+      b.wisp.position.y = wispY; b.core.position.y = wispY;
+      const shrink = 1 - b.shown * 0.7;
+      b.wisp.material.opacity = 0.5 * vis * shrink * (0.85 + Math.sin(t * 2 + b.phase) * 0.15);
+      b.core.material.opacity = 0.9 * vis * shrink;
+      if (b.form) {
+        b.form.visible = b.shown > 0.02 && vis > 0;
+        // The shimmer: the figure rises out of the light, flickering while it takes shape.
+        const settling = b.shown < 0.95 && b.shown > 0.05;
+        b.formMat.opacity = b.shown * vis * 0.6 * (settling ? 0.7 + Math.sin(t * 23 + b.phase) * 0.3 : 1);
+        b.form.position.y = bob * 0.3;
+        if (b.ch) {
+          this.play(b, walking || fae.act === 'dance' ? 'Walk' : 'Idle');
+          b.ch.mixer.update(dt);
+        }
+      }
+      if (b.shown > 0.5 && fae.known && vis > 0) {
+        if (!b.label) {
+          const el = document.createElement('div');
+          el.className = 'label spirit';
+          el.textContent = fae.name.replace(/^the /, 'The ');
+          this.labels.appendChild(el);
+          b.label = el;
+        }
+        tmp.set(g.position.x, g.position.y + h + 0.5, g.position.z).project(camera);
         b.label.style.left = `${(tmp.x * 0.5 + 0.5) * width}px`;
         b.label.style.top = `${(-tmp.y * 0.5 + 0.5) * height}px`;
         b.label.hidden = tmp.z > 1;
-      }
+      } else if (b.label) { b.label.remove(); b.label = undefined; }
     }
     for (const [id, b] of this.beings) if (!live.has(id)) { this.drop(b); this.beings.delete(id); }
+    // The Restless coming home (DESIGN §25.2): pale lights drifting toward the hill by night.
+    const restless = f.restless ?? [];
+    const here = new Set(restless.map((r) => r.id));
+    for (const [id, sp] of this.restless) if (!here.has(id)) { this.group.remove(sp); sp.material.dispose(); this.restless.delete(id); }
+    for (const r of restless) {
+      let sp = this.restless.get(r.id);
+      if (!sp) { sp = halo('#d4e2ff', 0.8, 0); this.restless.set(r.id, sp); this.group.add(sp); }
+      sp.position.set(r.x, heightAt(w, r.x, r.z) + 1.1 + Math.sin(t * 0.8 + r.id) * 0.15, r.z);
+      sp.material.opacity = night * (0.35 + 0.55 * veil) * (0.7 + Math.sin(t * 1.7 + r.id * 3) * 0.3);
+    }
   }
 }

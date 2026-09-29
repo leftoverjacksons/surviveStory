@@ -97,3 +97,21 @@ describe('the Gentry and the Wee Folk (DESIGN §25.2)', () => {
     expect(calls.length).toBeGreaterThan(0);
   }, 120000);
 });
+
+describe('the Restless (DESIGN §25.2)', () => {
+  it('those laid to rest drift home to the hill by night, and every third quickens one of the Wee Folk', async () => {
+    const { sendHome, QUICKEN } = await import('../src/sim/fae');
+    const col = createColony(generateWorld(6), createCommunity(6));
+    const m = col.world.folk.mound;
+    const n0 = col.folk.beings.length;
+    for (let i = 0; i < QUICKEN; i++) sendHome(col, `the ${['Lamp', 'Hedge', 'Girl'][i]} of the old road`, m.x + 30 + i, m.z + 10, 'the old road');
+    expect(col.folk.restless!.length).toBe(QUICKEN);
+    // By day they wait; they come by night.
+    for (let d = 0; d < 3 && col.folk.restless!.length; d++) tick(col, 1440);
+    expect(col.folk.restless!.length).toBe(0);
+    expect(col.folk.memory).toBe(QUICKEN);
+    expect(col.folk.beings.length).toBe(n0 + 1);
+    expect(col.community.log.some((l) => /pale light came up the path/.test(l.text))).toBe(true);
+    expect(col.community.log.some((l) => /quickened/.test(l.text))).toBe(true);
+  }, 120000);
+});

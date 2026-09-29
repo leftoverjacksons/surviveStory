@@ -17,6 +17,7 @@
  * seasons later, changed. Nobody dies in the Veil.
  */
 import type { Colony } from './colony';
+import { sendHome } from './fae';
 import { adjustBond, alive, bondValue, log, remember, withRng, type Survivor } from './community';
 import { addFae, changeStanding, type FaeKind } from './folk';
 import type { District, DistrictKind, Ruin } from './oldworld';
@@ -764,8 +765,9 @@ function applyClearing(col: Colony, cl: Clearing) {
   const surv = (id: number) => c.survivors.find((x) => x.id === id)!;
   // What happened to each spirit.
   for (const s of h.spirits) {
-    if (s.fate === 'rested') { nurture(col, d.x, d.z, 0.08, 3); }
-    if (s.fate === 'unravelled') { nurture(col, d.x, d.z, 0.2, 4); }
+    // Laid to rest or unravelled, they don't linger: they go home to the hill (DESIGN §25.2).
+    if (s.fate === 'rested') { nurture(col, d.x, d.z, 0.08, 3); sendHome(col, s.name, tileX(w, s.tx), tileZ(w, s.tz), d.name); }
+    if (s.fate === 'unravelled') { nurture(col, d.x, d.z, 0.2, 4); sendHome(col, s.name, tileX(w, s.tx), tileZ(w, s.tz), d.name); }
     if (s.fate === 'banished') { disturb(col, d.x, d.z, 0.08, 3); changeStanding(col, s.kind === 'remnant' ? -2 : -6); }
     if (s.fate === 'befriended') { addFae(col.folk, w, s.kind === 'lamp' ? 'sprite' : 'hob', col.folk.beings.length, s.name); changeStanding(col, 3); }
     if (s.fate === 'invited') {

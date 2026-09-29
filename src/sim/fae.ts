@@ -252,3 +252,53 @@ export function faeDaily(col: Colony) {
     }
   });
 }
+
+// ---------- the Restless (DESIGN §25.2) ----------
+
+/**
+ * A spirit laid to rest (or unravelled) in a cleared district doesn't linger:
+ * by night it drifts back toward the Great Hill as a pale light, and is taken
+ * in. What the hill takes in becomes its memory; every few, a new one of the
+ * Wee Folk quickens (the old belief that the fairy host is fed by the dead).
+ * Banished spirits never come.
+ */
+export interface Restless { id: number; name: string; x: number; z: number; from: string }
+
+/** How many taken in for each Wee one that quickens. */
+export const QUICKEN = 3;
+/** How fast they drift (units a minute), by night only. */
+const DRIFT = 0.35;
+
+export function sendHome(col: Colony, name: string, x: number, z: number, from: string) {
+  const f = col.folk;
+  (f.restless ??= []).push({ id: (f.nextRestless = (f.nextRestless ?? 0) + 1), name, x, z, from });
+  f.version++;
+}
+
+/** Each step: by night, the Restless drift toward the hill; at its door they go in. */
+export function restlessTick(col: Colony, dt: number, hour: number, addWee: (name: string) => Fae) {
+  const f = col.folk, m = col.world.folk.mound;
+  if (!f.restless?.length || !(hour >= 20 || hour < 5)) return;
+  const door = { x: m.x + Math.cos(m.door) * (m.r + 0.6), z: m.z + Math.sin(m.door) * (m.r + 0.6) };
+  for (const r of [...f.restless]) {
+    const dx = door.x - r.x, dz = door.z - r.z, d = Math.hypot(dx, dz);
+    const step = DRIFT * dt;
+    if (d > step) {
+      // Not straight: they wander a little as they come.
+      const wob = Math.sin(col.minute * 0.05 + r.id) * 0.4;
+      r.x += (dx / d) * step + (-dz / d) * wob * step;
+      r.z += (dz / d) * step + (dx / d) * wob * step;
+      continue;
+    }
+    f.restless = f.restless.filter((x) => x !== r);
+    f.memory = (f.memory ?? 0) + 1;
+    f.standing = Math.min(100, f.standing + 1);
+    const c = col.community;
+    log(c, `In the small hours a pale light came up the path to ${m.name}: what was ${r.name}, of ${r.from}. The door opened for it, and it went in.`, 'strange');
+    if (f.memory % QUICKEN === 0) {
+      const wee = addWee(r.name);
+      log(c, `Something new has quickened under ${m.name}: one of the Wee Folk, with a look of ${r.name} about them. ${f.met ? `They call themselves ${wee.name}.` : 'There is one more light at dusk than there was.'}`, 'strange');
+    }
+    f.version++;
+  }
+}

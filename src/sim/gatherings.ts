@@ -210,6 +210,8 @@ export function gatheringsTick(col: Colony) {
         const p = { x: g.at.x + Math.cos(a) * g.r * 0.45, z: g.at.z + Math.sin(a) * g.r * 0.45 };
         if (fae.act !== 'dance' && Math.hypot(fae.x - p.x, fae.z - p.z) > 1.5) { fae.to = p; fae.act = 'walk'; fae.t = 0; return; }
         fae.x = p.x; fae.z = p.z; fae.act = 'dance'; fae.t = 5;
+        // Dancing with the village, they take their full form (DESIGN §25.2).
+        fae.moment = Math.max(fae.moment ?? 0, col.minute + 20);
       });
     }
   }
