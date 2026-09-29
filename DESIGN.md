@@ -3124,3 +3124,27 @@ offence.
   - moving a backyard trade.
 - **Measured** (tests): a scrap workbench comes down within about 16
   game hours with one builder, and returns 5 wood and 3 scrap.
+
+### 24.14 Figures: less lanky, a child build, decimated (built)
+- **Proportions** (`scripts/blender/survivor.py`): the head goes from
+  about 1:5.5 of the height to about 1:7 (`HEAD_R` 0.13/0.135/0.155 →
+  0.108/0.117/0.13). The shoulders are wider (x 0.18 → 0.195), with a
+  fuller chest and shoulder line and a thicker neck (0.062 → 0.072), and
+  slightly sturdier upper arms. Head-attached pieces (eyes, nose, hair,
+  hats) scale with the head (`HS`).
+- **A child build.** The same outfits and skeleton, remapped by `BODY`
+  (`remap`): the body is 0.74 of adult height and 0.8 of adult width, and
+  the head is 0.9 of adult size (larger relative to the body). It is
+  exported as `child_<outfit>.glb`. Bone rotations make the shared clips
+  work on both builds. In the game (`characters.ts`) child outfits are
+  scaled by the adults' height, so they stay child-sized, and they're
+  kept out of the adult pools (`people.ts`); children in the simulation
+  will draw from them.
+- **Decimation.** A collapse decimation of the joined figure before
+  rigging (`--ratio`, default 0.28; vertex weights survive it) takes
+  9,824 triangles to 2,749 per figure, and the .glb files from about
+  85 KB to 44 KB. Visually nearly identical in the preview; cloth edges
+  are slightly jagged, which reads as mending.
+- **For the user to judge:** the lineup preview (adults and children).
+  Further realism would need tapering (waist narrower than chest), less
+  of a gap between arms and body, and hands.

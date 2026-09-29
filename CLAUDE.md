@@ -198,7 +198,9 @@ reference: Tiny Glade.
     exhaustion deferred (may push territory), figures: less lanky + decimate, together with children.
     DEPAVE + SHARE BUILT §24.12 (`sim/depave.ts`, Depave brush, `depave` task, terrain redraws on `groundVersion`,
     district owner 'shared'). Published v32.
-    MOVE / TAKE DOWN / CALL OFF BUILT §24.13 (`sim/dismantle.ts`, right-click → card, second-click confirm). NOT published.
+    MOVE / TAKE DOWN / CALL OFF BUILT §24.13 (`sim/dismantle.ts`, right-click → card, second-click confirm). Published v33.
+    FIGURES §24.14: head 1:7, broader, child build (`child_*.glb`, `Outfit.child`), decimated to ~2.7k tris (`--ratio`).
+    Needs `pip install bpy`. NOT published. Next: children in the sim (aging, births, lineage, families).
     ORDER: cleared districts (§24.4) → move/deconstruct → figures + children + lineage → crossing → A → B.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network

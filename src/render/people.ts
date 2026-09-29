@@ -105,8 +105,9 @@ export class People {
   private fitModel(r: Rig, s: Survivor, kit: CharacterKit) {
     // Outfit by the survivor's id; within an outfit, colours by their own seed.
     const female = s.id % 2 === 1;
-    const pool = kit.outfits.filter((o) => o.female === female);
-    const outfit = (pool.length ? pool : kit.outfits)[Math.floor(s.id / 2) % (pool.length || kit.outfits.length)];
+    const grown = kit.outfits.filter((o) => !o.child);
+    const pool = grown.filter((o) => o.female === female);
+    const outfit = (pool.length ? pool : grown)[Math.floor(s.id / 2) % (pool.length || grown.length)];
     const ch = makeCharacter(outfit, { skin: s.id * 7 + 3, hair: s.id * 5 + 1, hue: (s.hue * 0.137) % 1, tall: 0.94 + ((s.id * 37) % 11) / 100 }, this.modelMat);
     ch.mesh.castShadow = true;
     ch.mesh.receiveShadow = true;

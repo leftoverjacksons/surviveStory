@@ -1,7 +1,7 @@
 """
 Survivor figures for Survive Story, built entirely in Blender from code.
 
-    python scripts/blender/survivor.py <out dir> [--preview]
+    python scripts/blender/survivor.py <out dir> [--preview] [--ratio 0.28]
 
 (with Blender's Python module: `pip install bpy`). Writes one .glb per
 outfit and anims.glb (the shared skeleton's clips), laid out the way
@@ -18,19 +18,36 @@ from mathutils import Vector, Matrix
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else 'out'
 PREVIEW = '--preview' in sys.argv
+# Keep this share of the triangles (collapse decimation of the joined figure; weights survive it).
+RATIO = float(sys.argv[sys.argv.index('--ratio') + 1]) if '--ratio' in sys.argv else 0.28
 os.makedirs(OUT, exist_ok=True)
 
 # ---------------------------------------------------------------- skeleton
 # Joint positions (left side; the right mirrors in x). The body mesh and the
-# bones are both built from these, so they always agree. Proportions are a
-# little stylised: a large head (about 1:5.3), sturdy limbs, short legs.
+# bones are both built from these, so they always agree. Proportions are
+# near-realistic (DESIGN §24.14): a head about 1:7 of the height, broad
+# shoulders, sturdy limbs. Children are the same figure remapped (see BODY).
 J = dict(
     pelvis=(0, 0, 0.86), waist=(0, 0, 0.98), belly=(0, 0, 1.1), chest=(0, 0, 1.24), neck=(0, 0, 1.38), head=(0, 0, 1.44),
     hip=(0.1, 0.005, 0.82), knee=(0.108, 0.0, 0.46), ankle=(0.112, 0.015, 0.1), toe=(0.112, -0.1, 0.045),
-    shoulder=(0.18, 0, 1.31), elbow=(0.235, 0.01, 1.06), wrist=(0.255, -0.02, 0.84), hand=(0.262, -0.035, 0.76),
+    shoulder=(0.195, 0, 1.31), elbow=(0.25, 0.01, 1.06), wrist=(0.27, -0.02, 0.84), hand=(0.277, -0.035, 0.76),
 )
-HEAD_C = (0, -0.005, 1.56)    # head centre
-HEAD_R = (0.13, 0.135, 0.155)  # head radii
+HEAD_C = (0, -0.005, 1.555)   # head centre
+HEAD_R = (0.108, 0.117, 0.13)  # head radii
+HS = HEAD_R[0] / 0.13          # head-attached pieces were drawn for the old, larger head
+
+# Body builds. A child is the adult remapped: the body shorter and narrower,
+# the head only a little smaller (so, relative to the body, larger).
+BUILDS = {'adult': dict(K=1.0, KW=1.0, HK=1.0), 'child': dict(K=0.74, KW=0.8, HK=0.9)}
+BODY = dict(BUILDS['adult'])
+NECK_TOP = 1.44
+
+def remap(p, head):
+    """World point → the current build (body scale, or head scale about the neck top)."""
+    K, KW, HK = BODY['K'], BODY['KW'], BODY['HK']
+    if head:
+        return Vector((p[0] * HK, p[1] * HK, NECK_TOP * K + (p[2] - NECK_TOP) * HK))
+    return Vector((p[0] * KW, p[1] * KW, p[2] * K))
 
 def m(j):
     return (-j[0], j[1], j[2])
@@ -48,7 +65,7 @@ BONES = [
     ('Torso', J['belly'], J['chest'], 'Abdomen'),
     ('Chest', J['chest'], J['neck'], 'Torso'),
     ('Neck', J['neck'], J['head'], 'Chest'),
-    ('Head', J['head'], (0, 0, 1.72), 'Neck'),
+    ('Head', J['head'], (0, 0, 1.69), 'Neck'),
 ]
 BONES += sym('Shoulder', (0.04, 0, J['shoulder'][2]), J['shoulder'], 'Chest')
 BONES += sym('UpperArm', J['shoulder'], J['elbow'], 'Shoulder.*')
@@ -149,11 +166,11 @@ def build_outfit(name, o):
          J['shoulder'], J['elbow'], J['wrist'], J['hand'], m(J['shoulder']), m(J['elbow']), m(J['wrist']), m(J['hand'])]
     E = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (0, 9), (9, 10), (10, 11), (11, 12),
          (3, 13), (13, 14), (14, 15), (15, 16), (3, 17), (17, 18), (18, 19), (19, 20)]
-    chest = (0.155, 0.105) if not f else (0.145, 0.11)
+    chest = (0.165, 0.11) if not f else (0.15, 0.112)
     hips = (0.15, 0.105) if not f else (0.16, 0.11)
     leg = [(0.098, 0.098), (0.075, 0.08), (0.066, 0.07), (0.06, 0.066)]
-    arm = [(0.072, 0.072), (0.06, 0.06), (0.05, 0.05), (0.047, 0.034)]
-    R = [hips, (0.14, 0.1), chest, (0.165, 0.105), (0.062, 0.062)] + leg + leg + arm + arm
+    arm = [(0.075, 0.075), (0.061, 0.061), (0.05, 0.05), (0.048, 0.034)]
+    R = [hips, (0.14, 0.1), chest, (0.185, 0.11), (0.072, 0.072)] + leg + leg + arm + arm
     body = skin_body(P, E, R, f'{name}_body')
     def region(c):
         if c.z < 0.2: return boots
@@ -172,9 +189,9 @@ def build_outfit(name, o):
     head = blob(f'{name}_head', HEAD_C, HEAD_R, skin, 24, 16)
     smooth(head); parts.append((head, 'Head'))
     for sd in (1, -1):
-        e = blob('eye', H(0.36 * sd, -0.9, 0.08), (0.017, 0.012, 0.022), eye, 8, 6)
+        e = blob('eye', H(0.36 * sd, -0.9, 0.08), (0.017 * HS, 0.012 * HS, 0.022 * HS), eye, 8, 6)
         parts.append((e, 'Head'))
-    nose = blob('nose', H(0, -0.97, -0.12), (0.022, 0.022, 0.03), skin, 8, 6); smooth(nose); parts.append((nose, 'Head'))
+    nose = blob('nose', H(0, -0.97, -0.12), (0.022 * HS, 0.022 * HS, 0.03 * HS), skin, 8, 6); smooth(nose); parts.append((nose, 'Head'))
     h = o['hair']
     def shell(nm, scale, material, keep):
         """A cap over the head, trimmed by keep(x, y, z) in head-relative units."""
@@ -188,11 +205,11 @@ def build_outfit(name, o):
         # Hair: over the crown and down the back, clear of the face.
         parts.append((shell('hair', (1.07, 1.07, 1.05), hair, lambda x, y, z: z > 0.3 or (y > -0.25 and z > -0.6)), 'Head'))
         if h == 'bun':
-            b_ = blob('bun', H(0, 0.55, 0.85), (0.055, 0.055, 0.05), hair); smooth(b_); parts.append((b_, 'Head'))
+            b_ = blob('bun', H(0, 0.55, 0.85), (0.055 * HS, 0.055 * HS, 0.05 * HS), hair); smooth(b_); parts.append((b_, 'Head'))
         if h == 'pony':
-            b_ = blob('pony', H(0, 1.05, -0.35), (0.045, 0.045, 0.11), hair); smooth(b_); parts.append((b_, 'Head'))
+            b_ = blob('pony', H(0, 1.05, -0.35), (0.045 * HS, 0.045 * HS, 0.11 * HS), hair); smooth(b_); parts.append((b_, 'Head'))
         if h == 'long':
-            b_ = blob('long', H(0, 0.55, -0.75), (0.14, 0.07, 0.13), hair); smooth(b_); parts.append((b_, 'Head'))
+            b_ = blob('long', H(0, 0.55, -0.75), (0.14 * HS, 0.07 * HS, 0.13 * HS), hair); smooth(b_); parts.append((b_, 'Head'))
     # Bands where garments meet: a belt, cuffs, boot tops, a collar.
     def ring(nm, loc, r, t, material, bone, scale=(1, 0.8, 1), rot=(0, 0, 0)):
         bpy.ops.mesh.primitive_torus_add(major_radius=r, minor_radius=t, major_segments=24, minor_segments=8, location=loc, rotation=rot)
@@ -224,9 +241,9 @@ def build_outfit(name, o):
         parts.append((shell('hood', (1.18, 1.18, 1.14), top, lambda x, y, z: not (y < -0.3 and z < 0.5)), 'Head'))
     if o['hat'] == 'brim':
         hm = mat(f'{name}_Hat', srgb('#8a7a5a'))
-        bpy.ops.mesh.primitive_cylinder_add(vertices=28, radius=0.215, depth=0.02, location=H(0, 0, 0.62))
+        bpy.ops.mesh.primitive_cylinder_add(vertices=28, radius=0.215 * HS, depth=0.02, location=H(0, 0, 0.62))
         br = bpy.context.active_object; br.data.materials.append(hm); smooth(br); parts.append((br, 'Head'))
-        cr = blob('crown', H(0, 0, 0.82), (0.125, 0.125, 0.075), hm); smooth(cr); parts.append((cr, 'Head'))
+        cr = blob('crown', H(0, 0, 0.82), (0.125 * HS, 0.125 * HS, 0.075 * HS), hm); smooth(cr); parts.append((cr, 'Head'))
         parts.append((shell('hair', (1.06, 1.06, 1.04), hair, lambda x, y, z: y > -0.1 and -0.6 < z < 0.6), 'Head'))
     if o['hat'] == 'beanie':
         parts.append((shell('beanie', (1.1, 1.1, 1.08), mat(f'{name}_Hat', srgb('#b8664a')), lambda x, y, z: z > 0.3 or (y > 0 and z > 0.0)), 'Head'))
@@ -249,7 +266,7 @@ def make_armature():
     bpy.ops.object.mode_set(mode='EDIT')
     for n, h, t, p in BONES:
         b = arm.edit_bones.new(n)
-        b.head, b.tail = Vector(h), Vector(t)
+        b.head, b.tail = remap(h, False), remap(t, n == 'Head')
         if p:
             b.parent = arm.edit_bones[p]
             b.use_connect = False
@@ -267,7 +284,7 @@ def weight(ob, rigid):
     """Vertex groups from distance to each bone (rigid parts follow one bone)."""
     for n in DEFORM:
         ob.vertex_groups.new(name=n)
-    segs = {n: (Vector(h), Vector(t)) for n, h, t, _ in BONES if n != 'Root'}
+    segs = {n: (remap(h, False), remap(t, n == 'Head')) for n, h, t, _ in BONES if n != 'Root'}
     for v in ob.data.vertices:
         p = ob.matrix_world @ v.co
         if rigid and rigid not in ('hips-legs',):
@@ -285,6 +302,10 @@ def weight(ob, rigid):
 def assemble(name, parts, rig):
     objs = []
     for ob, rigid in parts:
+        # Fit the part to the current build (head pieces about the neck, the rest with the body).
+        mw = ob.matrix_world.copy(); inv = mw.inverted()
+        for v in ob.data.vertices:
+            v.co = inv @ remap(mw @ v.co, rigid == 'Head')
         weight(ob, rigid)
         objs.append(ob)
     bpy.ops.object.select_all(action='DESELECT')
@@ -294,6 +315,11 @@ def assemble(name, parts, rig):
     bpy.ops.object.join()
     ob = bpy.context.active_object
     ob.name = f'{name}_mesh'
+    if RATIO < 1:
+        dec = ob.modifiers.new('dec', 'DECIMATE')
+        dec.ratio = RATIO
+        dec.use_collapse_triangulate = True
+        bpy.ops.object.modifier_apply(modifier='dec')
     mod = ob.modifiers.new('rig', 'ARMATURE')
     mod.object = rig
     ob.parent = rig
@@ -376,7 +402,8 @@ def export(path, objs, anim):
                               export_animation_mode='NLA_TRACKS', export_apply=False, export_yup=True,
                               export_skins=True, export_morph=False, export_materials='EXPORT')
 
-def build(name, o, with_clips):
+def build(name, o, with_clips, kind='adult'):
+    BODY.update(BUILDS[kind])
     clear()
     rig = make_armature()
     mesh = assemble(name, build_outfit(name, o), rig)
@@ -388,6 +415,8 @@ names = list(OUTFITS)
 for i, n in enumerate(names):
     rig, mesh = build(n, OUTFITS[n], False)
     export(os.path.join(OUT, f"{'woman' if OUTFITS[n]['female'] else 'man'}_{n}.glb"), [rig, mesh], False)
+    rig, mesh = build(n, OUTFITS[n], False, 'child')
+    export(os.path.join(OUT, f"child_{n}.glb"), [rig, mesh], False)
 rig, mesh = build(names[0], OUTFITS[names[0]], True)
 export(os.path.join(OUT, 'anims.glb'), [rig], True)
 print('exported', names)
@@ -397,11 +426,13 @@ if PREVIEW:
     # All outfits side by side in one scene, each in a slightly different pose.
     clear()
     scene = bpy.context.scene
-    for i, n in enumerate(names):
+    lineup = [(n, 'adult') for n in names] + [(n, 'child') for n in names[:4]]
+    for i, (n, kind) in enumerate(lineup):
+        BODY.update(BUILDS[kind])
         rig = make_armature()
-        rig.name = f'Rig_{n}'
-        mesh = assemble(n, build_outfit(n, OUTFITS[n]), rig)
-        rig.location = ((i - (len(names) - 1) / 2) * 0.62, 0, 0)
+        rig.name = f'Rig_{n}_{kind}'
+        mesh = assemble(f'{n}_{kind}', build_outfit(f'{n}_{kind}', OUTFITS[n]), rig)
+        rig.location = ((i - (len(lineup) - 1) / 2) * 0.55, 0, 0)
         pb = rig.pose.bones
         pb['Head'].rotation_mode = 'XYZ'; pb['Head'].rotation_euler = (0, 0, math.radians((i - 2.5) * 6))
         if i % 3 == 1:
@@ -412,7 +443,7 @@ if PREVIEW:
     ground = bpy.context.active_object
     ground.data.materials.append(mat('ground', srgb('#6b7d4a')))
     cam = link(bpy.data.objects.new('cam', bpy.data.cameras.new('cam')))
-    cam.data.type = 'ORTHO'; cam.data.ortho_scale = 4.2
+    cam.data.type = 'ORTHO'; cam.data.ortho_scale = 5.6
     cam.location = (3.2, -5.2, 4.0)
     target = link(bpy.data.objects.new('target', None)); target.location = (0, 0, 0.85)
     tc = cam.constraints.new('TRACK_TO'); tc.target = target; tc.track_axis = 'TRACK_NEGATIVE_Z'; tc.up_axis = 'UP_Y'
@@ -423,7 +454,7 @@ if PREVIEW:
     world.node_tree.nodes['Background'].inputs['Color'].default_value = (*srgb('#a9cfd6'), 1)
     world.node_tree.nodes['Background'].inputs['Strength'].default_value = 0.9
     scene.render.engine = 'CYCLES'; scene.cycles.samples = 48; scene.cycles.device = 'CPU'
-    scene.render.resolution_x, scene.render.resolution_y = 1400, 700
+    scene.render.resolution_x, scene.render.resolution_y = 1600, 700
     scene.view_settings.view_transform = 'AgX'
     scene.render.filepath = os.path.join(OUT, 'preview.png')
     bpy.ops.render.render(write_still=True)

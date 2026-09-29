@@ -20,6 +20,8 @@ const URLS = import.meta.glob('../assets/people/*.glb', { eager: true, query: '?
 export interface Outfit {
   name: string;
   female: boolean;
+  /** A child's build (DESIGN §24.14): drawn at its true size, not scaled up to an adult's height. */
+  child: boolean;
   /** Root holding the bones and one merged SkinnedMesh, in bind pose. */
   template: THREE.Object3D;
   slots: string[];
@@ -103,11 +105,15 @@ export async function loadCharacters(): Promise<CharacterKit> {
     mesh.skeleton.pose();
     const box = new THREE.Box3().setFromObject(gltf.scene, true);
     outfits.push({
-      name, female: name.startsWith('woman'), template: gltf.scene,
+      name, female: name.startsWith('woman'), child: name.startsWith('child'), template: gltf.scene,
       slots: extras.slots ?? [], colors: extras.colors ?? [], height: box.max.y - box.min.y || 1,
     });
   }));
   outfits.sort((a, b) => a.name.localeCompare(b.name));
+  // Children are scaled by the adults' height, so they stay child-sized.
+  const adults = outfits.filter((o) => !o.child);
+  const adultH = adults.reduce((n, o) => n + o.height, 0) / Math.max(1, adults.length);
+  for (const o of outfits) if (o.child && adults.length) o.height = adultH;
   return { outfits, clips };
 }
 
