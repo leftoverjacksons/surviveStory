@@ -2,7 +2,8 @@
 Lab (not part of the game): rig a generated character mesh onto the game's
 survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 
-    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--tris 3000] [--k 5] [--smooth 4] [--preview <png>]
+    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 3000] [--k 5] [--smooth 4]
+        [--names 0=skin,1=hair,...] [--slots <json>] [--preview <png>]
 
 (with Blender's Python module: `pip install bpy`).
 
@@ -15,7 +16,8 @@ Steps:
      scripts/blender/survivor.py), fitted to the mesh's measured proportions.
   4. Skin with Blender's automatic (heat) weights; fall back to distance
      weights if heat weighting fails.
-  5. Colour: project the input image onto the mesh from the front, cluster
+  5. Colour: project the input image onto the mesh from the front (and the
+     back view, if given, onto the back), cluster
      the vertex colours into --k groups and turn each group into a named
      material (skin / hair / boot / cloth_N). scripts/characters.mjs turns
      material names into the game's recolour slots.
@@ -31,6 +33,9 @@ TRIS = opt('--tris', 3000)
 K = opt('--k', 5)
 SMOOTH = opt('--smooth', 4)  # neighbour passes over colours and over cluster labels
 PREVIEW = opt('--preview', '')
+BACK = opt('--back', '')  # optional back view (cut-out) for the colours
+NAMES = opt('--names', '')
+SLOTS_OUT = opt('--slots', '')  # write the slots (index, name, sRGB colour, vertices) as JSON
 VOXEL = opt('--voxel', 0.012)
 TOP = 1.69  # Head bone tip in the game's skeleton
 
@@ -185,35 +190,55 @@ if weighted < 0.95 * len(ob.data.vertices):
         for n, w in ws: ob.vertex_groups[n].add([v.index], w / tot, 'REPLACE')
 
 # ---------------------------------------------------------------- 5. colour from the image, clustered into slots
-img = bpy.data.images.load(os.path.abspath(IMAGE))
-W, H = img.size
-px = list(img.pixels)  # RGBA floats, bottom row first
-alpha = [px[i * 4 + 3] for i in range(W * H)]
-xs = [i % W for i in range(W * H) if alpha[i] > 0.5]
-ys = [i // W for i in range(W * H) if alpha[i] > 0.5]
-ix0, ix1, iy0, iy1 = min(xs), max(xs), min(ys), max(ys)
+class View:
+    """A cut-out image (RGBA) seen from the front (-Y) or the back (+Y)."""
+    def __init__(self, path, back):
+        img = bpy.data.images.load(os.path.abspath(path))
+        self.W, self.H = img.size
+        self.px = list(img.pixels)  # RGBA floats, bottom row first
+        W, H = self.W, self.H
+        self.alpha = [self.px[i * 4 + 3] for i in range(W * H)]
+        xs = [i % W for i in range(W * H) if self.alpha[i] > 0.5]
+        ys = [i // W for i in range(W * H) if self.alpha[i] > 0.5]
+        self.x0, self.x1, self.y0, self.y1 = min(xs), max(xs), min(ys), max(ys)
+        self.back = back
+
+    def col(self, p):
+        """Image column of mesh point p. From the front, mesh +x is image right; from the back, image left."""
+        u = (p.x - lo.x) / (hi.x - lo.x)
+        if self.back: u = 1 - u
+        return int(self.x0 + u * (self.x1 - self.x0))
+
+    def sample(self, p):
+        W, H, alpha, px = self.W, self.H, self.alpha, self.px
+        x = self.col(p); y = int(self.y0 + (p.z - lo.z) / (hi.z - lo.z) * (self.y1 - self.y0))
+        # Walk inwards to the nearest opaque pixel (silhouettes don't match exactly).
+        for r in range(0, 40, 2):
+            for dx, dy in ((0, 0), (r, 0), (-r, 0), (0, r), (0, -r)):
+                xx, yy = min(W - 1, max(0, x + dx)), min(H - 1, max(0, y + dy))
+                i = yy * W + xx
+                if alpha[i] > 0.5: return px[i * 4:i * 4 + 3]
+        return (0.5, 0.5, 0.5)
+
+    def top_of(self, p):
+        """The silhouette's top in this column: hair (or hat), for the back of the head."""
+        x = self.col(p)
+        for y in range(self.y1, self.y0, -1):
+            if self.alpha[y * self.W + x] > 0.5:
+                return Vector((p.x, p.y, lo.z + (y - 12 - self.y0) / (self.y1 - self.y0) * (hi.z - lo.z)))
+        return p
+
 lo, hi = bbox(ob)
-def sample(p):
-    # Front view: mesh x → image x (the figure faces -Y, so its left is image right), z → image y.
-    u = (p.x - lo.x) / (hi.x - lo.x); w = (p.z - lo.z) / (hi.z - lo.z)
-    x = int(ix0 + u * (ix1 - ix0)); y = int(iy0 + w * (iy1 - iy0))
-    # Walk inwards to the nearest opaque pixel (silhouettes don't match exactly).
-    for r in range(0, 40, 2):
-        for dx, dy in ((0, 0), (r, 0), (-r, 0), (0, r), (0, -r)):
-            xx, yy = min(W - 1, max(0, x + dx)), min(H - 1, max(0, y + dy))
-            i = yy * W + xx
-            if alpha[i] > 0.5: return px[i * 4:i * 4 + 3]
-    return (0.5, 0.5, 0.5)
-def top_of(p):
-    """The silhouette's top in this image column: hair (or hat) for the back of the head."""
-    u = (p.x - lo.x) / (hi.x - lo.x)
-    x = int(ix0 + u * (ix1 - ix0))
-    for y in range(iy1, iy0, -1):
-        if alpha[y * W + x] > 0.5: return Vector((p.x, p.y, lo.z + (y - 12 - iy0) / (iy1 - iy0) * (hi.z - lo.z)))
-    return p
+front = View(IMAGE, False)
+back = View(BACK, True) if BACK else None
 neck_z = J['neck'][2] * (hi.z - lo.z) / TOP
-# The front view can't see the back: the back of the head takes the colour at the top of the head.
-cols = [sample(top_of(v.co) if v.normal.y > 0.25 and v.co.z > neck_z else v.co) for v in ob.data.vertices]
+def colour(v):
+    if v.normal.y > 0.25:  # facing away from the front view
+        if back: return back.sample(v.co)
+        # No back view: the back of the head takes the colour at the top of the head.
+        if v.co.z > neck_z: return front.sample(front.top_of(v.co))
+    return front.sample(v.co)
+cols = [colour(v) for v in ob.data.vertices]
 
 # Neighbours on the mesh, for smoothing colours before clustering and labels after.
 nbr = [[] for _ in ob.data.vertices]
@@ -259,6 +284,20 @@ n = 0
 for k in range(K):
     if k not in names:
         names[k] = f'cloth_{n}'; n += 1
+# --names 0=skin,3=hat,...: the studio's corrections, by cluster index.
+for kv in filter(None, NAMES.split(',')):
+    k, v = kv.split('=')
+    if int(k) in names: names[int(k)] = v
+seen = {}
+for k in range(K):  # material names must be unique: boot, boot_1, ...
+    base = names[k]
+    seen[base] = seen.get(base, -1) + 1
+    if seen[base]: names[k] = f'{base}_{seen[base]}'
+if SLOTS_OUT:
+    import json
+    with open(SLOTS_OUT, 'w') as f:
+        json.dump([{'index': k, 'name': names[k].split('_')[0] if not names[k].startswith('cloth') else 'cloth',
+                    'label': names[k], 'color': cent[k], 'count': sum(1 for x in lab if x == k)} for k in range(K)], f)
 mats = []
 # Image pixels are sRGB; glTF base colours (and the game's slot colours) are linear.
 lin = lambda c: c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4

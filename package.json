@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "sim": "vite-node scripts/simulate.ts",
-    "balance": "vite-node scripts/balance.ts --"
+    "balance": "vite-node scripts/balance.ts --",
+    "figures": "node lab/figures/start.mjs"
   },
   "dependencies": {
     "three": "^0.186.1"

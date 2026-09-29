@@ -1,1 +1,6 @@
 out/
+work/
+config.json
+.venv-gen/
+.venv-bpy/
+.hy3d/

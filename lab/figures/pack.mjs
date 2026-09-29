@@ -4,7 +4,8 @@
 // joints quantised, meshopt-compressed. Writes to lab/figures/out/, which only
 // the lab viewer reads.
 //
-//   node lab/figures/pack.mjs <rigged .glb>...
+//   node lab/figures/pack.mjs <rigged .glb>...        (to lab/figures/out/)
+//   node lab/figures/pack.mjs <rigged .glb> --out <packed .glb>
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, EXTMeshoptCompression } from '@gltf-transform/extensions';
 import { dedup, prune, quantize, weld } from '@gltf-transform/functions';
@@ -33,12 +34,15 @@ function slotify(doc) {
   doc.getRoot().listScenes()[0].setExtras(extras);
 }
 
-for (const f of process.argv.slice(2)) {
+const args = process.argv.slice(2);
+const OUT_AT = args.indexOf('--out');
+const target = OUT_AT >= 0 ? args.splice(OUT_AT, 2)[1] : null;
+for (const f of args) {
   const doc = await io.read(f);
   slotify(doc);
   await doc.transform(weld(), dedup(), prune(), quantize({ pattern: /^(JOINTS|WEIGHTS)/ }));
   doc.createExtension(EXTMeshoptCompression).setRequired(true).setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
-  const out = path.join(OUT, path.basename(f));
+  const out = target ?? path.join(OUT, path.basename(f));
   await io.write(out, doc);
   console.log(out, (fs.statSync(out).size / 1024).toFixed(0), 'KB');
 }
