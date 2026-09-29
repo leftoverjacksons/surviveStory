@@ -225,6 +225,9 @@ reference: Tiny Glade.
     scripts/blender/, assets/people/): the council asks who a cleared district belongs to (dilemma `district`); Folk/shared
     districts are THEIR COUNTRY (`folkDistricts`, knowes may rise there, mycelium roots to them), they live in its ruins
     (`folkRuins`, `roomFor`, ghost homes drawn), no room → lights drift toward the nearest haunted district. NOT published yet.
+    Published v40. EVERYTHING MOVABLE §27: fire + stockpile (`sim/hearth.ts`, right-click card → Move; `camp.ts#relocate`),
+    homes (even lived in; family first in line, plot tool opens), backyard trades, kitchen (`site.kitchen` follows), fishing
+    works come down together, restored ruins pulled down; only the found shelter stays.
     Next: resettle (a second hearth for the village).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network

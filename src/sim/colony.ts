@@ -1291,7 +1291,7 @@ function deliver(col: Colony, a: Agent): boolean {
   return setDest(col, a, spot.x, spot.z);
 }
 
-function endTask(col: Colony, a: Agent) {
+export function endTask(col: Colony, a: Agent) {
   const t = a.task;
   if (t?.kind === 'depave' && col.claims.get(t.tile) === a.id) col.claims.delete(t.tile);
   if (t?.kind === 'supply') {

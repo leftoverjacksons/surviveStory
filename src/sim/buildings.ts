@@ -337,7 +337,7 @@ export function storageCapacity(v: Village): number {
     + v.buildings.filter((b) => b.kind === 'fishhut').length * 50;
 }
 
-export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | TradeKind | PowerKind;
+export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'kitchen' | TradeKind | PowerKind;
 
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
@@ -631,6 +631,8 @@ export function placeProject(w: World, v: Village, com: Community, kind: SiteKin
   if (!free.ok) return free.why ?? 'It won\'t fit there.';
   const def = DEFS[kind];
   const tier = tierFor(v, com, kind);
+  // The kitchen, moved (DESIGN §27): it stands where it's placed now, out in the open.
+  if (kind === 'kitchen') { v.site.kitchen = footCenter(w, foot); v.site.kitchenCovered = false; }
   const p = newProject(v, {
     kind, tier, name: def.name[tier], foot, facing, cost: { ...def.cost[tier] }, workNeeded: def.work[tier], target: 0, clearTrees: free.trees,
   });

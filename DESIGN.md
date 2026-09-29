@@ -3681,3 +3681,42 @@ the character files are left alone (`render/characters.ts`,
 - **Resettle, for the village:** a second hearth and green in a district
   given to the village, so households can live there with their own
   evening fire. This is its own round.
+
+## 27. Everything can be moved (after version 40)
+The user: make sure everything can be moved, including the hearth (the fire
+they gather at).
+- **The fire** (`sim/hearth.ts#moveFire`): right-click it for its card, then
+  **Move**. A placement tool shows the fire's ring.
+  - Rules: open, explored ground with room for the seats and bedrolls
+    (radius 2.5 clear; nothing built within 4.6 plus the building's size;
+    clear of the stockpile), reachable on foot.
+  - It is carried at once, in a pot of embers. Everything that works from
+    the fire reads its place live: bedrolls, the evening circle, festivals
+    still to come, plot and lane layout, the Folk's night calls.
+  - People sitting, eating or sleeping outdoors at the old fire get up and
+    find the new one.
+- **The stockpile** (`moveStockpile`), also by right-click: the same size,
+  on open ground clear of the fire and buildings. The woodyard and chopping
+  block are chosen again beside it. Hauling and splitting start again to
+  the new place. Its stacks sit on the ground where it now is.
+- **Homes:** can be moved, and taken down even while lived in.
+  - The household waits first in line for a new plot.
+  - Moving brings back everything, and the plot tool opens ("Draw the
+    family a new plot").
+  - Backyard trades on the plot come down with it.
+- **Backyard trades:** can be moved to another household's plot.
+- **The canopy kitchen:** can be moved. It is placed again anywhere and
+  stands where it is placed (`site.kitchen` follows it, in the open).
+- **The fishing works** come down together, with the fishery; the fishers
+  go back to foraging. Move them by painting the Fishing zone at another
+  shore.
+- **Restored houses of the old world:** "Pull down" razes them for their
+  salvage (`finishRaze`). Their plot is freed, and any family waits for a
+  new home.
+- **Only the found shelter stays**: the old building the site started in.
+- Renderer (`render/camp.ts#relocate`): the fire pit, rack, chopping block
+  and bedrolls move with the sim.
+- Debug hooks: `__game.moveFire(x, z)`, `__game.moveStockpile(x, z)`.
+- **Tests:** `tests/hearth.test.ts`, plus new cases in `dismantle.test.ts`
+  (a lived-in home, the kitchen) and `restorehome.test.ts` (pulling a
+  restored house down).

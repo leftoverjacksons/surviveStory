@@ -62,3 +62,39 @@ describe('taking down, moving and calling off (DESIGN §24.13)', () => {
     expect(col.village.projects.includes(p!)).toBe(false);
   });
 });
+
+describe('everything can be moved or taken down (DESIGN §27)', () => {
+  it('a lived-in home can come down: the family waits first in line for a new plot', async () => {
+    const { finishTakedown } = await import('../src/sim/dismantle');
+    const col = createColony(generateWorld(2), createCommunity(2));
+    col.village.autoPlan = true;
+    let home;
+    for (let d = 0; d < 40 && !(home = col.village.buildings.find((b) => b.kind === 'home' && col.village.households.some((h) => h.home === b.id))); d++) tick(col, 1440);
+    expect(home).toBeTruthy();
+    const h = col.village.households.find((x) => x.home === home!.id)!;
+    expect(whyNotTakeDown(col, home!, true)).toBeNull();
+    expect(takeDown(col, home!, true)).toBeNull();
+    const t = col.village.takedowns!.find((x) => x.building === home!.id)!;
+    finishTakedown(col, t);
+    expect(col.village.buildings.includes(home!)).toBe(false);
+    expect(h.home).toBe(0);
+    expect(col.village.homeQueue[0]).toBe(h.id);
+    expect(col.village.plots.some((p) => p.id === home!.plot)).toBe(false);
+  }, 120000);
+
+  it('the kitchen can be placed somewhere else, and stands where it is placed', async () => {
+    const { placeProject, footCenter } = await import('../src/sim/buildings');
+    const col = createColony(generateWorld(2), createCommunity(2));
+    const v = col.village, w = col.world;
+    // Anywhere it fits, near the fire.
+    let placed: unknown = 'none';
+    for (let r = 6; r < 20 && typeof placed === 'string'; r++) for (let k = 0; k < 16 && typeof placed === 'string'; k++) {
+      const x = w.campfire.x + Math.cos(k) * r, z = w.campfire.z + Math.sin(k) * r;
+      placed = placeProject(w, v, col.community, 'kitchen', { tx: Math.floor(x + w.w / 2), tz: Math.floor(z + w.h / 2), w: 4, d: 2 }, 0);
+    }
+    expect(typeof placed).not.toBe('string');
+    const p = placed as { foot: { tx: number; tz: number; w: number; d: number } };
+    expect(v.site.kitchen).toEqual(footCenter(w, p.foot));
+    expect(v.site.kitchenCovered).toBe(false);
+  });
+});

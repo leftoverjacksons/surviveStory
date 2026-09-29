@@ -79,6 +79,8 @@ export interface HudActions {
   onGive(district: number, to: 'village' | 'folk' | 'shared'): void;
   /** Take down or move a building, change one's mind, or call off a project (DESIGN §24.13). */
   onTakeDown(building: number, moving: boolean): void;
+  /** Move the fire or the stockpile (DESIGN §27). */
+  onMoveCamp(which: 'fire' | 'stockpile'): void;
   onKeep(building: number): void;
   onCallOff(project: number): void;
 }
@@ -106,7 +108,7 @@ export class Hud {
   /** The council that last opened by itself (each new one opens, and the game waits). */
   private councilSeen = -1;
   private loreOpen = false;
-  private inspecting: { building?: number; project?: number; folk?: boolean; district?: number } | null = null;
+  private inspecting: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile' } | null = null;
   /** The team being chosen for a clearing. */
   private team = new Set<number>();
   private teamFor = -1;
@@ -178,6 +180,8 @@ export class Hud {
         if (this.team.has(id)) this.team.delete(id); else if (this.team.size < 4) this.team.add(id);
         this.renderInspect();
       }
+      const cm = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-camp-move]');
+      if (cm) act.onMoveCamp(cm.dataset.campMove as 'fire' | 'stockpile');
       const fp = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-fae]');
       if (fp) { const id = Number(fp.dataset.fae); this.fae = this.fae === id ? null : id; this.renderInspect(); }
       const go = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-clear]');
@@ -474,7 +478,7 @@ export class Hud {
 
   setVeilView(on: boolean) { this.veilView = on; }
 
-  inspect(target: { building?: number; project?: number; folk?: boolean; district?: number } | null) {
+  inspect(target: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile' } | null) {
     this.inspecting = target;
     this.renderInspect();
   }
@@ -545,6 +549,18 @@ export class Hud {
         <div class="what">${esc(BUILDING_INFO[b.kind] ?? '')}</div>
         <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
         ${this.takedownRow(b as Building)}`;
+    } else if (t.camp) {
+      // The fire and the stockpile (DESIGN §27): not buildings, but they can be moved.
+      const fire = t.camp === 'fire';
+      const sitting = col.agents.filter((a) => a.task?.kind === 'social' && (a.task as { place?: string }).place === 'fire').length;
+      const outdoors = alive(col.community).filter((s) => !col.beds.has(s.id)).length;
+      const facts: [string, string][] = fire
+        ? [['By the fire now', `${sitting}`], ['Sleeping round it', `${outdoors} (no bed indoors)`]]
+        : [['Food', `${Math.floor(col.community.resources.food)}`], ['Wood', `${Math.floor(col.community.resources.wood)}${col.community.resources.logs ? ` (and ${Math.floor(col.community.resources.logs)} in logs)` : ''}`]];
+      html = `<h3>${fire ? 'The fire' : 'The stockpile'}<button type="button" id="inspect-close">Close</button></h3>
+        <div class="what">${fire ? 'Where the village gathers of an evening, sleeps if it has no roof, and holds its festivals. Plots and lanes are laid out from it.' : 'Where wood and food are stacked, and logs are split at the chopping block beside it.'}</div>
+        <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
+        <div class="row" style="margin-top:8px"><button type="button" data-camp-move="${t.camp}" title="${fire ? 'Carry the fire somewhere else: open ground, clear of buildings.' : 'Carry the stacks somewhere else: open ground, clear of the fire and buildings.'}">Move</button></div>`;
     } else if (t.folk) {
       html = this.folkCard();
     } else if (t.district !== undefined) {
@@ -571,10 +587,14 @@ export class Hud {
       return `<div class="h" style="margin-top:8px">${td.moving ? 'Being taken apart to move' : 'Coming down'} · ${Math.round((td.work / td.need) * 100)}%</div>
         <div class="row">${btn('keep', 'Keep it standing', 'Click again to keep it', null, 'Change your mind: it stays up.')}</div>`;
     }
-    const whyDown = whyNotTakeDown(this.col, b, false), whyMove = placeKindOf(b) ? whyNotTakeDown(this.col, b, true) : 'This can\'t be placed again from the build menu.';
+    const whyDown = whyNotTakeDown(this.col, b, false);
+    const whyMove = whyNotTakeDown(this.col, b, true) ?? (placeKindOf(b) || b.kind === 'home' ? null : 'This can\'t be placed again.');
     if (whyDown === 'The shelter the village started from stays.') return '';
-    return `<div class="row" style="margin-top:8px">${btn('down', 'Take down', 'Click again: take it down', whyDown, 'Builders dismantle it; half of what it was made of comes back.')}
-      ${btn('move', 'Move', 'Click again: move it', whyMove, 'Builders take it apart and keep every piece; then place it again wherever you like.')}</div>`;
+    const lived = b.kind === 'home' && this.col.village.households.some((h) => h.home === b.id);
+    const old = b.ruin !== undefined;
+    return `<div class="row" style="margin-top:8px">${btn('down', old ? 'Pull down' : 'Take down', old ? 'Click again: pull it down' : 'Click again: take it down', whyDown,
+      old ? 'Builders pull it down for the salvage in its walls; the ground is freed.' : `Builders dismantle it; half of what it was made of comes back.${lived ? ' The family waits first in line for a new plot.' : ''}`)}
+      ${old ? '' : btn('move', 'Move', 'Click again: move it', whyMove, b.kind === 'home' ? 'Builders take it apart and keep every piece; draw the family a new plot and it goes up there.' : 'Builders take it apart and keep every piece; then place it again wherever you like.')}</div>`;
   }
 
   private callOffRow(p: Project): string {

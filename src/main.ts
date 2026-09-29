@@ -38,6 +38,7 @@ import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
 import { KNOWE_R, placeKnowe, raiseKnowe, settleFolk, whyNotKnowe } from './sim/townhouse';
+import { atFire, atStockpile, moveFire, moveStockpile, stockpileAt, whyNotFire, whyNotStockpile } from './sim/hearth';
 import { MyceliumView } from './render/mycelium';
 import { myceliumDaily } from './sim/mycelium';
 import { powered, whyLocked } from './sim/power';
@@ -323,12 +324,15 @@ const hud = new Hud(colony, {
     if (!b) return;
     const why = takeDown(colony, b, moving);
     if (why) return;
-    // Moving: place the same kind again straight away (its materials come back when it's down).
+    // Moving: place the same kind again straight away (its materials come back when it's down);
+    // a home: draw the family a new plot (they are first in line for it).
     const kind = moving ? placeKindOf(b) : null;
     if (kind) setBuild({ kind: 'place', site: kind, turn: 0 });
+    else if (moving && b.kind === 'home') setBuild({ kind: 'plot' }, 'Draw the family a new plot: their home goes up there.');
     hud.render();
   },
   onKeep(id) { keepStanding(colony, id); hud.render(); },
+  onMoveCamp(which) { setBuild({ kind: which }); },
   onCallOff(id) {
     const p = colony.village.projects.find((x) => x.id === id);
     if (p && !cancelProject(colony, p)) { hud.inspect(null); syncScene(); }
@@ -512,6 +516,8 @@ function setBuild(tool: BuildTool | null, why = '') {
     : (why ? `${why} ` : '') + (tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
     : tool.kind === 'restore' ? 'Click a ruin in a cleared district to restore it. Esc to stop.'
     : tool.kind === 'salvage' ? 'Click a wrecked car or junk heap to strip and clear it, or a ruin in a cleared district of yours to pull it down. Esc to stop.'
+    : tool.kind === 'fire' ? 'Choose where the fire goes: open ground, clear of buildings and the stockpile, with room round it for the seats and bedrolls. Esc to stop.'
+    : tool.kind === 'stockpile' ? 'Choose where the stockpile goes: open ground, clear of the fire and buildings. Esc to stop.'
     : tool.kind === 'knowe' ? 'Choose where the new knowe rises: open ground round the Great Hill, in the Wild or on unclaimed land. Trees there are taken into the hill. Esc to stop.'
     : tool.kind === 'folk' ? `Ask the Folk for a ${FOLK_WORKS[tool.work].name.toLowerCase()}: click a spot in the Wild. They build it at night. Esc to stop.`
     : isBackyard(tool.site) ? `Click a household's plot to give them the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: it goes at the back of their yard, and one of them works it. Esc to stop.`
@@ -605,6 +611,17 @@ function placeHover(cx: number, cy: number) {
     buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (r ? (why ? `${r.name}: ${why}` : `${r.name}: becomes ${RESTORE[r.kind]!.name(r)}. Click to restore it.`) : 'Click a ruin in a cleared district to restore it. Esc to stop.'));
     return;
   }
+  if (build.kind === 'fire' || build.kind === 'stockpile') {
+    const fire = build.kind === 'fire';
+    const why = fire ? whyNotFire(colony, g.x, g.z) : whyNotStockpile(colony, g.x, g.z);
+    if (fire) placement.showFoot({ tx: toTileX(world, g.x) - 2, tz: toTileZ(world, g.z) - 2, w: 5, d: 5 }, 0, 0.8, !why);
+    else {
+      const r = stockpileAt(colony, g.x, g.z);
+      placement.showFoot({ tx: toTileX(world, r.x0), tz: toTileZ(world, r.z0), w: Math.max(1, Math.round(r.x1 - r.x0)), d: Math.max(1, Math.round(r.z1 - r.z0)) }, 0, 1.2, !why);
+    }
+    buildPanel.hint(why ?? `Click to move the ${fire ? 'fire' : 'stockpile'} here. Esc to stop.`);
+    return;
+  }
   if (build.kind === 'knowe') {
     const why = colony.folk.pendingKnowe ? whyNotKnowe(colony, g.x, g.z) : 'No knowe is waiting to be raised.';
     const R = Math.ceil(KNOWE_R);
@@ -655,6 +672,9 @@ function placeClick(cx: number, cy: number) {
     if (!r) return;
     const res = requestRestore(colony, r.id);
     if (typeof res === 'string') { buildPanel.hint(`${r.name}: ${res}`); return; }
+  } else if (build.kind === 'fire' || build.kind === 'stockpile') {
+    const why = build.kind === 'fire' ? moveFire(colony, g.x, g.z) : moveStockpile(colony, g.x, g.z);
+    if (why) { buildPanel.hint(why); return; }
   } else if (build.kind === 'knowe') {
     const res = placeKnowe(colony, g.x, g.z);
     if (typeof res === 'string') { buildPanel.hint(res); return; }
@@ -891,6 +911,14 @@ function inspectBuildingAt(clientX: number, clientY: number): boolean {
   hud.inspect(q.userData.buildingId !== undefined ? { building: q.userData.buildingId } : { project: q.userData.projectId });
   return true;
 }
+/** The fire or the stockpile under the pointer (right-click: their card, to move them). */
+function inspectCampAt(clientX: number, clientY: number): boolean {
+  const g = groundAt(clientX, clientY);
+  if (!g) return false;
+  if (atFire(colony, g.x, g.z)) { hud.inspect({ camp: 'fire' }); return true; }
+  if (atStockpile(colony, g.x, g.z)) { hud.inspect({ camp: 'stockpile' }); return true; }
+  return false;
+}
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, sx: e.clientX, sy: e.clientY });
@@ -959,7 +987,7 @@ canvas.addEventListener('pointerup', (e) => {
   }
   if (!p || Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 6) return;
   // A right-click on a building opens its card, where it can be taken down or moved (DESIGN §24.13).
-  if (p.button === 2) { inspectBuildingAt(e.clientX, e.clientY); return; }
+  if (p.button === 2) { if (!inspectBuildingAt(e.clientX, e.clientY)) inspectCampAt(e.clientX, e.clientY); return; }
   if (p.button !== 0) return;
   // A click: try to select a survivor.
   const r = canvas.getBoundingClientRect();
@@ -1430,6 +1458,9 @@ const veilDebug = {
   depave: (x: number, z: number, r: number) => markDepave(world, x, z, r, true),
   /** Clear a district and give it away (DESIGN §26): 'village', 'folk' or 'shared'. */
   give(district: number, to: 'village' | 'folk' | 'shared') { const h = colony.haunts.find((x) => x.district === district); if (!h) return; h.state = 'cleared'; h.owner = null; const d = world.districts[district]; reveal(world, d.x, d.z, 22); giveDistrict(colony, district, to); syncScene(); hud.render(); },
+  /** Move the fire or the stockpile (DESIGN §27); returns why not. */
+  moveFire: (x: number, z: number) => { const r = moveFire(colony, x, z); syncScene(); return r; },
+  moveStockpile: (x: number, z: number) => { const r = moveStockpile(colony, x, z); syncScene(); return r; },
   /** Grow the mycelium n days (and set the Folk's standing, if given). */
   spread(n = 10, standing?: number) { if (standing !== undefined) colony.folk.standing = standing; for (let i = 0; i < n; i++) myceliumDaily(colony); },
   /** Grow the hill n times, each raising a knowe (DESIGN §25.3). */
@@ -1461,7 +1492,7 @@ const veilDebug = {
     return toScreen(x, heightAt(world, x, z) + 1.1, z);
   },
 };
-Object.assign(window, { __game: { ...veilDebug, stats, addModel, setWoods, flicker, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
+Object.assign(window, { __game: { ...veilDebug, stats, addModel, setWoods, flicker, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean; camp?: 'fire' | 'stockpile' }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
   place: (k: PlaceKind, x: number, z: number, turn = 0) => { const { foot, facing } = footAt(k, toTileX(world, x), toTileZ(world, z), turn); return placeProject(world, colony.village, community, k, foot, facing); },
   folkOrder: (k: never, x: number, z: number) => orderFolkWork(colony, k, x, z), folkWhy: (x: number, z: number) => whyNotFolkWork(colony, x, z),
   save: () => saveNow('manual'),

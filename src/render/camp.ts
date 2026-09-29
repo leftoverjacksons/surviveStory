@@ -28,6 +28,12 @@ export class Camp {
   private trunkGeo = new THREE.CylinderGeometry(0.2, 0.26, 3.2, 8).rotateZ(Math.PI / 2);
   private unsplit!: THREE.InstancedMesh;
   private yard: ReturnType<typeof woodyard>;
+  /** The fire pit, the stockpile's rack and the chopping block: moved when the fire or the stockpile moves (DESIGN §27). */
+  private pit!: THREE.Group;
+  private rack!: THREE.Group;
+  private block!: THREE.Group;
+  private rack0: { x: number; z: number };
+  private placed = '';
 
   constructor(private world: World) {
     const pit = new THREE.Group();
@@ -68,7 +74,7 @@ export class Camp {
     this.fireLight.shadow.autoUpdate = false;
     this.fireLight.shadow.needsUpdate = true;
     pit.add(this.fireLight);
-    pit.position.set(world.campfire.x, heightAt(world, world.campfire.x, world.campfire.z), world.campfire.z);
+    this.pit = pit;
     pit.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
     // Not the flames: inside the fire's own light, their changing shapes threw shimmering shadows on everything near.
     for (const f of this.flames) f.castShadow = false;
@@ -76,7 +82,9 @@ export class Camp {
 
     // Stockpile: logs stacked in a rack, food in crates.
     const sp = world.stockpile;
+    this.rack0 = { x: sp.x0, z: sp.z0 };
     const rack = new THREE.Group();
+    this.rack = rack;
     for (const x of [sp.x0 + 0.3, sp.x0 + 1.5]) {
       for (const z of [sp.z0 + 0.4, sp.z1 - 0.4]) {
         const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 0.1), lambert('#4a3a2a'));
@@ -97,7 +105,7 @@ export class Camp {
     head.position.set(-0.04, 0.53, 0);
     block.add(stump, top, haft, head);
     const yard = woodyard(world);
-    block.position.set(yard.block.x, heightAt(world, yard.block.x, yard.block.z), yard.block.z);
+    this.block = block;
     block.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.castShadow = o.receiveShadow = true; });
     this.group.add(block);
     this.yard = yard;
@@ -115,9 +123,28 @@ export class Camp {
       im.frustumCulled = false;
       this.group.add(im);
     }
+    this.relocate();
+  }
+
+  /** Put the fire, the rack and the chopping block where the world says they are (they can be moved). */
+  private relocate() {
+    const w = this.world, f = w.campfire, sp = w.stockpile;
+    const key = `${f.x},${f.z}|${sp.x0},${sp.z0}`;
+    if (key === this.placed) return;
+    this.placed = key;
+    this.pit.position.set(f.x, heightAt(w, f.x, f.z), f.z);
+    this.fireLight.shadow.needsUpdate = true;
+    const base = heightAt(w, (sp.x0 + sp.x1) / 2, (sp.z0 + sp.z1) / 2);
+    this.rack.position.set(sp.x0 - this.rack0.x, base, sp.z0 - this.rack0.z);
+    this.yard = woodyard(w);
+    this.block.position.set(this.yard.block.x, heightAt(w, this.yard.block.x, this.yard.block.z), this.yard.block.z);
+    // Bedrolls are laid out again round the fire.
+    for (const g of this.beds.values()) this.group.remove(g);
+    this.beds.clear();
   }
 
   sync(c: Community, items: Item[], indoorBeds: Map<number, number>) {
+    this.relocate();
     // Bedrolls by the fire for anyone without a bed indoors.
     for (const s of c.survivors) {
       const outdoors = s.alive && !indoorBeds.has(s.id);
@@ -144,12 +171,14 @@ export class Camp {
     // Stockpile size follows the stores.
     const sp = this.world.stockpile;
     const m = new THREE.Matrix4();
+    // On whatever ground the stockpile stands on (it can be moved).
+    const base = heightAt(this.world, (sp.x0 + sp.x1) / 2, (sp.z0 + sp.z1) / 2);
     const logs = Math.min(90, Math.floor(c.resources.wood / 1.5));
     for (let i = 0; i < logs; i++) {
       const row = Math.floor(i / 6), col = i % 6;
       const layer = Math.floor(row / 3);
-      m.makeTranslation(sp.x0 + 0.9, 0.13 + layer * 0.24, sp.z0 + 0.5 + col * 0.26 + (row % 3) * 0.02);
-      if (layer >= 5) m.makeTranslation(sp.x0 + 2.4, 0.13 + (layer - 5) * 0.24, sp.z0 + 0.5 + col * 0.26);
+      m.makeTranslation(sp.x0 + 0.9, base + 0.13 + layer * 0.24, sp.z0 + 0.5 + col * 0.26 + (row % 3) * 0.02);
+      if (layer >= 5) m.makeTranslation(sp.x0 + 2.4, base + 0.13 + (layer - 5) * 0.24, sp.z0 + 0.5 + col * 0.26);
       this.pileLogs.setMatrixAt(i, m);
     }
     this.pileLogs.count = logs;
@@ -157,7 +186,7 @@ export class Camp {
     const crates = Math.min(40, Math.ceil(c.resources.food / 8));
     for (let i = 0; i < crates; i++) {
       const layer = Math.floor(i / 8), k = i % 8;
-      m.makeTranslation(sp.x0 + 2.9 + (k % 4) * 0.66, layer * 0.46, sp.z0 + 0.5 + Math.floor(k / 4) * 0.66);
+      m.makeTranslation(sp.x0 + 2.9 + (k % 4) * 0.66, base + layer * 0.46, sp.z0 + 0.5 + Math.floor(k / 4) * 0.66);
       this.pileFood.setMatrixAt(i, m);
     }
     this.pileFood.count = crates;
