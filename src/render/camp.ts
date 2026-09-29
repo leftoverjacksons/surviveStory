@@ -34,6 +34,9 @@ export class Camp {
   private block!: THREE.Group;
   private rack0: { x: number; z: number };
   private placed = '';
+  /** Log rounds to sit on round every fire (people sat on nothing before). */
+  private seatMesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.25, 0.38, 8), lambert('#7a5a3c'), 64);
+  private seatKey = '';
 
   constructor(private world: World) {
     const pit = new THREE.Group();
@@ -79,6 +82,11 @@ export class Camp {
     // Not the flames: inside the fire's own light, their changing shapes threw shimmering shadows on everything near.
     for (const f of this.flames) f.castShadow = false;
     this.group.add(pit);
+    this.seatMesh.count = 0;
+    this.seatMesh.castShadow = true;
+    this.seatMesh.receiveShadow = true;
+    this.seatMesh.frustumCulled = false;
+    this.group.add(this.seatMesh);
 
     // Stockpile: logs stacked in a rack, food in crates.
     const sp = world.stockpile;
@@ -124,6 +132,25 @@ export class Camp {
       this.group.add(im);
     }
     this.relocate();
+  }
+
+  /** A log round at each seat round the fires (sites.ts#seatSpot), standing on the ground. */
+  seats(spots: { x: number; z: number }[]) {
+    const key = spots.map((p) => `${p.x.toFixed(2)},${p.z.toFixed(2)}`).join(';');
+    if (key === this.seatKey) return;
+    this.seatKey = key;
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+    const n = Math.min(spots.length, 64);
+    for (let i = 0; i < n; i++) {
+      const p = spots[i];
+      e.set(0, i * 1.7, 0);
+      q.setFromEuler(e);
+      const k = 0.9 + ((i * 37) % 10) / 50;
+      m.compose(new THREE.Vector3(p.x, heightAt(this.world, p.x, p.z) + 0.17, p.z), q, new THREE.Vector3(k, 1, k));
+      this.seatMesh.setMatrixAt(i, m);
+    }
+    this.seatMesh.count = n;
+    this.seatMesh.instanceMatrix.needsUpdate = true;
   }
 
   /** Put the fire, the rack and the chopping block where the world says they are (they can be moved). */

@@ -333,12 +333,24 @@ function moveIn(col: Colony, h: Household, b: Building, second: boolean) {
   }
 }
 
+/** Yard features that would stand on a rock (or anything else blocking) are left out: the rock stays in the yard (DESIGN §34). */
+function clearOfRocks(w: World, plot: Plot, items: YardItem[]): YardItem[] {
+  return items.filter((y) => {
+    for (const du of [-0.5, 0, 0.5]) for (const dv of [-0.5, 0, 0.5]) {
+      const q = plotPoint(plot, y.u + du * y.w, y.v + dv * y.d);
+      const tx = toTileX(w, q.x), tz = toTileZ(w, q.z);
+      if (inBounds(w, tx, tz) && w.blocked[idx(w, tx, tz)] && w.treeAt[idx(w, tx, tz)] < 0) return false;
+    }
+    return true;
+  });
+}
+
 /** A finished home: the household moves in and plans its yard. */
 export function onHomeBuilt(col: Colony, b: Building) {
   const v = col.village;
   const h = v.households.find((x) => x.id === b.household);
   const plot = v.plots.find((p) => p.id === b.plot);
-  if (plot && !plot.yard.length) plot.yard = planYard(plot, h ? traitsOf(col.community, h) : new Set());
+  if (plot && !plot.yard.length) plot.yard = clearOfRocks(col.world, plot, planYard(plot, h ? traitsOf(col.community, h) : new Set()));
   if (h) moveIn(col, h, b, false);
   else b.household = 0;
 }
@@ -833,11 +845,20 @@ export function plotTileWhy(w: World, v: Village, tx: number, tz: number, others
   if (w.zone[i] === 6 /* Zone.Wild */ || w.folk?.path[i]) return { why: 'That is the Folk\'s land.', kind: 'folk' };
   if (w.fieldAt?.[i] > 0) return { why: 'That runs over a field.', kind: 'hard' };
   if (v.plotAt[i]) return { why: 'That overlaps another plot.', kind: 'hard' };
-  if (w.blocked[i] && w.treeAt[i] < 0) return { why: 'Something is in the way there (rubble, a wall or a rock).', kind: 'hard' };
+  // A rock may lie in a yard (the house is fitted round it); rubble and walls may not (DESIGN §34).
+  if (w.blocked[i] && w.treeAt[i] < 0 && !rockAt(w, i)) return { why: 'Something is in the way there (rubble or a wall).', kind: 'hard' };
   if (Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 4.5) return { why: 'Too close to the fire.', kind: 'hard' };
   if (p.x > sp.x0 - 1 && p.x < sp.x1 + 1 && p.z > sp.z0 - 1 && p.z < sp.z1 + 1) return { why: 'That runs over the stockpile.', kind: 'hard' };
   for (const f of others) if (tx >= f.tx && tx < f.tx + f.w && tz >= f.tz && tz < f.tz + f.d) return { why: 'That runs over a building.', kind: 'hard' };
   return null;
+}
+
+/** Tiles with a rock on them (cached per world). */
+const rockTiles = new WeakMap<World, { n: number; set: Set<number> }>();
+function rockAt(w: World, i: number): boolean {
+  let c = rockTiles.get(w);
+  if (!c || c.n !== w.rocks.length) { c = { n: w.rocks.length, set: new Set(w.rocks.map((r) => idx(w, r.tx, r.tz))) }; rockTiles.set(w, c); }
+  return c.set.has(i);
 }
 
 /** Where the last refused drawn plot first failed (for the overlay to mark), or null. */

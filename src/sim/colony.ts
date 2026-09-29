@@ -1201,6 +1201,11 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     if (setDest(col, a, m.spot.x, m.spot.z)) return { kind: 'eat', stage: 'go', t: 0, place: m.place, building: m.building };
   }
   if (a.needs.rest < 12 || isNight(h) || s.hp < s.maxHp * 0.25) {
+    // A night's sleep costs about 40 food: anyone who wouldn't last till morning eats before turning in.
+    if (a.needs.food < 45 && res.food >= 1) {
+      const m = mealPlace(col, a, s);
+      if (setDest(col, a, m.spot.x, m.spot.z)) return { kind: 'eat', stage: 'go', t: 0, place: m.place, building: m.building };
+    }
     const b = col.beds.get(s.id);
     const bed = b !== undefined ? buildingById(col, b)!.door : bedSpot(col.world.campfire, s.id);
     if (setDest(col, a, bed.x, bed.z)) return { kind: 'sleep', stage: 'go' };

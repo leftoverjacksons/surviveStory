@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
 import { alive, createCommunity, killSurvivor, log, recruit, setRole } from './sim/community';
-import { SITE_KINDS, type SiteKind } from './sim/sites';
+import { SITE_KINDS, seatSpot, type SiteKind } from './sim/sites';
 import { generateWorld, siteKindFor } from './sim/worldgen';
 import { Zone, heightAt, paintZone, reveal, tileX, tileZ, toTileX, toTileZ } from './sim/world';
 import { createField, deleteField, fieldAtPoint } from './sim/fields';
@@ -27,6 +27,7 @@ import { DEFS, canPlace, completeProject, footAt, placeProject, tierFor, type Si
 import { FOLK_WORKS, addFae, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
 import { claimPlot, homeForAsker, outlinePlot, plotFailAt } from './sim/homes';
+import { DraftTiles } from './render/drafttiles';
 import { KeepOut } from './render/keepout';
 import { Tray } from './ui/tray';
 import { dropAnsweredHomes } from './sim/requests';
@@ -39,7 +40,7 @@ import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
 import { KNOWE_R, placeKnowe, raiseKnowe, settleFolk, whyNotKnowe } from './sim/townhouse';
-import { atFire, atStockpile, moveFire, moveStockpile, stockpileAt, whyNotFire, whyNotHamletFire, whyNotStockpile } from './sim/hearth';
+import { atFire, atStockpile, fireFor, fires, moveFire, moveStockpile, stockpileAt, whyNotFire, whyNotHamletFire, whyNotStockpile } from './sim/hearth';
 import { MyceliumView } from './render/mycelium';
 import { myceliumDaily } from './sim/mycelium';
 import { powered, whyLocked } from './sim/power';
@@ -158,6 +159,17 @@ for (const r of station.roofs) if (r !== station.store.fallen) roofs.addRoof(r);
 roofs.addRoof(vines.roofs);
 for (const m of station.cutMaterials) roofs.addCutMaterial(m);
 roofs.addCutMaterial(vines.walls.material as THREE.Material);
+/** Where people sit round every fire: one seat per person who gathers there (sim: colony.ts#seatOf). */
+function fireSeats(col: typeof colony) {
+  const out: { x: number; z: number }[] = [];
+  for (const f of fires(col)) {
+    const n = col.agents.filter((a) => fireFor(col, a.id).id === f.id).length;
+    // Exactly the sim's ring when anyone gathers there; a few seats waiting at an unused fire.
+    const k = n > 0 ? n : 3;
+    for (let i = 0; i < k; i++) out.push(seatSpot(f, i, k));
+  }
+  return out;
+}
 /** The found shelter pulled down (DESIGN §29): the site's old buildings leave the scene. */
 const siteGone = () => !!colony.village.buildings.find((b) => b.kind === 'store')?.gone;
 function syncSiteGone() {
@@ -433,7 +445,10 @@ draftLine.frustumCulled = false;
 const draftDots = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: '#ffd080', size: 6, sizeAttenuation: false, depthTest: false }));
 draftDots.renderOrder = 10;
 draftDots.frustumCulled = false;
+draftLine.visible = false; draftDots.visible = false; // replaced by lit ground tiles (drafttiles.ts)
 scene.add(draftLine, draftDots);
+const draftTiles = new DraftTiles(world);
+scene.add(draftTiles.group);
 /** Where a drawn plot can't go, tinted around the cursor while drawing one. */
 const keepOut = new KeepOut(world, colony.village);
 scene.add(keepOut.group);
@@ -444,11 +459,8 @@ function groundAt(clientX: number, clientY: number): THREE.Vector3 | null {
   return raycaster.ray.intersectPlane(groundPlane, hitPoint) ? hitPoint.clone() : null;
 }
 function drawDraft(cursor?: THREE.Vector3 | null) {
-  const pts = draft.map((p) => new THREE.Vector3(p.x, heightAt(world, p.x, p.z) + 0.15, p.z));
-  // Fresh geometry each time: setFromPoints reuses (and will not grow) an existing buffer.
-  draftDots.geometry.dispose(); draftDots.geometry = new THREE.BufferGeometry().setFromPoints(pts);
-  if (cursor && draft.length) pts.push(new THREE.Vector3(cursor.x, heightAt(world, cursor.x, cursor.z) + 0.15, cursor.z));
-  draftLine.geometry.dispose(); draftLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  // On the ground's grid (DESIGN §34): the cursor tile, the corners, and every tile the outline runs through.
+  draftTiles.update(draft, drafting() ? cursor ?? null : null);
 }
 function clearDraft() { draft.length = 0; drawDraft(); }
 function closeDraft() {
@@ -505,7 +517,8 @@ function fieldClick(clientX: number, clientY: number) {
     }
   }
   if (draft.length >= 3 && Math.hypot(g.x - draft[0].x, g.z - draft[0].z) < 1.2) { closeDraft(); return; }
-  draft.push({ x: g.x, z: g.z });
+  // Corners go on the grid, at the centre of the tile clicked.
+  draft.push(draftTiles.snap(g));
   drawDraft(g);
 }
 
@@ -981,7 +994,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 canvas.addEventListener('pointermove', (e) => {
   lastPointer.x = e.clientX; lastPointer.y = e.clientY;
-  if (drafting() && draft.length) drawDraft(groundAt(e.clientX, e.clientY));
+  if (drafting()) drawDraft(groundAt(e.clientX, e.clientY));
   if (build?.kind === 'plot') keepOut.show(groundAt(e.clientX, e.clientY));
   if (build && build.kind !== 'plot' && !pointers.size) placeHover(e.clientX, e.clientY);
   if (veil) { const g = groundAt(e.clientX, e.clientY); veil.hover = g ? { tx: toTileX(world, g.x), tz: toTileZ(world, g.z) } : null; if (!pointers.size) veilHover(e.clientX, e.clientY); }
@@ -1311,6 +1324,7 @@ function frame() {
     uiTimer = 0;
     people.sync(community.survivors, colony.agents);
     camp.sync(community, colony.items, colony.beds);
+    camp.seats(fireSeats(colony));
     villageView.sync();
     syncSiteGone();
     plotsView.sync(seasonIndex(colony.community.day));
