@@ -241,7 +241,7 @@ reference: Tiny Glade.
     (`homeForAsker`, `dropAnsweredHomes`); cutaway cuts each village building at its own floor (`cutMaterialFor`).
     §31 + §32 published v43 (§32 BUILD MENU GROWS: `sim/unlocks.ts`, hidden / glimpsed / open by world facts,
     sections, `Village.unlocked/fresh`, *new* marks, gold ring on Build).
-    §33 (not published): ruins cut at their own floor (`userData.cutAt` through `mergeStatic`), hall furniture,
+    §33 (published v44): ruins cut at their own floor (`userData.cutAt` through `mergeStatic`), hall furniture,
     clearance for hall/power/sawpit/hearth, autopilot strips wrecks near fires. Seed-6 slowness not reproducible
     (≤200 ms/day to day 200); "paused view" was a harness artefact.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
