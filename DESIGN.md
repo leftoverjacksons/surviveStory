@@ -3896,3 +3896,53 @@ The user's notes after playing v42.
     into one mesh per district, so they still cut at y = 1.15, and a ruin
     on high ground may cut badly. Fixing them needs a per-vertex cut height
     in the shader.
+
+### §32. The build menu grows with the village
+
+The user, after v42: "What about the build menu showing not currently
+relevant items? Should the build menu be more like a tech tree, with things
+appearing as they are relevant or unlocked by the presence of others?"
+
+Eras stay rejected (§17). Entries appear because something happened in the
+world: a craft learned, a material found, a need felt, a district cleared.
+- **Three states** (`sim/unlocks.ts#unlockOf`):
+  - *hidden*: nothing points to it yet;
+  - *glimpsed*: one step away, shown greyed with that step in the
+    villagers' words;
+  - *open*: as before.
+- **Rules:**
+
+  | Entry | Glimpsed | Open |
+  |---|---|---|
+  | plot, bunkhouse, garden, cellar, workbench, lantern, strip and clear | | from the start |
+  | shrine | from the start | someone with Sight ≥ 30, home Resonance < 0.5, or one built |
+  | tool bench, sewing room, smoke shed | need tier ≥ 1 | a household has a home (they go in its yard) |
+  | tavern | need tier ≥ 1 | need tier ≥ 2 |
+  | saw pit, windmill | workbench built | someone knows joinery |
+  | solar, turbine | glass/copper/steel seen, or a district cleared | someone knows wiring |
+  | glass dome | a district cleared | glass and steel in stores |
+  | hamlet fire | a district cleared | a district is the village's or shared |
+  | commons hall | the shelter at level 2, and no hall yet | the shelter pulled down |
+  | restore a ruin | from the start | a district cleared |
+  | Ask the Folk | | the Folk met (hidden before) |
+
+  The commons hall is hidden while any hall exists.
+- **Sections:** Shelter and home, Food and stores, Crafts, Power, Common
+  life, The old world, the Folk. A section appears only when it has an
+  entry.
+- **News** (`unlocksDaily`, run each day after the need tier):
+  - The first time an entry opens, a log line says so. There is one line
+    per kind of opening (the three yard trades share one), and the entry
+    joins `Village.fresh`.
+  - The menu marks fresh entries *new*, and the Build button has a gold
+    ring while any are unseen. Closing the menu marks them seen.
+  - The first check for a new or an older saved village records what is
+    already open, without news (`Village.unlocked`).
+- The council, the request tray, the planner and the autopilot place
+  buildings directly and are not gated by the menu.
+- **Checked:**
+  - Seed 4, day 1: 7 buildings are shown, restore is glimpsed, and no Power
+    beyond the lantern or Folk works appear.
+  - Seed 7 on autopilot, day 31: the hamlet fire, smokehouse, glass dome and
+    toolmaker's shop are marked *new*.
+  - `tests/unlocks.test.ts`.

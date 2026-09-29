@@ -45,6 +45,7 @@ import {
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
 import { finishTakedown } from './dismantle';
+import { unlocksDaily } from './unlocks';
 import { clearHeap, finishRaze, finishTow, heapPos } from './salvage';
 import { learnWiring, millFactor, powerDaily } from './power';
 import { APPRENTICE_AGE, TODDLER_AGE, ageWork, isAdult, isChild, lineageDaily, oldAge, settleLineage } from './lineage';
@@ -2448,6 +2449,7 @@ function daily(col: Colony) {
   tradesDaily(col);
   rareDaily(col);
   col.village.needTier = needTier(col);
+  unlocksDaily(col);
   departures(col);
   dailyRollover(c);
   householdsDaily(col);

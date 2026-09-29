@@ -1324,6 +1324,7 @@ function frame() {
     hud.render();
     dropAnsweredHomes(colony);
     tray.render();
+    buildPanel.badge();
     chronicle.render();
   }
   hud.updateClock(iso.headingDeg);

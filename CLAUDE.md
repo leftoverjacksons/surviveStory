@@ -240,6 +240,9 @@ reference: Tiny Glade.
     §31 FIXES (not published): a plot drawn from a home ask goes to that household at once and the ask clears
     (`homeForAsker`, `dropAnsweredHomes`); cutaway cuts each village building at its own floor (`cutMaterialFor`).
     Ruins still cut at y = 1.15.
+    §32 BUILD MENU GROWS (not published): `sim/unlocks.ts` (hidden / glimpsed with the missing step / open, by
+    world facts; sections; `Village.unlocked/fresh`, *new* marks, gold ring on Build). Next: the list from my
+    last message (ruin cutaway, paused-view refresh, hall furniture, seed-6 slowness, autopilot towing).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

@@ -139,6 +139,9 @@ export interface Village {
   lastRestore?: number;
   /** Highest tier of needs met (see trades.ts), updated daily. */
   needTier?: number;
+  /** Build-menu entries that have opened (unlocks.ts), and those not yet seen in the menu. */
+  unlocked?: string[];
+  fresh?: string[];
   /** Autopilot (DESIGN §22.2): also lays out fields, woodlots and Home ground, as an absent player would. */
   autopilot?: boolean;
   /** Firewood set aside for winter (colony.ts#winterReserve), refreshed when planning. */
