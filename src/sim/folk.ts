@@ -11,6 +11,7 @@
  * - The player guides what they give their nights to: the woods, the
  *   village (night chores), or their own home (the mound grows).
  */
+import { CHAMBERS, chamberCount, digChamber, firstChambers, townhouseDaily, type Chamber } from './townhouse';
 import type { Colony } from './colony';
 import { alive, log, remember, withRng, type Survivor } from './community';
 import type { Rng } from './rng';
@@ -243,6 +244,8 @@ export interface FolkSociety {
   song: number;
   nextId: number;
   version: number;
+  /** The townhouse under the hill (townhouse.ts). */
+  chambers?: Chamber[];
 }
 
 const NAMES: Record<FaeKind, string[]> = {
@@ -275,6 +278,7 @@ export function createFolk(w: World): FolkSociety {
   const f: FolkSociety = {
     standing: 40, growth: 0, level: 0, beings: [], works: [], focus: 'woods', met: false, rules: [],
     news: [], offeredDay: 0, offendedUntil: 0, led: null, chores: { day: 0, n: 0 }, land: wildTiles(w), dew: 4, song: 3, nextId: 1, version: 0,
+    chambers: firstChambers(m.door),
   };
   for (const kind of ['elder', 'hob', 'sprite'] as FaeKind[]) addFae(f, w, kind, 0);
   // What was already there: a ring of toadstools and a cairn by the door.
@@ -400,6 +404,7 @@ export function folkDaily(col: Colony) {
   changeStanding(col, (40 - f.standing) * 0.05 + (res > 0.6 ? 0.2 : res < 0.4 ? -0.3 : 0));
   // Their land keeps the Veil thin around the hill.
   nurture(col, m.x, m.z, 0.012, 2);
+  townhouseDaily(col);
 
   withRng(col.community, (rng) => {
     // Growth: a friendly, healthy hill with room to spare grows. Without more land, it can't.
@@ -407,7 +412,7 @@ export function folkDaily(col: Colony) {
       // Their needs (DESIGN §21.8): without rest, dance and light, the hill can't grow past the brink.
       const needs = folkNeeds(col);
       const ready = needs.filter((x) => x.gate).every((x) => x.met);
-      f.growth += 0.025 * (f.focus === 'home' ? 2.2 : 1) * (0.5 + res) * (0.4 + 0.6 * needs.filter((x) => x.met).length / needs.length);
+      f.growth += 0.025 * (f.focus === 'home' ? 2.2 : 1) * (chamberCount(f, 'nursery') ? 1.25 : 1) * (0.5 + res) * (0.4 + 0.6 * needs.filter((x) => x.met).length / needs.length);
       if (f.growth >= 0.95 && !ready) {
         f.growth = 0.95;
         const want = needs.filter((x) => x.gate && !x.met).map((x) => x.label.toLowerCase());
@@ -422,7 +427,8 @@ export function folkDaily(col: Colony) {
         f.level++;
         const kind: FaeKind = rng.pick(['hob', 'sprite', 'piper', 'hob']);
         const fae = addFae(f, w, kind, f.level);
-        news(col, f.met ? `${fae.name} has come to live at ${m.name}. The hill is growing.` : `There are more lights around ${m.name} at dusk than there used to be.`, 'good');
+        const ch = digChamber(col);
+        news(col, f.met ? `${fae.name} has come to live at ${m.name}, and a new chamber has been dug under the hill: ${CHAMBERS[ch.kind].name.toLowerCase()}. The hill is growing.` : `There are more lights around ${m.name} at dusk than there used to be.`, 'good');
         addWork(col, rng);
       }
     }
@@ -526,7 +532,7 @@ export function folkNeeds(col: Colony): FolkNeed[] {
   const n = (k: FolkWorkKind) => done.filter((x) => x.kind === k).length;
   return [
     { id: 'room', label: 'Room', met: f.land >= landWanted(f), hint: 'Land left to the Wild around the hill.', gate: false },
-    { id: 'rest', label: 'Rest', met: n('bower') * 2 >= f.beings.length + 1, hint: 'A bower for every two of them, and one spare for whoever comes next.', gate: true },
+    { id: 'rest', label: 'Rest', met: (n('bower') + chamberCount(f, 'bowers')) * 2 >= f.beings.length + 1, hint: 'A bower (or a sleeping chamber under the hill) for every two of them, and one spare for whoever comes next.', gate: true },
     { id: 'dance', label: 'Dance', met: n('ring') >= 1 + Math.floor(f.level / 3), hint: 'A dancing ring (another every third growth).', gate: true },
     { id: 'light', label: 'Light', met: n('lantern') >= 1 + Math.floor(f.level / 2), hint: 'Glow-lanterns along their paths, more as the hill grows.', gate: true },
     { id: 'gifts', label: 'Gifts', met: col.community.day - f.offeredDay <= 3, hint: 'An offering at the door in the last three days.', gate: false },
@@ -568,8 +574,8 @@ function gather(col: Colony) {
   const done = f.works.filter(builtWork);
   const count = (k: FaeKind) => f.beings.filter((b) => b.kind === k).length;
   const boost = f.focus === 'home' ? 1.5 : 1;
-  f.dew = Math.min(40, f.dew + (count('sprite') + Math.min(4, done.filter((k) => k.kind === 'flowers').length) + 0.5) * boost);
-  f.song = Math.min(40, f.song + (count('piper') + count('elder') * 0.5 + Math.min(4, done.filter((k) => k.kind === 'ring').length) + 0.3) * boost);
+  f.dew = Math.min(40 + chamberCount(f, 'dewcellar') * 20, f.dew + (count('sprite') + Math.min(4, done.filter((k) => k.kind === 'flowers').length) + 0.5 + chamberCount(f, 'dewcellar') * 2) * boost);
+  f.song = Math.min(40, f.song + (count('piper') + count('elder') * 0.5 + Math.min(4, done.filter((k) => k.kind === 'ring').length) + 0.3 + chamberCount(f, 'gallery') * 2) * boost);
 }
 
 /** Without a player (tests, probes), the Folk order what their needs call for. */
@@ -639,7 +645,7 @@ export function folkTick(col: Colony, dt: number) {
       }
       // Out for the night: choose what to do.
       const village = f.focus === 'village' && f.standing >= 45 && (fae.kind === 'hob' || fae.kind === 'sprite') && h >= 0 && h < 4 && fae.lastChore !== col.community.day
-        && (f.chores.day !== col.community.day || f.chores.n < 1 + Math.floor(f.level / 2));
+        && (f.chores.day !== col.community.day || f.chores.n < 1 + Math.floor(f.level / 2) + chamberCount(f, 'guestroom'));
       if (village) { fae.to = jitter(col.world.campfire, 5, rng); fae.act = 'walk'; fae.t = -1; continue; }
       // Orders from the village come first for the hands of the hill.
       const order = fae.kind !== 'piper' && h < 4.5 ? f.works.find((k) => !builtWork(k) && (k.paid || (f.dew >= FOLK_WORKS[k.kind].dew && f.song >= FOLK_WORKS[k.kind].song))) : undefined;

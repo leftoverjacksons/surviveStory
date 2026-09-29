@@ -13,6 +13,7 @@
  */
 import type { Colony } from './colony';
 import { benchSpot } from './homes';
+import { digChamber, firstChambers } from './townhouse';
 
 export const SAVE_VERSION = 1;
 
@@ -55,6 +56,11 @@ function migrate(col: Colony) {
   col.community.logCount ??= col.community.log.length;
   col.requests ??= [];
   col.gatherings ??= [];
+  if (!col.folk.chambers) {
+    // A hill that grew before the townhouse (DESIGN §24.9): one chamber for each growth.
+    col.folk.chambers = firstChambers(col.world.folk.mound.door);
+    for (let i = 0; i < col.folk.level; i++) digChamber(col);
+  }
   // Benches were once set in front of the door (DESIGN §23.7): move them along the wall.
   for (const p of col.village.plots) for (const y of p.yard) if (y.kind === 'bench') Object.assign(y, benchSpot(p));
 }

@@ -24,7 +24,7 @@ import { ClearingMenu, ClearingPanel, spiritLabel } from './ui/clearing';
 import { BuildPanel, type BuildTool } from './ui/build';
 import { PlacementView } from './render/placement';
 import { DEFS, canPlace, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
-import { FOLK_WORKS, orderFolkWork, whyNotFolkWork } from './sim/folk';
+import { FOLK_WORKS, addFae, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
 import { claimPlot, outlinePlot, plotFailAt } from './sim/homes';
 import { KeepOut } from './render/keepout';
@@ -37,6 +37,8 @@ import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
+import { digChamber } from './sim/townhouse';
+import { TownhouseView } from './render/townhouse';
 import { GatheringView } from './render/gathering';
 import { PlotsView } from './render/plots';
 import { seasonIndex } from './sim/calendar';
@@ -204,6 +206,8 @@ scene.add(precip.group);
 const phenomena = new PhenomenaView(colony, document.getElementById('labels')!);
 scene.add(phenomena.group);
 const folkView = new FolkView(colony, document.getElementById('labels')!);
+const townhouse = new TownhouseView(colony);
+scene.add(townhouse.group);
 scene.add(folkView.group);
 const clearingView = new ClearingView(colony, document.getElementById('labels')!);
 scene.add(clearingView.group);
@@ -1052,6 +1056,7 @@ function frame() {
   resonance.sync(t);
   phenomena.update(t, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   folkView.update(t, sky.night, people.selected, iso.camera, view.clientWidth, view.clientHeight);
+  townhouse.update(t, sky.night);
   keepOut.update();
   if (veil) {
     // The team stands where they stand in the Veil.
@@ -1282,6 +1287,8 @@ const veilDebug = {
     if (typeof r !== 'string') enterVeil(r);
     return r;
   },
+  /** Grow the hill n times, each with its chamber (DESIGN §24.9). */
+  dig(n = 1) { for (let i = 0; i < n; i++) { colony.folk.level++; addFae(colony.folk, colony.world, 'hob', colony.folk.level); digChamber(colony); } },
   /** Put a gathering on (DESIGN §24.8): 'festival', 'folk_festival', or 'wedding' (the two closest free adults). */
   gather(kind: 'festival' | 'folk_festival' | 'wedding' = 'festival') {
     if (kind !== 'wedding') return scheduleGathering(colony, kind, kind === 'festival' ? 'The test festival' : 'the dance at the Ring');

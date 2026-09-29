@@ -188,7 +188,10 @@ reference: Tiny Glade.
   - DESIGN §24 PROPOSAL (Folk as equals + village life) written; user chose festivals + weddings first.
     GATHERINGS BUILT §24.8 (`sim/gatherings.ts`, `render/gathering.ts`, `scripts/life.ts`, `__game.gather`):
     festivals/Folk dances/weddings actually held (arrive → feast → dance; vows under an arch), courtship →
-    wedding → partners + one household. v29 published (fixes §23.7); gatherings NOT published.
+    wedding → partners + one household. Published v30.
+    TOWNHOUSE BUILT §24.9 (`sim/townhouse.ts`, `render/townhouse.ts`, Folk card cross-section, `__game.dig`):
+    chambers per growth with small effects, ghostly topside (shimmer / Sight ≥ 45 at night / Veil view),
+    chambers glow underground in the Veil view. NOT published. Next: mycelium blessing/curse (§24.3).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

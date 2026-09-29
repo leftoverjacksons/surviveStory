@@ -2938,3 +2938,55 @@ offence.
   school, and crossing between the peoples, come later. The questions on
   children's pace, curse strength, hybrids and topside visibility still
   stand.
+
+### 24.9 The mound as a townhouse (built)
+- **Chambers** (`sim/townhouse.ts`, `FolkSociety.chambers`). The hill
+  starts with a hearth-hall and one sleeping chamber. Each growth adds one
+  chamber, chosen by what the hill lacks (`nextChamber`), in this order:
+  1. sleeping bowers while there are fewer than one place per being;
+  2. a dew-cellar if dew is low;
+  3. a song-gallery if song is low;
+  4. a root-archive once a villager has died;
+  5. a nursery from growth 3;
+  6. a guest-room at standing ≥ 70;
+  7. otherwise whichever of the dew-cellar or gallery is missing, else
+     more bowers.
+
+  Effects, all small:
+
+  | Chamber | Effect |
+  |---|---|
+  | Sleeping bowers | +2 places toward Rest |
+  | Dew-cellar | +2 dew a night, cap +20 |
+  | Song-gallery | +2 song a night |
+  | Root-archive | Grieving villagers mend a day sooner every other day (at standing ≥ 20) |
+  | Nursery | Growth ×1.25 |
+  | Guest-room | One more night chore for the village |
+
+  A growth's news names the new chamber. Old saves get one chamber per
+  past growth.
+- **The ghostly topside** (`render/townhouse.ts`). Each chamber has a
+  counterpart on the hill:
+
+  | Chamber | Topside |
+  |---|---|
+  | Hearth-hall | A seven-sided lodge with a conical roof on the crown, fire-glow at the smoke-hole |
+  | Sleeping bowers | Domed lodges on the shoulder |
+  | Dew-cellar | A dew well |
+  | Song-gallery | Reed pipes |
+  | Root-archive | A lantern tree, one light per name of the dead |
+  | Nursery | A cradle between posts |
+  | Guest-room | A lodge with a lit, open door |
+
+  All are additive "ghost" materials. Visibility answers the user's open
+  question 5 with a middle path, open to change:
+  - to most eyes a faint shimmer (opacity ~0.07 of full), day or night;
+  - clear after dark if anyone in the village has Sight ≥ 45;
+  - plain in the Veil view, or through a sighted person's eyes.
+- **Under the hill.** In the Veil view the chambers glow through the
+  earth (no depth test), joined by tunnels to the hall and by a passage to
+  the door. The Folk card has an "Under the hill" cross-section: the hall
+  with chambers left and right, a tooltip on each (what it does, and what
+  stands above it), and a list with counts.
+- **Debug:** `__game.dig(n)` grows the hill n times.
+- **Next:** the mycelium blessing and curse (§24.3).

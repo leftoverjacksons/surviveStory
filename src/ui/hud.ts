@@ -7,6 +7,7 @@ import { nextGathering } from '../sim/gatherings';
 import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../sim/community';
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
+import { CHAMBERS, chambers } from '../sim/townhouse';
 import { FOLK_WORKS, folkNeeds, landWanted, standingWord, type FolkFocus } from '../sim/folk';
 import { FAE_UNIT, FOLK_SUITED, canAskFolk, canClear, veilCost } from '../sim/haunt';
 import type { DistrictKind } from '../sim/oldworld';
@@ -621,10 +622,42 @@ export class Hud {
       <div class="what">A green hill with a door in it, and the Folk who live inside. They were here before the roads. They share the land if the village keeps its distance and their ways. Paint the Wild to give them room.</div>
       <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
       <div class="vneeds" title="Rest, dance and light must all be met before the hill can grow again. Room and gifts make it grow faster."><div class="nt"><span>Their needs</span></div><div class="nl">${fneeds}</div></div>
+      ${this.underHill()}
       <div class="row"><button type="button" id="folk-ask" ${f.met ? '' : 'disabled title="Meet them first"'}>Ask them to build… (by night)</button></div>
       <div class="h" style="margin-top:8px">What they give their nights to</div>
       <div class="row">${focus}</div>
       ${news ? `<div class="folk-news">${news}</div>` : ''}`;
+  }
+
+  /** The townhouse under the hill, in cross-section (DESIGN §24.9). */
+  private underHill(): string {
+    const f = this.col.folk;
+    const cs = chambers(f);
+    const SHORT: Record<string, string> = { hearth: 'Hearth', bowers: 'Bowers', dewcellar: 'Dew', gallery: 'Song', archive: 'Roots', nursery: 'Nursery', guestroom: 'Guests' };
+
+    const W = 280, H = 118, cx = W / 2, top = 26;
+    // The hall in the middle; chambers off it left and right, alternately, in two rows.
+    let k = -1;
+    const pos = cs.map((c) => {
+      if (c.kind === 'hearth') return { x: cx, y: 60 };
+      k++;
+      const side = k % 2 ? 1 : -1, step = Math.floor(k / 2);
+      return { x: cx + side * Math.min(W / 2 - 16, 50 + step * 30), y: step % 2 ? 100 : 76 };
+    });
+    const tunnels = pos.map((p, i) => i === 0 ? '' : `<line x1="${cx}" y1="62" x2="${p.x.toFixed(0)}" y2="${p.y.toFixed(0)}" class="tn"/>`).join('');
+    const rooms = cs.map((c, i) => {
+      const p = pos[i], d = CHAMBERS[c.kind];
+      const r = c.kind === 'hearth' ? 22 : 13;
+      return `<g><title>${esc(`${d.name}: ${d.blurb} Above ground: ${d.topside}.`)}</title><ellipse cx="${p.x.toFixed(0)}" cy="${p.y.toFixed(0)}" rx="${r}" ry="${(r * 0.62).toFixed(0)}" class="${c.kind === 'hearth' ? 'hh' : 'ch'}"/>`
+        + `<text x="${p.x.toFixed(0)}" y="${(p.y + 3).toFixed(0)}">${SHORT[c.kind]}</text></g>`;
+    }).join('');
+    const hill = `<path d="M8 ${top + 14} Q ${cx} ${top - 40} ${W - 8} ${top + 14}" class="hl"/><line x1="0" y1="${top + 14}" x2="${W}" y2="${top + 14}" class="gl"/>`;
+    const counts = new Map<string, number>();
+    for (const c of cs) counts.set(c.kind, (counts.get(c.kind) ?? 0) + 1);
+    const list = [...counts].map(([kind, n]) => `${CHAMBERS[kind as keyof typeof CHAMBERS].name}${n > 1 ? ` ×${n}` : ''}`).join(' · ');
+    return `<div class="h" style="margin-top:8px">Under the hill</div>
+      <svg class="underhill" viewBox="0 0 ${W} ${H}" role="img" aria-label="The townhouse under the hill: ${esc(list)}">${hill}${tunnels}${rooms}</svg>
+      <div class="effects">${esc(list)}. Hover a chamber to see what it does. Those with Sight see the townhouse above ground at night; everyone sees it in the Veil view.</div>`;
   }
 
   setOmenMode(on: boolean) { this.omenMode = on; document.body.classList.toggle('omen', on); }
