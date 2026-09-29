@@ -193,7 +193,7 @@ reference: Tiny Glade.
     chambers per growth with small effects, ghostly topside (shimmer / Sight ≥ 45 at night / Veil view),
     chambers glow underground in the Veil view. MYCELIUM BUILT §24.10 (`sim/mycelium.ts`, `render/mycelium.ts`,
     `scripts/mycelium.ts`): network from the hill, blessing (growth +15%) / curse (nuisances) where it reaches, dead
-    ground in uncleared districts. NOT published. Next: cleared districts' fate (§24.4), children/school, crossing.
+    ground in uncleared districts. Published v31. Next: cleared districts' fate (§24.4), children/school, crossing.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
