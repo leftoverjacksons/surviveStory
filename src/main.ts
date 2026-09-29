@@ -39,6 +39,7 @@ import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
 import { digChamber } from './sim/townhouse';
 import { MyceliumView } from './render/mycelium';
+import { myceliumDaily } from './sim/mycelium';
 import { powered, whyLocked } from './sim/power';
 import { markHeap, razeRuin, razeYield, whyNotRaze } from './sim/salvage';
 import { cancelProject, keepStanding, placeKindOf, takeDown } from './sim/dismantle';
@@ -1414,6 +1415,8 @@ const veilDebug = {
   /** Mark paving to be broken up (DESIGN §24.12). */
   depave: (x: number, z: number, r: number) => markDepave(world, x, z, r, true),
   /** Grow the hill n times, each with its chamber (DESIGN §24.9). */
+  /** Grow the mycelium n days (and set the Folk's standing, if given). */
+  spread(n = 10, standing?: number) { if (standing !== undefined) colony.folk.standing = standing; for (let i = 0; i < n; i++) myceliumDaily(colony); },
   dig(n = 1) { for (let i = 0; i < n; i++) { colony.folk.level++; addFae(colony.folk, colony.world, 'hob', colony.folk.level); digChamber(colony); } },
   /** Put a gathering on (DESIGN §24.8): 'festival', 'folk_festival', or 'wedding' (the two closest free adults). */
   gather(kind: 'festival' | 'folk_festival' | 'wedding' = 'festival') {

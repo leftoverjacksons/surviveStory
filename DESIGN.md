@@ -3336,3 +3336,123 @@ they are wood".
   | Wood | 22.4 | 19.9 |
   | Unmet warmth (snapshots) | 15 | 9 |
   | Stalled projects | 4 | 0 |
+
+## 25. The Folk as a parallel society (the user's direction after version 36)
+
+### 25.1 The mycelium, redrawn (built)
+The user: the threads read as "electricity bolts: straight yellow lines".
+Wanted instead: fluid, curved, thicker, light ghostly purple, branching
+from the main mound to the sub-mounds and out, gently undulating, with
+brighter pulses running from the centre to the tips.
+`render/mycelium.ts`:
+- **Shape:** a tree rooted at the hill. Every reached cell joins the hill
+  by the cheapest path through strong ground (Dijkstra over 8 neighbours,
+  with a little per-cell roughness).
+  - Only strands leading to a scattering of tips are kept.
+  - Width follows √(tips fed): trunks leave the hill's flank and split
+    into tapering branches.
+  - Hubs (the Ring, shrines, the memorial) join the tree like any cell.
+    Sub-mounds (§25.3) will join it the same way.
+- **Curves:** Catmull-Rom through jittered cell points, continuous along
+  each strand's main line, drawn as flat ribbons on the ground.
+- **Look:** additive, a soft bright core with a faint halo.
+  - Lavender (`#d6b4ff`) while the Folk bless, blue-lavender between.
+  - A dim grey-violet with slow, sparse pulses while they curse.
+- **Motion:** a slow sideways sway that grows along each strand; gaussian
+  pulses travel outward (5 units/s, every 22 units).
+- **Visibility:** in the Veil view only, as before. It is now drawn through
+  trees and roofs, since most of it runs under the Wild's canopy.
+  Unexplored ground no longer shows it (the old lines leaked into the fog).
+- Debug hook: `__game.spread(days, standing)` grows the network.
+
+### 25.2 Four kinds of being (proposal)
+The user's outline, with the folklore it draws on:
+- the Irish *aos sí* / Tuatha Dé Danann for the tall ones;
+- the Cherokee Nunnehi (immortal, human-sized, living in townhouses under
+  mounds) and the Yunwi Tsunsdi (the Little People, who are mischievous)
+  for the two main kinds.
+
+The game should be inspired by these, not name or portray the Cherokee
+peoples' beings directly: they belong to a living tradition.
+
+1. **The Gentry** (tall, human-sized). Named individuals with no normal
+   life cycle: no birth, ageing or old age.
+   - They hold opinions of each other and of named humans (bonds, as
+     humans have).
+   - They come to dances and councils, court (§24.6), and take offence.
+   - Today's `elder` and `piper` become Gentry.
+2. **The Wee Folk** (small). Less individual (named, shallow opinions,
+   in bands), and mischievous.
+   - Abroad from dusk to dawn, in the village as well as the Wild.
+   - They take offerings and do night chores (today's hob chores).
+   - They make mischief:
+     - hide tools and tangle nets;
+     - sour a pail of milk;
+     - braid a sleeper's hair;
+     - move the woodpile a yard;
+     - lead someone astray (today's `led`).
+   - Mischief grows as standing falls; at *kin* it is mostly play.
+   - Today's `hob` and `sprite` become Wee Folk.
+3. **The Restless** (spirits of the dead): today's district spirits
+   (`haunt.ts`: remnant, hedge, lamp, hollow). They are not long-lived.
+   - Once laid to rest or converted in a clearing, they drift back to the
+     hill at night along the Folk paths as pale lights, and are taken in.
+   - Banished ones don't come.
+   - Proposed mechanism: each one taken in adds to the hill's *memory*.
+     Every few, a new Wee one *quickens* (the old belief that the fairy
+     host is fed by the dead).
+   - This gives the Folk a population source with no birth cycle, and
+     ties clearing districts to the Folk's growth (B).
+4. **The Strange** (rare, undetermined). A slot for singular events and
+   visitants: the orbs and UAP already in the lore, a black dog on the
+   road, something in the water. Not designed now.
+
+**How they appear.** Beings are invisible or wisps most of the time, and
+take full form only in interactive moments: a dance, a council, a
+courtship, an offering accepted, being met on a path.
+- Visible form is already chosen per viewer by Sight (`FolkView.readingOf`:
+  none / chill (a halo, i.e. a wisp) / luminous / coherent). The change is
+  that full form is *also* triggered by the moment, with a shimmer as the
+  wisp grows into the figure and back.
+- Gentry wisps: large, slow, head-height, drifting along the Folk paths.
+- Wee wisps: small quick sparks in twos and threes, flitting through yards
+  after dusk.
+- Figures: new Gentry and Wee builds from the same Blender pipeline as the
+  survivors (tall and pale; child-height with different silhouettes),
+  drawn translucent and glowing.
+
+### 25.3 The Great Hill and its knowes (proposal)
+The townhouse chambers (§24.9) are abandoned for a settlement:
+- **The Great Hill:** the main mound at about double today's radius
+  (3.6 → ~7). It holds the hearth-hall (council, dances, the Gentry's
+  seat).
+- **Knowes:** sub-mounds at today's mound size, raised around it as the
+  society grows (each growth of the hill = a new knowe, in place of a
+  chamber).
+  - Each is a two-storey dwelling, one floor at mound level and one below,
+    for a household of about 4–6: Gentry with their Wee band. Denser than
+    the humans' two-per-house.
+  - Invisible to humans: seen as ghost architecture with Sight at night or
+    in the Veil view (reusing the townhouse's topside ghosts).
+- **Not a copy of the human town:** no farms or trades. What they build
+  stays their own: rings, lanterns, moon gardens, cairns, and now knowes.
+  Bowers are replaced by knowes.
+  - The chambers' small effects could become each knowe's *character*:
+    the pipers' knowe (song), the dew-keepers' (dew), the archive-knowe
+    that keeps the names of the dead, the guest-knowe.
+- **The mycelium follows the settlement:** trunks from the Great Hill to
+  each knowe, branching on from there (§25.1). Knowes are hubs.
+- **Pressure on uncleared land (B):** a knowe wants Wild ground; the best
+  sites lie in cleared districts given to the Folk or shared.
+
+### 25.4 Proposed order
+1. Great Hill at double size; knowes replace chambers; the mycelium roots
+   at knowes. Save migration: existing chambers become knowes.
+2. Gentry and Wee Folk as kinds with their own behaviour: Gentry bonds and
+   opinions; Wee bands abroad dusk to dawn in the village, with offerings,
+   chores and mischief.
+3. Wisp-by-default presentation and full form in moments, with the
+   shimmer transition.
+4. The Restless return to the hill and quicken new Wee ones.
+5. New Gentry and Wee figures (Blender).
+6. The Strange: later.

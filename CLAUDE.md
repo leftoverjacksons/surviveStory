@@ -210,6 +210,10 @@ reference: Tiny Glade.
     STRIP AND CLEAR (`sim/salvage.ts`: marked wrecks, pulling ruins down); TIMBER (§24.19, published v36: logs → woodyard
     → `split` task at the chopping block or saw pit; `world.ts#woodyard`). Next: electric carts.
     ORDER: cleared districts (§24.4) → move/deconstruct → figures + children + lineage → crossing → A → B.
+    THE FOLK REDESIGN (DESIGN §25, user's direction after v36): MYCELIUM REDRAWN §25.1 (built: tree from the hill,
+    curved tapered lavender ribbons, sway + outward pulses, through trees, explored ground only; `__game.spread`).
+    PROPOSAL §25.2–25.4 awaiting the user: four kinds (Gentry, Wee Folk, the Restless, the Strange), wisp by default
+    and full form in moments, Great Hill ×2 + knowes (two-storey sub-mounds) replacing chambers.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
