@@ -3720,3 +3720,35 @@ they gather at).
 - **Tests:** `tests/hearth.test.ts`, plus new cases in `dismantle.test.ts`
   (a lived-in home, the kitchen) and `restorehome.test.ts` (pulling a
   restored house down).
+
+## 28. Resettling a district: the hamlet's fire (after version 40)
+The user chose it after §27. It is the village's side of §26: a district
+the village takes becomes a hamlet with its own fire.
+- **The Hamlet fire** (build menu; `DEFS.hearth`: 2×2, 6 wood and 2 scrap,
+  90 minutes; walked into, not blocking):
+  - Only within 24 of the heart of a cleared district that is the
+    village's or shared (`hearth.ts#whyNotHamletFire`).
+  - At least 28 from any other fire, the old one included. One is laid at
+    a time.
+  - It takes its district's name when finished ("The fire at Sorrel
+    Close").
+  - Drawn (`render/power.ts#hearthMesh`): a ring of stones, logs, flames,
+    a warm point light, and split logs stacked beside it.
+- **Who gathers where** (`fireFor`): everyone gathers at the fire nearest
+  their home, the old fire if they have none.
+  - Evening circles, meals by the fire and fireside leisure take their
+    seats round that fire (`seatOf`), and people face the fire they sit by.
+  - Bedrolls for those without a roof stay at the old fire.
+- **The card** lists its households and who is by it now. It can be moved
+  or taken down like any building (§27).
+- **Autopilot** (`autopilotHamlet`): once a family lives in a resettled
+  district far from any fire, it lays a hamlet fire near their door.
+- **Soak** (6 autopilot villages, 64 days): every village started at least
+  one hamlet (two in two villages). 1 to 8 people gathered at hamlet fires.
+- Debug hook: `__game.hamlet(x, z)`.
+- **Tests:** `tests/hamlet.test.ts` (placement rules; a family in a restored
+  house gathers at its own fire while the rest use the old one).
+- **Not yet:**
+  - festivals at a hamlet;
+  - a hamlet's own green and lanes laid out from its fire;
+  - hamlet-specific councils.

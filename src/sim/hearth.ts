@@ -128,3 +128,48 @@ export function atStockpile(col: Colony, x: number, z: number) {
   const sp = col.world.stockpile;
   return x > sp.x0 - 0.5 && x < sp.x1 + 0.5 && z > sp.z0 - 0.5 && z < sp.z1 + 0.5;
 }
+
+// ---------- the hamlets' fires (DESIGN §28) ----------
+
+/** How far a hamlet fire must stand from any other fire. */
+export const HAMLET_APART = 28;
+/** How far from its district's heart a hamlet fire may stand. */
+const HAMLET_REACH = 24;
+
+/** Every fire the village gathers at: the old fire (id 0) and the hamlets' fires. */
+export function fires(col: Colony): { id: number; x: number; z: number }[] {
+  const out = [{ id: 0, x: col.world.campfire.x, z: col.world.campfire.z }];
+  for (const b of col.village.buildings) if (b.kind === 'hearth') out.push({ id: b.id, x: b.inside.x, z: b.inside.z });
+  return out;
+}
+
+/** The fire nearest a point. */
+export function nearestFire(col: Colony, x: number, z: number) {
+  let best = fires(col)[0], bd = Infinity;
+  for (const f of fires(col)) { const d = Math.hypot(f.x - x, f.z - z); if (d < bd) { bd = d; best = f; } }
+  return best;
+}
+
+/** Which fire someone gathers at: the one nearest their home (the old fire if they have none). */
+export function fireFor(col: Colony, sid: number) {
+  const v = col.village;
+  const h = v.households.find((x) => x.members.includes(sid) && x.home);
+  const home = h ? v.buildings.find((b) => b.id === h.home) : undefined;
+  return home ? nearestFire(col, home.door.x, home.door.z) : fires(col)[0];
+}
+
+/** The village's districts (or shared ones), where a hamlet may be settled. */
+function resettled(col: Colony) {
+  return col.haunts.filter((h) => h.state === 'cleared' && (h.owner === 'village' || h.owner === 'shared')).map((h) => col.world.districts[h.district]);
+}
+
+/** Why a hamlet fire can't go here, or null. */
+export function whyNotHamletFire(col: Colony, x: number, z: number): string | null {
+  const ds = resettled(col);
+  if (!ds.length) return 'A hamlet fire needs a district of the village\'s own: clear one, and resettle it.';
+  if (!ds.some((d) => Math.hypot(d.x - x, d.z - z) <= HAMLET_REACH)) return 'Only in a district the village has resettled (or shares).';
+  const near = fires(col).find((f) => Math.hypot(f.x - x, f.z - z) < HAMLET_APART);
+  if (near) return near.id === 0 ? 'Too close to the village\'s fire: a hamlet needs its own.' : 'There is already a fire near here.';
+  if (col.village.projects.some((p) => !p.done && p.kind === 'hearth')) return 'A hamlet fire is already being laid.';
+  return null;
+}

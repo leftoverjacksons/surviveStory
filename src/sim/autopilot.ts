@@ -9,6 +9,7 @@ import { log } from './community';
 import { seasonOf } from './calendar';
 import { roundField } from './fields';
 import { STORE_PER_HEAD, canPlace, footAt, placeProject } from './buildings';
+import { HAMLET_APART, fires, whyNotHamletFire } from './hearth';
 import { NEAR, fulfilled, grantWork, requestsOf } from './requests';
 import { Zone, idx, paintZone, toTileX, toTileZ, zoneAllowed, type World } from './world';
 import { DAYS_PER_SEASON } from './calendar';
@@ -68,6 +69,7 @@ export function autopilotDaily(col: Colony) {
   autopilotClear(col);
   autopilotFolk(col);
   autopilotRequests(col);
+  autopilotHamlet(col);
   // More Home ground when households find no room.
   if ((col.village.noPlotDay ?? -9) >= c.day - 1) {
     // Next to the village, not out in the woods: plots are found anywhere on Home ground now.
@@ -159,6 +161,28 @@ function autopilotRequests(col: Colony) {
         if (!canPlace(w, v, kind, foot).ok) continue;
         done = typeof placeProject(w, v, c, kind, foot, facing) !== 'string';
       }
+    }
+  }
+}
+
+/**
+ * A resettled district with a family living in it, far from any fire, gets a
+ * hamlet fire of its own (DESIGN §28), near the homes.
+ */
+function autopilotHamlet(col: Colony) {
+  const w = col.world, v = col.village, c = col.community;
+  if (v.projects.some((p) => !p.done && p.kind === 'hearth')) return;
+  const homes = v.buildings.filter((b) => b.kind === 'home' && v.households.some((h) => h.home === b.id));
+  for (const b of homes) {
+    if (fires(col).some((f) => Math.hypot(f.x - b.door.x, f.z - b.door.z) < HAMLET_APART)) continue;
+    if (whyNotHamletFire(col, b.door.x, b.door.z)?.startsWith('A hamlet fire needs')) return;
+    const tx0 = toTileX(w, b.door.x), tz0 = toTileZ(w, b.door.z);
+    for (let r = 3; r < 12; r++) for (let a = 0; a < 16; a++) {
+      const tx = Math.round(tx0 + Math.cos((a / 16) * Math.PI * 2) * r), tz = Math.round(tz0 + Math.sin((a / 16) * Math.PI * 2) * r);
+      const { foot, facing } = footAt('hearth', tx, tz, 0);
+      const x = tx - w.w / 2 + 1, z = tz - w.h / 2 + 1;
+      if (whyNotHamletFire(col, x, z) || !canPlace(w, v, 'hearth', foot).ok) continue;
+      if (typeof placeProject(w, v, c, 'hearth', foot, facing) !== 'string') { log(c, 'Autopilot laid a fire for the new hamlet.', 'info'); return; }
     }
   }
 }

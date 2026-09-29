@@ -24,8 +24,8 @@ export type FisheryKind = 'jetty' | 'fishhut' | 'netshed' | 'boat';
 export type TradeKind = 'toolshop' | 'tailor' | 'smokehouse' | 'tavern';
 export const TRADE_KINDS: TradeKind[] = ['toolshop', 'tailor', 'smokehouse', 'tavern'];
 const isTradeKind = (k: string): k is TradeKind => (TRADE_KINDS as string[]).includes(k);
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | TradeKind | FisheryKind | PowerKind;
-export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | TradeKind | 'upgrade' | FisheryKind | PowerKind;
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'hearth' | TradeKind | FisheryKind | PowerKind;
+export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'hearth' | TradeKind | 'upgrade' | FisheryKind | PowerKind;
 export const FISHERY_KINDS: FisheryKind[] = ['jetty', 'fishhut', 'netshed', 'boat'];
 export type Tier = 0 | 1;
 
@@ -181,6 +181,7 @@ export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_st
   windmill:   { name: ['Windmill', 'Windmill'], w: 3, d: 3, cost: [c(34, 6), c(34, 6)], work: [1100, 1100] },
   solar:      { name: ['Solar array', 'Solar array'], w: 4, d: 3, cost: [c(8, 8, 0, { glass: 6, copper: 2 }), c(8, 8, 0, { glass: 6, copper: 2 })], work: [600, 600] },
   sawpit:     { name: ['Saw pit', 'Saw pit'], w: 3, d: 2, cost: [c(12, 4), c(12, 4)], work: [420, 420] },
+  hearth:     { name: ['Hamlet fire', 'Hamlet fire'], w: 2, d: 2, cost: [c(6, 2), c(6, 2)], work: [90, 90] },
   turbine:    { name: ['Wind turbine', 'Wind turbine'], w: 2, d: 2, cost: [c(10, 10, 0, { steel: 3, copper: 3 }), c(10, 10, 0, { steel: 3, copper: 3 })], work: [800, 800] },
 };
 
@@ -337,7 +338,7 @@ export function storageCapacity(v: Village): number {
     + v.buildings.filter((b) => b.kind === 'fishhut').length * 50;
 }
 
-export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'kitchen' | TradeKind | PowerKind;
+export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'kitchen' | 'hearth' | TradeKind | PowerKind;
 
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
@@ -606,6 +607,7 @@ export const PLACEABLE: { kind: SiteKind; blurb: string }[] = [
   { kind: 'smokehouse', blurb: 'At the back of a household\'s yard: one of them puts up food in smoke and jars. Preserves never spoil.' },
   { kind: 'tavern', blurb: 'Somewhere to go of an evening: company, a fiddle, something to drink.' },
   { kind: 'dome', blurb: 'A geodesic greenhouse: food all year, even in winter. Glass and steel from a cleared district.' },
+  { kind: 'hearth', blurb: 'A second fire, for a district the village has resettled: the households who live near it gather there of an evening instead of walking back to the old fire. Only in a cleared district that is the village\'s (or shared), well away from other fires.' },
   { kind: 'sawpit', blurb: 'A pit and a trestle for a two-man saw (joiners build it). Logs are sawn into boards faster than they are split at the block, and less is wasted.' },
   { kind: 'windmill', blurb: 'Wooden sails on a timber tower (joiners build it). It grinds the grain, so every harvest goes a fifth further, and turns a small dynamo for the lights.' },
   { kind: 'solar', blurb: 'Salvaged panels on a timber rack (someone must know wiring). Power for the lights and the homes; most in summer.' },
@@ -759,8 +761,13 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
         inside: cen, beds: def.beds ? def.beds[p.tier] : 0, level: 0, tended: 0, growth: 0.1, name: p.household ? p.name : def.name[p.tier], clad: p.clad,
         plot: p.plot, household: p.household,
       };
+      // A hamlet's fire takes the name of its district (DESIGN §28).
+      if (kind === 'hearth') {
+        const d = [...w.districts].sort((x, y) => Math.hypot(x.x - cen.x, x.z - cen.z) - Math.hypot(y.x - cen.x, y.z - cen.z))[0];
+        if (d) b.name = `The fire at ${d.name}`;
+      }
       v.buildings.push(b);
-      if (kind !== 'kitchen' && kind !== 'garden' && kind !== 'dome') block(p.foot); // gardens and domes are walked into
+      if (kind !== 'kitchen' && kind !== 'garden' && kind !== 'dome' && kind !== 'hearth') block(p.foot); // gardens, domes and fires are walked into
       log(com, `${def.name[p.tier]} finished.`, 'good');
     }
   }

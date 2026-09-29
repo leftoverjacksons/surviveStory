@@ -107,3 +107,37 @@ export function sawpitMesh(W: number, D: number, p: number): THREE.Group {
   for (let k = 0; k < 4; k++) g.add(box(L * 0.8, 0.06, 0.28, mat('#b89a6a'), 0, 0.03 + k * 0.07, D / 2 - 0.2));
   return g;
 }
+
+/** A hamlet's fire (DESIGN §28): a ring of stones, logs, flames, a warm glow; stones and a pile of kindling while it's being laid. */
+export function hearthMesh(p: number): THREE.Group {
+  const g = new THREE.Group();
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    if (i / 9 > Math.max(0.3, p)) break;
+    const s = new THREE.Mesh(new THREE.DodecahedronGeometry(0.16, 0), mat('#6f6c64'));
+    s.position.set(Math.cos(a) * 0.55, 0.1, Math.sin(a) * 0.55);
+    g.add(s);
+  }
+  // Split logs stacked to one side for the evening.
+  for (let k = 0; k < 3; k++) g.add(cyl(0.08, 0.8, mat(WOOD), 1.0, 0.08 + k * 0.12, -0.3 + (k % 2) * 0.15, 6).rotateZ(Math.PI / 2));
+  if (p < 1) return g;
+  for (let i = 0; i < 3; i++) {
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.9, 6), mat('#3b2a1e'));
+    log.rotation.set(Math.PI / 2 - 0.25, (i / 3) * Math.PI, 0);
+    log.position.y = 0.15;
+    g.add(log);
+  }
+  const flames = new THREE.Group();
+  flames.userData.keep = true;
+  const cols = ['#ffb347', '#ff7b2e', '#ffe08a'];
+  for (let i = 0; i < 3; i++) {
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.2 - i * 0.05, 0.62 - i * 0.12, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(cols[i]).multiplyScalar(3), toneMapped: false }));
+    f.position.y = 0.42;
+    flames.add(f);
+  }
+  const light = new THREE.PointLight('#ff9448', 5, 9, 1.6);
+  light.position.y = 0.9;
+  flames.add(light);
+  g.add(flames);
+  return g;
+}

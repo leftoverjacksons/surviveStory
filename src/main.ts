@@ -38,7 +38,7 @@ import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
 import { KNOWE_R, placeKnowe, raiseKnowe, settleFolk, whyNotKnowe } from './sim/townhouse';
-import { atFire, atStockpile, moveFire, moveStockpile, stockpileAt, whyNotFire, whyNotStockpile } from './sim/hearth';
+import { atFire, atStockpile, moveFire, moveStockpile, stockpileAt, whyNotFire, whyNotHamletFire, whyNotStockpile } from './sim/hearth';
 import { MyceliumView } from './render/mycelium';
 import { myceliumDaily } from './sim/mycelium';
 import { powered, whyLocked } from './sim/power';
@@ -646,6 +646,9 @@ function placeHover(cx: number, cy: number) {
     return;
   }
   const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
+  // A hamlet fire goes only in a resettled district, away from other fires (DESIGN §28).
+  const hamlet = build.site === 'hearth' ? whyNotHamletFire(colony, g.x, g.z) : null;
+  if (hamlet) { placement.showFoot(foot, facing, 0.8, false); buildPanel.hint(`${hamlet} Esc to stop.`); return; }
   const fit = canPlace(world, colony.village, build.site, foot);
   placement.showFoot(foot, facing, build.site === 'lantern' ? 2.6 : 2.4, fit.ok);
   buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (fit.ok ? `Click to place. ${fit.trees.length ? `${fit.trees.length} tree${fit.trees.length > 1 ? 's' : ''} will come down.` : ''} Right-click or T to turn.` : `${fit.why ?? 'It won\'t fit there.'} Right-click or T to turn; Esc to stop.`));
@@ -689,7 +692,7 @@ function placeClick(cx: number, cy: number) {
     if (colony.village.priority === build.site) colony.village.priority = undefined;
   } else {
     // Power wants know-how (power.ts): joiners for a windmill, someone who knows wiring for panels and turbines.
-    const locked = whyLocked(colony, build.site);
+    const locked = whyLocked(colony, build.site) ?? (build.site === 'hearth' ? whyNotHamletFire(colony, g.x, g.z) : null);
     if (locked) { buildPanel.hint(locked); return; }
     const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
     const res = placeProject(world, colony.village, community, build.site, foot, facing);
@@ -1421,6 +1424,22 @@ const veilDebug = {
     return r;
   },
   /** Clear the nearest district with a house, restore the house and finish it (DESIGN §24.16). Returns the ruin. */
+  /** Light a hamlet fire beside a point, built at once (DESIGN §28). Returns where, or null. */
+  hamlet(x: number, z: number) {
+    const w = world, v = colony.village;
+    for (let r = 3; r < 14; r++) for (let a = 0; a < 16; a++) {
+      const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+      if (whyNotHamletFire(colony, px, pz)) continue;
+      const { foot, facing } = footAt('hearth', toTileX(w, px), toTileZ(w, pz), 0);
+      if (!canPlace(w, v, 'hearth', foot).ok) continue;
+      const p = placeProject(w, v, community, 'hearth', foot, facing);
+      if (typeof p === 'string') continue;
+      completeProject(w, v, community, p);
+      syncScene();
+      return { x: px, z: pz };
+    }
+    return null;
+  },
   restoreHome() {
     const w = world, v = colony.village;
     const houses = w.ruins.filter((r) => RESTORE[r.kind]?.as === 'home').sort((a, b) => Math.hypot(a.x - w.campfire.x, a.z - w.campfire.z) - Math.hypot(b.x - w.campfire.x, b.z - w.campfire.z));

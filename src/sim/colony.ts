@@ -30,6 +30,7 @@ import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence }
 import { addFae, breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, maybeLeadAway, type FolkSociety } from './folk';
 import { saucersAtDusk } from './fae';
 import { foundSettlement } from './townhouse';
+import { fireFor, nearestFire } from './hearth';
 import { planRestore, ruinDoor } from './restore';
 import { rareDaily, ruinToStrip, strip } from './rare';
 import { autopilotDaily } from './autopilot';
@@ -1145,8 +1146,10 @@ function pickOffering(col: Colony, a: Agent, s: Survivor): Task | null {
 }
 
 function seatOf(col: Colony, a: Agent): Point {
-  const living = col.agents;
-  return seatSpot(col.world.campfire, living.indexOf(a), living.length);
+  // At the fire nearest their home: the old fire, or a hamlet's (DESIGN §28).
+  const f = fireFor(col, a.id);
+  const ring = col.agents.filter((o) => fireFor(col, o.id).id === f.id);
+  return seatSpot(f, Math.max(0, ring.indexOf(a)), ring.length);
 }
 
 function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
@@ -1429,7 +1432,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         return;
       }
       const rations = rationing(col);
-      if (t.place === 'fire') face(a, w.campfire); else if (t.place === 'kitchen') a.facing = 0;
+      if (t.place === 'fire') face(a, nearestFire(col, a.x, a.z)); else if (t.place === 'kitchen') a.facing = 0;
       a.anim = 'eat';
       let company = 0;
       if (t.place === 'home' || t.place === 'hall') {
@@ -1484,7 +1487,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       }
       a.anim = 'sit';
       if (t.place === 'fire') {
-        face(a, w.campfire);
+        face(a, nearestFire(col, a.x, a.z));
         a.activity = 'Talking by the fire';
         a.needs.social = Math.min(100, a.needs.social + dt * (25 / 60));
       } else if (t.place === 'water') {
@@ -1665,7 +1668,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       } else {
         a.anim = 'sit';
         const others = col.agents.filter((o) => o !== a && o.task?.kind === 'leisure' && o.task.what === 'cards' && o.task.stage === 'do' && Math.hypot(o.x - a.x, o.z - a.z) < 4);
-        if (!a.indoors) face(a, w.campfire);
+        if (!a.indoors) face(a, nearestFire(col, a.x, a.z));
         a.activity = others.length ? `Playing cards with ${others.slice(0, 2).map((o) => first(survivorOf(col, o.id))).join(' and ')}` : 'Laying out a hand of patience';
         a.needs.social = Math.min(100, a.needs.social + dt * ((others.length ? 18 : 3) / 60));
         if (others.length && habit(col, a.id + Math.floor(col.minute / 30)) < 2) adjustBond(col.community, a.id, others[0].id, 1);
@@ -1881,7 +1884,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         if (walk(col, a, dt)) t.stage = 'sit';
         return;
       }
-      face(a, w.campfire);
+      face(a, nearestFire(col, a.x, a.z));
       a.anim = 'sit';
       a.activity = s.role === 'rest' ? 'Resting by the fire' : 'Tending the fire';
       t.t += dt;

@@ -10,6 +10,7 @@ import { alive, bondKind, bondValue, communityMorale, type Survivor } from '../s
 import { PSI, ROLES, TRAITS, type RoleId } from '../sim/data';
 import { Zone, exploredFraction } from '../sim/world';
 import { KNOWES, folkDistricts, folkRuins, housing, knowes, roomFor } from '../sim/townhouse';
+import { fireFor } from '../sim/hearth';
 import { QUICKEN, faeView, isGentry, opinionOf, viewWord, villageFeeling } from '../sim/fae';
 import { folkMood, reachShare } from '../sim/mycelium';
 import { FOLK_WORKS, folkNeeds, landWanted, standingWord, type FolkFocus } from '../sim/folk';
@@ -37,6 +38,7 @@ import { districtYield } from '../sim/rare';
 const BUILDING_INFO: Record<string, string> = {
   store: 'The building they found and first sheltered in. Clearing it out gives beds; patching its fallen roof gives more. Once most people have homes, the council may turn it into a hall for shared suppers and winter evenings.',
   annex: 'A lean-to built against the old shelter. 2 more beds.',
+  hearth: 'A hamlet\'s own fire, in a district the village resettled. The households who live nearer this fire than the old one gather here of an evening.',
   hut: 'A bunkhouse: shared beds for people without a home of their own yet.',
   home: 'A household\'s own house on its own plot. They sleep and cook here, spend some evenings in, and improve the yard behind it over the seasons. Burns firewood in winter.',
   garden: 'A kitchen garden. Tended daily, it adds a little food in summer and autumn.',
@@ -499,6 +501,12 @@ export class Hud {
       if (heatNeed(b)) facts.push(['Winter firewood', `${heatNeed(b)} a day when occupied`]);
       if (b.kind === 'cellar') facts.push(['Stores keep', `${Math.floor(storageCapacity(col.village))} food in all`]);
       if (b.kind === 'garden') facts.push(['Tended today', b.tended >= 60 ? 'Yes' : 'Not yet']);
+      if (b.kind === 'hearth') {
+        const theirs = col.village.households.filter((h) => h.members.some((id) => fireFor(col, id).id === b.id));
+        facts.push(['Its households', theirs.length ? theirs.map((h) => householdName(col.community, h)).join(', ') : 'Nobody lives nearer this fire than the old one yet: restore the houses round it, or draw plots.']);
+        const here = col.agents.filter((a) => a.task?.kind === 'social' && Math.hypot(a.x - b.inside.x, a.z - b.inside.z) < 4).length;
+        facts.push(['By the fire now', `${here}`]);
+      }
       const fishery = fisheryOf(col.village, b);
       if (fishery) {
         const pond = col.world.ponds[fishery.pond];
