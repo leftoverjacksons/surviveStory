@@ -43,7 +43,7 @@ import {
   PSI_SIGHT, createVeil, disturb, growthFactor, healFactor, homeResonance, nurture, resonanceAt, veilDaily, veilHourly, type Veil,
 } from './veil';
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
-import { findPath } from './path';
+import { findPath, tautPath } from './path';
 import { finishTakedown } from './dismantle';
 import { unlocksDaily } from './unlocks';
 import { clearHeap, finishRaze, finishTow, heapPos } from './salvage';
@@ -361,7 +361,7 @@ function setDest(col: Colony, a: Agent, x: number, z: number, stopShort = false)
   const pts = p.map((i) => ({ x: tileX(w, i % w.w), z: tileZ(w, (i / w.w) | 0) }));
   if (stopShort && !blockedGoal) pts.pop();
   else if (exact && !stopShort) pts[pts.length - 1] = exact;
-  a.path = pts;
+  a.path = tautPath(w, a, pts);
   a.pathI = 0;
   return true;
 }

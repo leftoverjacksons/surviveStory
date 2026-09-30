@@ -2,15 +2,18 @@
  * Haunted districts and clearings, drawn (DESIGN §19).
  *
  * Outside a clearing: at night, the spirits of haunted districts show as
- * faint lights to whoever could perceive them. Inside one: the district's
- * tiles, where the chosen survivor can move this turn, the wards, the
- * Hollow's reach, a ring under each of the team, and every spirit as the
- * team perceives it (a cold shimmer, a shape of light, or a named being).
+ * faint lights to whoever could perceive them. Inside one: where the chosen
+ * survivor can walk this turn (two soft rings, DESIGN §38.10), the way they
+ * would walk to the cursor and a ghost of them standing there, the spirits
+ * that would reach them there, the wards, the Hollow's reach, a ring under
+ * each of the team, and every spirit as the team perceives it (a cold
+ * shimmer, a shape of light, or a named being).
  */
 import * as THREE from 'three';
 import type { Colony } from '../sim/colony';
 import { alive } from '../sim/community';
-import { cheb, readingOf, reachable, teamReading, type Clearing, type Reading, type Spirit } from '../sim/haunt';
+import { gridOf, occupantsFor, previewPath, reachOf, readingOf, teamReading, threatsAt, walkCost, type Clearing, type Reach, type Reading, type Spirit, type Threat } from '../sim/haunt';
+import { CELL, standable, type Pt } from '../sim/veilmove';
 import { resonanceAt } from '../sim/veil';
 import { heightAt, tileX, tileZ } from '../sim/world';
 import { glowTexture, makeRand } from './util';
@@ -37,35 +40,46 @@ export class ClearingView {
   private ambient = new THREE.Group();
   private arena = new THREE.Group();
   private forms = new Map<string, Form>();
-  private moveTiles: THREE.InstancedMesh;
-  private hover: THREE.Mesh;
+  private reach: ReachOverlay;
+  private pathDots: THREE.InstancedMesh;
+  private ghost: THREE.Group;
+  private warn = new THREE.Group();
   private rings: THREE.Group = new THREE.Group();
   private reachKey = '';
+  private previewKey = '';
+  /** What the cursor would do, for the tip: cost in actions, and what would reach them there. */
+  preview: { cost: number; threats: { spirit: Spirit; threat: Threat }[] } | null = null;
   private rand = makeRand(77);
 
   constructor(private col: Colony, private labels: HTMLElement) {
     this.group.name = 'clearing';
-    const tile = new THREE.PlaneGeometry(0.92, 0.92);
-    tile.rotateX(-Math.PI / 2);
-    this.moveTiles = new THREE.InstancedMesh(tile, flat('#5fe0c0', 0.28), 400);
-    this.moveTiles.count = 0;
-    this.moveTiles.frustumCulled = false;
-    this.moveTiles.renderOrder = 5;
-    this.hover = new THREE.Mesh(tile, flat('#ffffff', 0.35));
-    this.hover.visible = false;
-    this.hover.renderOrder = 6;
-    this.arena.add(this.moveTiles, this.hover, this.rings);
+    this.reach = new ReachOverlay();
+    const dot = new THREE.CircleGeometry(0.07, 10);
+    dot.rotateX(-Math.PI / 2);
+    this.pathDots = new THREE.InstancedMesh(dot, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false }), 200);
+    this.pathDots.count = 0;
+    this.pathDots.frustumCulled = false;
+    this.pathDots.renderOrder = 7;
+    // A ghost of whoever is chosen, standing where the cursor is.
+    this.ghost = new THREE.Group();
+    const gm = new THREE.MeshBasicMaterial({ color: '#bff5e6', transparent: true, opacity: 0.35, depthWrite: false, toneMapped: false });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.75, 3, 10), gm);
+    body.position.y = 0.6;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), gm);
+    head.position.y = 1.35;
+    this.ghost.add(body, head);
+    this.ghost.visible = false;
+    this.arena.add(this.reach.mesh, this.pathDots, this.ghost, this.warn, this.rings);
     this.arena.visible = false;
     this.group.add(this.ambient, this.arena);
   }
 
-  private y(tx: number, tz: number) { return heightAt(this.col.world, tileX(this.col.world, tx), tileZ(this.col.world, tz)); }
 
-  private ring(tx: number, tz: number, r: number, color: string, opacity: number, width = 0.08): THREE.Mesh {
-    const m = new THREE.Mesh(new THREE.RingGeometry(r - width, r, 40), flat(color, opacity));
+  private ring(x: number, z: number, r: number, color: string, opacity: number, width = 0.08): THREE.Mesh {
+    const m = new THREE.Mesh(new THREE.RingGeometry(r - width, r, 48), flat(color, opacity));
     m.rotation.x = -Math.PI / 2;
-    m.position.set(tileX(this.col.world, tx), this.y(tx, tz) + 0.06, tileZ(this.col.world, tz));
-    m.renderOrder = 5;
+    m.position.set(x, heightAt(this.col.world, x, z) + 0.07, z);
+    m.renderOrder = 6;
     return m;
   }
 
@@ -194,41 +208,69 @@ export class ClearingView {
     for (const k of [...this.forms.keys()]) if (k.startsWith('a') && !live.has(k)) this.drop(k);
   }
 
-  /** Inside a clearing. */
-  updateArena(t: number, cl: Clearing | null, selUnit: number, hoverTile: { tx: number; tz: number } | null, camera: THREE.Camera, width: number, height: number) {
+  /** Inside a clearing. `hover` is the point under the cursor, in world units. */
+  updateArena(t: number, cl: Clearing | null, selUnit: number, hover: Pt | null, camera: THREE.Camera, width: number, height: number) {
     this.arena.visible = !!cl;
     const live = new Set<string>();
+    if (!cl) { this.preview = null; this.previewKey = ''; this.reachKey = ''; }
     if (cl) {
       const w = this.col.world;
       const h = this.col.haunts[cl.haunt];
       const u = cl.units.find((x) => x.id === selUnit && x.state === 'in');
-      // Where the chosen one can go this turn.
-      const rk = u ? `${u.id}:${u.tx},${u.tz}:${u.ap}:${cl.turn}:${cl.units.map((x) => `${x.tx},${x.tz},${x.state}`).join(';')}:${h.spirits.map((s) => s.fate[0]).join('')}` : '';
+      // Where the chosen one can go this turn: two soft rings.
+      const rk = `${u ? `${u.id}:${u.x},${u.z}:${u.ap}` : ''}:${cl.turn}:${cl.units.map((x) => `${x.x},${x.z},${x.state}`).join(';')}:${h.spirits.map((s) => s.fate[0]).join('')}:${cl.wards.length}`;
+      let reach: Reach | null = null;
+      if (u && !cl.outcome) reach = reachOf(this.col, cl, u);
       if (rk !== this.reachKey) {
         this.reachKey = rk;
-        const m4 = new THREE.Matrix4();
-        let n = 0;
-        if (u) for (const k of reachable(this.col, cl, u).keys()) {
-          if (n >= 400) break;
-          const [tx, tz] = k.split(',').map(Number);
-          m4.makeTranslation(tileX(w, tx), this.y(tx, tz) + 0.05, tileZ(w, tz));
-          this.moveTiles.setMatrixAt(n++, m4);
-        }
-        this.moveTiles.count = n;
-        this.moveTiles.instanceMatrix.needsUpdate = true;
+        this.previewKey = '';
+        this.reach.set(w, reach);
         // Rings: under the team, wards, the Hollow's reach.
         for (const c of [...this.rings.children]) { this.rings.remove(c); (c as THREE.Mesh).geometry.dispose(); }
         for (const x of cl.units) if (x.state === 'in') {
           const frac = x.nerve / x.maxNerve;
-          this.rings.add(this.ring(x.tx, x.tz, 0.55, x.id === selUnit ? '#ffffff' : frac < 0.35 ? '#ff7a6a' : frac < 0.65 ? '#ffd06a' : '#8af0c8', 0.9, x.id === selUnit ? 0.12 : 0.08));
+          this.rings.add(this.ring(x.x, x.z, 0.5, x.id === selUnit ? '#ffffff' : frac < 0.35 ? '#ff7a6a' : frac < 0.65 ? '#ffd06a' : '#8af0c8', 0.9, x.id === selUnit ? 0.1 : 0.07));
         }
-        for (const wd of cl.wards) this.rings.add(this.ring(wd.tx, wd.tz, wd.r + 0.5, '#ffcf7a', 0.55, 0.1));
-        for (const s of h.spirits) if (s.kind === 'hollow' && s.fate === 'present' && s.known >= 1) this.rings.add(this.ring(s.tx, s.tz, 4.5, '#8a5ad0', 0.45, 0.12));
+        for (const wd of cl.wards) this.rings.add(this.ring(wd.x, wd.z, wd.r + 0.6, '#ffcf7a', 0.55, 0.1));
+        for (const s of h.spirits) if (s.kind === 'hollow' && s.fate === 'present' && s.known >= 1) this.rings.add(this.ring(tileX(w, s.tx), tileZ(w, s.tz), 4.6, '#8a5ad0', 0.45, 0.12));
       }
-      if (hoverTile) {
-        this.hover.visible = true;
-        this.hover.position.set(tileX(w, hoverTile.tx), this.y(hoverTile.tx, hoverTile.tz) + 0.07, tileZ(w, hoverTile.tz));
-      } else this.hover.visible = false;
+      this.reach.mesh.visible = !!reach;
+      this.reach.tick(t);
+      // The walk to the cursor: the way, a ghost of them there, and what would reach them.
+      const pk = u && reach && hover ? `${rk}|${hover.x.toFixed(2)},${hover.z.toFixed(2)}` : '';
+      if (pk !== this.previewKey) {
+        this.previewKey = pk;
+        this.preview = null;
+        this.pathDots.count = 0;
+        this.ghost.visible = false;
+        for (const c of [...this.warn.children]) { this.warn.remove(c); (c as THREE.Mesh).geometry.dispose(); }
+        const cost = u && reach && hover ? walkCost(reach, hover.x, hover.z, u.ap) : null;
+        if (u && reach && hover && cost !== null && standable(gridOf(this.col, cl), occupantsFor(this.col, cl, u), hover.x, hover.z)) {
+          const path = previewPath(this.col, cl, u, reach, hover.x, hover.z);
+          if (path) {
+            const m4 = new THREE.Matrix4();
+            let n = 0;
+            for (let i = 1; i < path.length && n < 200; i++) {
+              const a = path[i - 1], b = path[i], len = Math.hypot(b.x - a.x, b.z - a.z);
+              for (let d = i === 1 ? 0.45 : 0; d < len && n < 200; d += 0.32) {
+                const x = a.x + ((b.x - a.x) * d) / len, z = a.z + ((b.z - a.z) * d) / len;
+                m4.makeTranslation(x, heightAt(w, x, z) + 0.08, z);
+                this.pathDots.setMatrixAt(n++, m4);
+              }
+            }
+            this.pathDots.count = n;
+            this.pathDots.instanceMatrix.needsUpdate = true;
+            (this.pathDots.material as THREE.MeshBasicMaterial).color.set(cost > 1 && u.ap > 1 ? '#ffd27a' : '#bff5e6');
+            this.ghost.position.set(hover.x, heightAt(w, hover.x, hover.z), hover.z);
+            this.ghost.visible = true;
+            const threats = threatsAt(this.col, cl, u, hover.x, hover.z);
+            (this.ghost.children[0] as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>).material.color.set(threats.length ? '#ffb39a' : cost > 1 && u.ap > 1 ? '#ffe2a0' : '#bff5e6');
+            for (const th of threats) this.warn.add(this.ring(tileX(w, th.spirit.tx), tileZ(w, th.spirit.tz), 0.95, '#ff7a5a', 0.85, 0.12));
+            this.preview = { cost, threats };
+          }
+        }
+      }
+      for (const c of this.warn.children) ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.55 + Math.sin(t * 5) * 0.3;
       // The spirits, as the team perceives them.
       for (const s of h.spirits) {
         if (s.fate !== 'present') continue;
@@ -261,7 +303,7 @@ export class ClearingView {
           const glowS = halo(color, 1.8, 0.35);
           glowS.position.y = hgt * 0.6;
           g.add(body, head, glowS);
-          g.position.set(tileX(w, u.tx), this.y(u.tx, u.tz), tileZ(w, u.tz));
+          g.position.set(u.x, heightAt(w, u.x, u.z), u.z);
           f = { group: g, key, phase: this.rand() * 10 };
           const el = document.createElement('div');
           el.className = 'label spirit';
@@ -271,16 +313,103 @@ export class ClearingView {
           this.forms.set(key, f);
           this.arena.add(g);
         }
-        const tx = tileX(w, u.tx), tz = tileZ(w, u.tz);
+        const tx = u.x, tz = u.z;
         const p = f.group.position;
         p.x += (tx - p.x) * 0.12; p.z += (tz - p.z) * 0.12;
         p.y = heightAt(w, p.x, p.z) + Math.abs(Math.sin(t * 3 + f.phase)) * 0.06;
         this.label(f, camera, width, height);
       }
-      void cheb;
     }
     for (const k of [...this.forms.keys()]) if ((k.startsWith('c') || k.startsWith('f')) && !live.has(k)) this.drop(k);
   }
 }
 
 const RANK: Reading[] = ['none', 'chill', 'luminous', 'coherent'];
+
+/**
+ * The two rings, drawn from the reach field as soft contours (not lit tiles):
+ * a texture holds each cell's walking distance (red) and whether it can be
+ * reached (green); the shader fills the inner ring faintly and draws both
+ * edges, following walls and wrecks as the walk does.
+ */
+class ReachOverlay {
+  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  private tex: THREE.DataTexture | null = null;
+  constructor() {
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, toneMapped: false,
+      uniforms: { uTex: { value: null }, uInner: { value: 0.5 }, uHasInner: { value: 1 }, uEdge: { value: 0.02 }, uTime: { value: 0 } },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        uniform sampler2D uTex; uniform float uInner; uniform float uHasInner; uniform float uEdge; uniform float uTime;
+        varying vec2 vUv;
+        void main() {
+          vec2 f = texture2D(uTex, vUv).rg;
+          float d = f.r, m = f.g;
+          float aa = max(fwidth(m), 0.02);
+          float inside = smoothstep(0.5 - aa, 0.5 + aa, m);
+          float outerEdge = 1.0 - smoothstep(0.0, aa * 2.5, abs(m - 0.5));
+          float ae = max(fwidth(d) * 1.2, uEdge);
+          float innerFill = (1.0 - smoothstep(uInner - ae, uInner + ae, d)) * inside * uHasInner;
+          float innerEdge = (1.0 - smoothstep(0.0, ae, abs(d - uInner))) * inside * uHasInner;
+          vec3 teal = vec3(0.45, 0.95, 0.82), amber = vec3(1.0, 0.8, 0.45);
+          float pulse = 0.85 + 0.15 * sin(uTime * 2.0);
+          vec3 col = mix(amber, teal, max(innerFill, innerEdge));
+          float a = innerFill * 0.13 + (inside - innerFill) * 0.06 + innerEdge * 0.75 * pulse + outerEdge * 0.8 * pulse;
+          if (a < 0.01) discard;
+          gl_FragColor = vec4(col, a);
+        }`,
+    });
+    this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
+    this.mesh.renderOrder = 5;
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+  }
+  tick(t: number) { this.mesh.material.uniforms.uTime.value = t; }
+  set(w: Parameters<typeof heightAt>[0], r: Reach | null) {
+    if (!r) return;
+    const f = r.field, n = f.n;
+    const scale = r.outer * 1.25;
+    const data = new Uint8Array(n * n * 2);
+    for (let k = 0; k < n * n; k++) {
+      const d = f.dist[k];
+      if (isFinite(d)) { data[k * 2] = Math.min(255, Math.round((d / scale) * 255)); data[k * 2 + 1] = 255; }
+    }
+    // Unreachable cells take their reachable neighbours' distance, so the inner edge doesn't ring every wall.
+    for (let pass = 0; pass < 2; pass++) for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const k = j * n + i;
+      if (isFinite(f.dist[k]) || data[k * 2]) continue;
+      let best = 255;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const a = i + di, b = j + dj;
+        if (a < 0 || b < 0 || a >= n || b >= n) continue;
+        const v = data[(b * n + a) * 2];
+        if (v && v < best) best = v;
+      }
+      if (best < 255) data[k * 2] = best;
+    }
+    this.tex?.dispose();
+    this.tex = new THREE.DataTexture(data, n, n, THREE.RGFormat, THREE.UnsignedByteType);
+    this.tex.unpackAlignment = 1; // rows of two bytes a cell need not fill whole words
+    this.tex.magFilter = THREE.LinearFilter;
+    this.tex.minFilter = THREE.LinearFilter;
+    this.tex.needsUpdate = true;
+    const u = this.mesh.material.uniforms;
+    u.uTex.value = this.tex;
+    u.uInner.value = r.inner / scale;
+    u.uHasInner.value = r.inner > 0 ? 1 : 0;
+    u.uEdge.value = 0.05 / scale;
+    // A sheet over the ground, one vertex a cell, lifted just above it.
+    const x0 = f.ox - CELL / 2, z0 = f.oz - CELL / 2, size = n * CELL;
+    const geo = new THREE.PlaneGeometry(size, size, n, n);
+    geo.rotateX(-Math.PI / 2);
+    const pos = geo.attributes.position as THREE.BufferAttribute, uv = geo.attributes.uv as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i) + x0 + size / 2, z = pos.getZ(i) + z0 + size / 2;
+      pos.setXYZ(i, x, heightAt(w, x, z) + 0.05, z);
+      uv.setXY(i, (x - x0) / size, (z - z0) / size);
+    }
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = geo;
+  }
+}

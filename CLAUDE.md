@@ -62,7 +62,7 @@ reference: Tiny Glade.
   claude.ai artifact https://claude.ai/artifact/5PAyD8AiMBG9fQDNbCCMPc.
   **Ask before republishing** if the user may be mid-game, because a
   republish reloads their page.
-- Branch: `claude/peaceful-planck-ons669`. No new PRs unless asked; the branch has PR https://github.com/leftoverjacksons/surviveStory/pull/1 (opened by the user), which every push updates.
+- Branch: `claude/peaceful-planck-ons669`. No PRs unless asked. PR https://github.com/leftoverjacksons/surviveStory/pull/1 was MERGED into main (up to 236fbd3); later work on this branch needs a new PR to reach main.
 - The user prefers precise, scientific, non-self-aggrandising communication.
 
 ## State (update every session)
@@ -273,6 +273,11 @@ reference: Tiny Glade.
     §38.17 SETTLED: echoes from home are MIXED (count + rough place; a watchtower/strong seer upgrades to a full
     briefing); IRON offends the Folk (companion Nerve, standing in Folk country; salt the gentler option; milder
     fallback noted); mission mechanics start with existing figures, camera no closer. Still open: §38.9.
+    §38.18 STEP 1 BUILT (not published): FREE MOVEMENT in clearings (`sim/veilmove.ts`: VeilGrid, reachField, pathTo,
+    lineOfSight; `Unit.x/z` world coords, `reachOf/walkCost/moveUnit(x,z)/approachPoint/reaches/threatsAt` in haunt.ts;
+    ranges are circles, BESIDE 1.6; lamps need line of sight to lure); two-ring soft overlay + path dots + ghost + threat
+    rings (`render/clearing.ts` ReachOverlay); village paths pulled taut (`path.ts#tautPath`). `__game.veilHoverAt(d)`.
+    Next: step 2 (the dark) per §38.15.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

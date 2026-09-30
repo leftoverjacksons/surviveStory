@@ -4,6 +4,7 @@ import { createColony, tick, type Colony } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
 import { act, faeUnitId, finish, startClearing, verbsFor, type Clearing } from '../src/sim/haunt';
 import { breakRule } from '../src/sim/folk';
+import { tileX, tileZ } from '../src/sim/world';
 import { nudgeOmen } from '../src/sim/council';
 
 const days = (col: Colony, n: number) => { for (let m = 0; m < 1440 * n; m += 10) tick(col, 10); };
@@ -25,7 +26,7 @@ describe('the Folk and the village together', () => {
     expect(act(col, cl, u.id, 'ward')).toMatch(/iron/);
     // Speak a true name: the spirit is known at once.
     const s = col.haunts[0].spirits.find((x) => x.fate === 'present')!;
-    u.tx = s.tx + 1; u.tz = s.tz;
+    u.x = tileX(col.world, s.tx) + 1; u.z = tileZ(col.world, s.tz);
     expect(verbsFor(col, cl, u, s).find((v) => v.verb === 'name')?.ok).toBe(true);
     expect(act(col, cl, u.id, 'name', s.id)).toBeNull();
     expect(s.known).toBe(3);

@@ -5,7 +5,7 @@
  */
 import type { Colony } from '../sim/colony';
 import {
-  KIND_NAME, NEED_TEXT, VERB_COST, cheb, clearingDistrict, quiet, readingOf, teamReading, verbsFor,
+  BESIDE, KIND_NAME, NEED_TEXT, VERB_COST, clearingDistrict, dist, quiet, readingOf, teamReading, verbsFor,
   type Clearing, type Reading, type Spirit, type Verb,
 } from '../sim/haunt';
 
@@ -115,7 +115,7 @@ export class ClearingPanel {
 
     const isQuiet = quiet(col, cl);
     const guide = `<details class="guide" ${this.guideOpen ? 'open' : ''}><summary>How it works</summary><ol>
-      <li><b>Click</b> one of your people, then <b>click a lit tile</b> to walk (1 action per 4 steps; 2 actions a turn).</li>
+      <li><b>Click</b> one of your people, then <b>click the ground</b> to walk there. Inside the <b>inner ring</b> it costs one action and they can still act; out to the <b>outer ring</b> it takes the whole turn. Hover to see the way, and which spirits would reach them there.</li>
       <li><b>Click a spirit</b> (or right-click anything) for what you can do. Listen to learn what it wants; give it that; then lay it to rest, befriend it, or ask it home.</li>
       <li>The <b>Hollow</b> (the dark orb) is unravelled last: Anchors (low Sight) do it best, standing inside a ward.</li>
       <li><b>End turn</b>: the spirits act on everyone's Nerve. If Nerve breaks, they run home; if a light is pulling them when it breaks, they are taken.</li>
@@ -138,7 +138,7 @@ export class ClearingPanel {
 export type MenuTarget = { spirit: number } | { ally: number } | { self: true };
 export interface MenuActions {
   onAct(unit: number, verb: Verb, target?: number): void;
-  onApproach(unit: number, target: { tx: number; tz: number }): void;
+  onApproach(unit: number, target: { x: number; z: number }): void;
   onSelect(unit: number): void;
 }
 
@@ -165,7 +165,7 @@ export class ClearingMenu {
       if (!b || b.disabled) return;
       const d = b.dataset;
       if (d.verb) act.onAct(Number(d.by), d.verb as Verb, d.target !== undefined ? Number(d.target) : undefined);
-      else if (d.go) { const [tx, tz] = d.go.split(',').map(Number); act.onApproach(Number(d.by), { tx, tz }); }
+      else if (d.go) { const [x, z] = d.go.split(',').map(Number); act.onApproach(Number(d.by), { x, z }); }
       else if (d.sel) act.onSelect(Number(d.sel));
       this.close();
     });
@@ -182,8 +182,8 @@ export class ClearingMenu {
     this.tipEl.style.top = `${y + 10}px`;
   }
 
-  /** `approach`: the best tile to walk to beside the target, if it is out of reach. */
-  open(x: number, y: number, cl: Clearing, sel: number, target: MenuTarget, approach: { tx: number; tz: number; beside: boolean } | null) {
+  /** `approach`: the best place to walk to beside the target, if it is out of reach. */
+  open(x: number, y: number, cl: Clearing, sel: number, target: MenuTarget, approach: { x: number; z: number; beside: boolean; cost: number } | null) {
     const col = this.col, h = col.haunts[cl.haunt];
     const u = cl.units.find((q) => q.id === sel && q.state === 'in');
     const item = (verb: Verb, ok: boolean, why: string | undefined, target?: number, label = VERB_LABEL[verb]) =>
@@ -202,21 +202,21 @@ export class ClearingMenu {
       if (s.kind === 'hollow' && s.known >= 1) facts.push(`hold ${s.integrity}`);
       else if (s.known >= 2) facts.push(`wants ${NEED_TEXT[s.need]}`, s.calm >= 2 ? 'at peace' : `calm ${s.calm} of 2`);
       else if (s.known >= 1) facts.push(s.calm >= 2 ? 'at peace' : `calm ${s.calm} of 2`);
-      const dist = cheb(u, s);
+      const d = dist(col, u, s);
       head = `<b>${esc(spiritLabel(s, shown === 'none' ? 'chill' : shown))}</b>
-        <span>${esc(u.name)} · ${u.ap} action${u.ap === 1 ? '' : 's'} left · ${dist <= 1 ? 'beside it' : `${dist} paces away`}</span>
+        <span>${esc(u.name)} · ${u.ap} action${u.ap === 1 ? '' : 's'} left · ${d <= BESIDE ? 'beside it' : `${Math.round(d)} paces away`}</span>
         ${facts.length ? `<span>${esc(facts.join(' · '))}</span>` : ''}
         <p class="next">${esc(nextStep(s, shown))}</p>`;
       const vs = verbsFor(col, cl, u, s);
-      if (dist > 1 && approach) body += `<button type="button" data-go="${approach.tx},${approach.tz}" data-by="${u.id}"><span>${approach.beside ? 'Walk beside it' : 'Walk toward it'}</span><i>${Math.max(1, Math.ceil(Math.max(Math.abs(approach.tx - u.tx), Math.abs(approach.tz - u.tz)) / 4))} action${Math.ceil(Math.max(Math.abs(approach.tx - u.tx), Math.abs(approach.tz - u.tz)) / 4) > 1 ? 's' : ''}</i></button>`;
+      if (d > BESIDE && approach) body += `<button type="button" data-go="${approach.x},${approach.z}" data-by="${u.id}"><span>${approach.beside ? 'Walk beside it' : 'Walk toward it'}</span><i>${approach.cost} action${approach.cost > 1 ? 's' : ''}</i></button>`;
       body += vs.map((v) => item(v.verb, v.ok, v.why, s.id)).join('');
     } else if ('ally' in target) {
       const a = cl.units.find((q) => q.id === target.ally && q.state === 'in');
       if (!a) return;
       head = `<b>${esc(a.name)}</b><span>Nerve ${Math.max(0, a.nerve)} of ${a.maxNerve}${a.anchor ? ' · Anchor' : a.sight >= 40 ? ' · Seer' : ''}</span>`;
-      const near = cheb(u, a) <= 1;
+      const near = dist(col, u, a) <= BESIDE;
       body += item('steady', near && u.ap >= 1, near ? 'No actions left.' : `${u.name} must stand beside them.`, a.id, `${u.name}: steady ${a.name}`);
-      if (!near && approach) body += `<button type="button" data-go="${approach.tx},${approach.tz}" data-by="${u.id}"><span>${u.name}: walk beside ${esc(a.name)}</span></button>`;
+      if (!near && approach) body += `<button type="button" data-go="${approach.x},${approach.z}" data-by="${u.id}"><span>${u.name}: walk beside ${esc(a.name)}</span></button>`;
       body += `<button type="button" data-sel="${a.id}"><span>Switch to ${esc(a.name)}</span></button>`;
     } else {
       head = `<b>${esc(u.name)}</b><span>Nerve ${Math.max(0, u.nerve)} of ${u.maxNerve} · ${u.ap} action${u.ap === 1 ? '' : 's'} left</span>`;
