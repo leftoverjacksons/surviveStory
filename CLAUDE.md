@@ -62,7 +62,7 @@ reference: Tiny Glade.
   claude.ai artifact https://claude.ai/artifact/5PAyD8AiMBG9fQDNbCCMPc.
   **Ask before republishing** if the user may be mid-game, because a
   republish reloads their page.
-- Branch: `claude/peaceful-planck-ons669`. No new PRs unless asked; the branch has PR https://github.com/leftoverjacksons/surviveStory/pull/1 (opened by the user), which every push updates.
+- Branch: `claude/peaceful-planck-ons669`. No PRs unless asked. PR https://github.com/leftoverjacksons/surviveStory/pull/1 was MERGED into main (up to 236fbd3); later work on this branch needs a new PR to reach main.
 - The user prefers precise, scientific, non-self-aggrandising communication.
 
 ## State (update every session)
