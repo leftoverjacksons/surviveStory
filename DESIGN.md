@@ -4724,3 +4724,33 @@ Open questions for §38.10–38.14:
      that glows), so change shows on the figure (§38.4.4);
    - **spirit figures** of the same fidelity: remnants as the people they
      were, hedges, lamps, the Hollow.
+
+### 38.17 Settled (the user agreed to the proposals in §38.16)
+
+1. **Knowledge before a mission: mixed, improvable.**
+   - By default, soundings from home give vague echoes: how many, and
+     roughly where, never what kind. A mission is chosen and packed for with
+     partial knowledge, and the rest is found inside.
+   - A better watchtower, or a strong seer sounding from the district's
+     edge, moves a district toward a full briefing (kind and position of
+     what was sounded). This gives buildings and seers a use before a
+     mission.
+   - Echoes seen from home fade over days, as they fade over turns inside.
+2. **Iron offends the Folk,** as proposed:
+   - an iron line is the strongest barrier against hedges and lamps;
+   - a Folk companion near it loses Nerve;
+   - laid in Folk country, it lowers standing;
+   - a salt line is the gentler alternative: weaker, and washes away in rain.
+
+   If playtests show it makes iron useless whenever a Folk companion comes,
+   fall back to the milder rule: iron offends only in Folk country or when a
+   companion sees it laid.
+3. **Characters:** mission mechanics start with the existing figures and a
+   camera no closer than now. The close camera, held props, the animation
+   set and marks (§38.16.5) follow as the user's character branch provides
+   them. This branch still does not touch `render/characters.ts`,
+   `render/people.ts`, `scripts/blender/` or `assets/people/`.
+
+Still open from §38.9: death (taken vs. real death vs. taken-lost-for-good),
+direct control at home, cast size, time between missions, the Veil's
+Influence cost.
