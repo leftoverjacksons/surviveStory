@@ -636,7 +636,8 @@ function workSpot(col: Colony, a: Agent, p: Project): Point {
 }
 
 function buildable(col: Colony, p: Project) {
-  return !p.done && materialsReady(p) && p.clearTrees.every((id) => col.world.trees[id].felled);
+  // (A tree nobody can reach doesn't hold the work up for ever.)
+  return !p.done && materialsReady(p) && p.clearTrees.every((id) => col.world.trees[id].felled || col.unreachable.has(`t${id}`));
 }
 
 function pickBuild(col: Colony, a: Agent): Task | null {

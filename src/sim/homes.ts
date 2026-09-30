@@ -304,6 +304,13 @@ export function householdsDaily(col: Colony) {
       log(c, `${firstName(s)} wants a place of their own, even a small one.`, 'info');
     }
   }
+  // Restored houses from before DESIGN §37 still carry the old world's name: an empty house, or the family's.
+  for (const b of v.buildings) {
+    if (b.kind !== 'home' || b.ruin === undefined || b.lived) continue;
+    const hh = b.household ? v.households.find((x) => x.id === b.household) : undefined;
+    if (hh) { const nm = householdName(c, hh); b.name = hh.members.length > 1 ? `${nm}'s house` : `${nm}'s cottage`; b.lived = true; }
+    else b.name = 'An empty house';
+  }
   // Empty homes go to whoever is waiting and fits.
   for (const b of v.buildings) {
     if (b.kind !== 'home' || b.household) continue;
@@ -321,6 +328,16 @@ function moveIn(col: Colony, h: Household, b: Building, second: boolean) {
   const plot = v.plots.find((p) => p.id === b.plot);
   if (plot) plot.household = h.id;
   const name = householdName(c, h);
+  // A house of the old world, patched up and never lived in since: it becomes theirs, name and all (DESIGN §37).
+  if (b.ruin !== undefined && !b.lived) {
+    const was = col.world.ruins[b.ruin]?.name;
+    b.name = h.members.length > 1 ? `${name}'s house` : `${name}'s cottage`;
+    b.lived = true;
+    log(c, `${name} moved into the old house${was ? ` that was ${was}` : ''}, and made it theirs.`, 'good');
+    for (const id of h.members) { const s = c.survivors.find((x) => x.id === id); if (s) remember(s, c.day, 'Made an old house our home.'); }
+    return;
+  }
+  b.lived = true;
   if (second) {
     log(c, `${name} moved into the empty house. They kept the old name over the door.`, 'good');
   } else {
@@ -1017,7 +1034,8 @@ function homeOnDrawnPlot(col: Colony): Project | null {
  * the household gets beds, a bench, a fence and the lights. Tiles already
  * in another plot, water, and other ruins' walls are left out.
  */
-export function plotForRuin(w: World, v: Village, r: { x: number; z: number; w: number; d: number; h: number; yaw: number }, beds: number): Plot {
+/** The plot a restored house gets (its front strip, the house, a yard behind): origin, axes and corners. */
+export function ruinPlotShape(r: { x: number; z: number; w: number; d: number; yaw: number }) {
   const cs = Math.cos(r.yaw), sn = Math.sin(r.yaw);
   const world = (lx: number, lz: number): Point => ({ x: r.x + lx * cs + lz * sn, z: r.z - lx * sn + lz * cs });
   const FRONT = 1.5, YARD = 7, SIDE = 1.5;
@@ -1026,6 +1044,18 @@ export function plotForRuin(w: World, v: Village, r: { x: number; z: number; w: 
   const t = { x: cs, z: -sn }, n = { x: -sn, z: -cs };
   const W = r.w + SIDE * 2, D = FRONT + r.d + YARD;
   const corners = [add(origin, t, -W / 2), add(origin, t, W / 2), add(add(origin, t, W / 2), n, D), add(add(origin, t, -W / 2), n, D)];
+  return { origin, t, n, corners };
+}
+
+/** Trees standing on the plot a restored house will get: the restorers fell them first (DESIGN §37). */
+export function treesOnRuinPlot(w: World, r: { x: number; z: number; w: number; d: number; yaw: number }): number[] {
+  const { corners } = ruinPlotShape(r);
+  return w.trees.filter((tr) => !tr.felled && !tr.protected && pointInPoly({ x: tileX(w, tr.tx), z: tileZ(w, tr.tz) }, corners)).map((tr) => tr.id);
+}
+
+export function plotForRuin(w: World, v: Village, r: { x: number; z: number; w: number; d: number; h: number; yaw: number }, beds: number): Plot {
+  const cs = Math.cos(r.yaw), sn = Math.sin(r.yaw);
+  const { origin, t, n, corners } = ruinPlotShape(r);
   const inRuin = (p: Point) => {
     const dx = p.x - r.x, dz = p.z - r.z;
     const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;

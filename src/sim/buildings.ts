@@ -41,6 +41,8 @@ export interface Footprint { tx: number; tz: number; w: number; d: number }
 
 export interface Building {
   id: number;
+  /** Someone has lived here (a restored house takes its first family's name, DESIGN §37). */
+  lived?: boolean;
   /** The found shelter, pulled down (DESIGN §29): its record stays as the village's stores, the building is gone. */
   gone?: boolean;
   kind: BuildingKind;
@@ -745,6 +747,8 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
         // A home again: a plot and yard around it; a household waiting for a home moves in (homes.ts).
         const plot = plotForRuin(w, v, r, def.beds ?? 3);
         b.plot = plot.id; b.household = 0; b.yaw = r.yaw;
+        // Just a house now, like any other: it takes the name of whoever moves in (DESIGN §37).
+        b.name = 'An empty house';
       }
       v.buildings.push(b);
       // Someone who came home from the Veil to this very house moves back in.

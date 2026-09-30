@@ -25,6 +25,8 @@ const DISTRICT_BLURB: Record<DistrictKind, string> = {
   oldtown: 'An old high street and a chapel, ivy to the gutters.',
   garden: 'A garden centre, its glasshouses run wild.',
 };
+import { RESTORE, whyNotRestore } from '../sim/restore';
+import { razeYield, whyNotRaze } from '../sim/salvage';
 import { DEFS, MATERIALS, costText, tierFor, bedsTotal, heatNeed, outstanding, storageCapacity, type Building, type Project, type SiteKind } from '../sim/buildings';
 import { LORE, communitySight, growthFactor, healFactor, homeResonance } from '../sim/veil';
 import { ASPIRATIONS, SKILLED, knowers, skill } from '../sim/purpose';
@@ -87,6 +89,8 @@ export interface HudActions {
   onCallOff(project: number): void;
   /** A wreck or junk heap (DESIGN §30): strip it (or stop), tow it to the yard or somewhere chosen, stop towing. */
   onHeap(heap: number, what: 'strip' | 'unstrip' | 'yard' | 'tow' | 'stoptow'): void;
+  /** A building of the old world (DESIGN §37): restore it, or pull it down for its salvage. */
+  onRuin(ruin: number, what: 'restore' | 'raze'): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -112,7 +116,7 @@ export class Hud {
   /** The council that last opened by itself (each new one opens, and the game waits). */
   private councilSeen = -1;
   private loreOpen = false;
-  private inspecting: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile'; heap?: number } | null = null;
+  private inspecting: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile'; heap?: number; ruin?: number } | null = null;
   /** The team being chosen for a clearing. */
   private team = new Set<number>();
   private teamFor = -1;
@@ -192,6 +196,8 @@ export class Hud {
       if (go && !go.disabled) act.onClear(Number(go.dataset.clear), [...this.team], this.fae ?? undefined);
       const give = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-give]');
       if (give) act.onGive(Number(give.dataset.district), give.dataset.give as 'village' | 'folk' | 'shared');
+      const rb = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-ruin-act]');
+      if (rb && !rb.disabled) act.onRuin(Number(rb.dataset.ruin), rb.dataset.ruinAct as 'restore' | 'raze');
       const hp = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-heap-act]');
       if (hp) act.onHeap(Number(hp.dataset.heap), hp.dataset.heapAct as 'strip' | 'unstrip' | 'yard' | 'tow' | 'stoptow');
       const rp = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-repair]');
@@ -489,7 +495,7 @@ export class Hud {
 
   setVeilView(on: boolean) { this.veilView = on; }
 
-  inspect(target: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile'; heap?: number } | null) {
+  inspect(target: { building?: number; project?: number; folk?: boolean; district?: number; camp?: 'fire' | 'stockpile'; heap?: number; ruin?: number } | null) {
     this.inspecting = target;
     this.heapNote = '';
     this.renderInspect();
@@ -582,6 +588,9 @@ export class Hud {
         <div class="what">${fire ? 'Where the village gathers of an evening, sleeps if it has no roof, and holds its festivals. Plots and lanes are laid out from it.' : 'Where wood and food are stacked, and logs are split at the chopping block beside it.'}</div>
         <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
         <div class="row" style="margin-top:8px"><button type="button" data-camp-move="${t.camp}" title="${fire ? 'Carry the fire somewhere else: open ground, clear of buildings.' : 'Carry the stacks somewhere else: open ground, clear of the fire and buildings.'}">Move</button></div>`;
+    } else if (t.ruin !== undefined) {
+      html = this.ruinCard(t.ruin);
+      if (!html) { this.inspecting = null; el.hidden = true; return; }
     } else if (t.heap !== undefined) {
       html = this.heapCard(t.heap);
       if (!html) { this.inspecting = null; el.hidden = true; return; }
@@ -627,6 +636,35 @@ export class Hud {
     return `<div class="row" style="margin-top:8px">${repair}${btn('down', old ? 'Pull down' : 'Take down', old ? 'Click again: pull it down' : 'Click again: take it down', whyDown,
       old ? 'Builders pull it down for the salvage in its walls; the ground is freed.' : `Builders dismantle it; half of what it was made of comes back.${lived ? ' The family waits first in line for a new plot.' : ''}`)}
       ${old ? '' : btn('move', 'Move', 'Click again: move it', whyMove, b.kind === 'home' ? 'Builders take it apart and keep every piece; draw the family a new plot and it goes up there.' : 'Builders take it apart and keep every piece; then place it again wherever you like.')}</div>`;
+  }
+
+  /** A building of the old world (DESIGN §37): what it was, what it could be, and the choice. */
+  private ruinCard(id: number): string {
+    const col = this.col, w = col.world, r = w.ruins[id];
+    if (!r || r.razed) return '';
+    const d = w.districts[r.district];
+    const h = col.haunts.find((x) => x.district === r.district);
+    const def = RESTORE[r.kind];
+    const facts: [string, string][] = [['Where', d?.name ?? 'the old world']];
+    facts.push(['State', !h || h.state === 'cleared'
+      ? (h?.owner === 'folk' ? 'Quiet; the district is the Folk\'s' : h?.owner === 'shared' ? 'Quiet; the district is shared' : h?.owner === 'village' ? 'Quiet; the district is the village\'s' : 'Quiet; nobody has decided whose the district is')
+      : 'Something still lives here']);
+    const proj = col.village.projects.find((p) => !p.done && p.kind === 'restore' && p.ruin === id);
+    const raze = (col.village.razes ?? []).find((z) => z.ruin === id);
+    if (def) facts.push(['Could become', `${def.name(r)}${def.as === 'home' ? ` (a home for up to ${def.beds ?? 3}, with a plot and yard)` : ''}`]);
+    if (def) facts.push(['Restoring', `${costText(def.cost)} · about ${Math.round(def.work / 60)} hours of work`]);
+    facts.push(['Pulling down', `about ${razeYield(r)} scrap, and the ground freed`]);
+    if (proj) facts.push(['Now', `Being restored · ${Math.round((proj.work / proj.workNeeded) * 100)}%`]);
+    if (raze) facts.push(['Now', `Coming down · ${Math.round((raze.work / raze.need) * 100)}%`]);
+    const whyR = def ? whyNotRestore(col, r) : 'There is nothing left of it worth saving.';
+    const whyZ = whyNotRaze(col, r);
+    const b = (act: string, label: string, why: string | null, tip: string) => `<button type="button" data-ruin="${id}" data-ruin-act="${act}" ${why ? `disabled title="${esc(why)}"` : `title="${esc(tip)}"`}>${esc(label)}</button>`;
+    const reason = !proj && !raze && whyR ? `<div class="what" style="margin-top:6px">${esc(whyR)}</div>` : '';
+    return `<h3>${esc(cap(r.name))}<button type="button" id="inspect-close">Close</button></h3>
+      <div class="what">A building of the old world${def?.as === 'home' ? ': a house, and it could be one again' : ''}.</div>
+      <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
+      ${proj || raze ? '' : `<div class="row" style="margin-top:8px">${b('restore', 'Restore', whyR, 'Builders patch it up; then it is used like any building of its kind.')}${b('raze', 'Pull down', whyZ, 'Builders pull it down for the salvage in its walls.')}</div>`}
+      ${reason}`;
   }
 
   /** A wreck or junk heap (DESIGN §30): what's in it, and what to do with it. */

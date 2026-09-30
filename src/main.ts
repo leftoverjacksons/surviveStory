@@ -3,7 +3,7 @@ import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
 import { alive, createCommunity, killSurvivor, log, recruit, setRole } from './sim/community';
 import { SITE_KINDS, seatSpot, type SiteKind } from './sim/sites';
 import { generateWorld, siteKindFor } from './sim/worldgen';
-import { Zone, heightAt, paintZone, reveal, tileX, tileZ, toTileX, toTileZ } from './sim/world';
+import { Zone, heightAt, idx, paintZone, reveal, tileX, tileZ, toTileX, toTileZ } from './sim/world';
 import { createField, deleteField, fieldAtPoint } from './sim/fields';
 import { daylightHours, seasonLook, snowCold } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
@@ -396,6 +396,14 @@ const hud = new Hud(colony, {
   },
   onKeep(id) { keepStanding(colony, id); hud.render(); },
   onMoveCamp(which) { setBuild({ kind: which }); },
+  onRuin(id, what) {
+    const r = world.ruins[id];
+    if (!r) return;
+    const res = what === 'restore' ? requestRestore(colony, id) : razeRuin(colony, r);
+    if (typeof res === 'string') log(community, `${r.name}: ${res}`, 'info');
+    syncScene();
+    hud.inspect({ ruin: id });
+  },
   onHeap(id, what) {
     const h = world.heaps[id];
     if (!h) return;
@@ -1019,6 +1027,23 @@ function inspectCampAt(clientX: number, clientY: number): boolean {
   if (atStockpile(colony, g.x, g.z)) { hud.inspect({ camp: 'stockpile' }); return true; }
   return false;
 }
+/**
+ * A building of the old world under the pointer (DESIGN §37): a restored one opens as the building it now is
+ * (a home shows its household); one still standing empty opens its own card, to restore or pull down.
+ */
+function inspectRuinAt(clientX: number, clientY: number): boolean {
+  const r = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, iso.camera);
+  const hit = raycaster.intersectObjects([oldWorld], true)[0];
+  const p = hit?.point ?? groundAt(clientX, clientY);
+  if (!p) return false;
+  const ruin = ruinAtPoint(p.x, p.z);
+  if (!ruin || !world.pois.some((q) => q.kind === 'ruin' && q.name === world.districts[ruin.district]?.name && q.discovered)) return false;
+  const b = colony.village.buildings.find((x) => x.ruin === ruin.id);
+  hud.inspect(b ? { building: b.id } : { ruin: ruin.id });
+  return true;
+}
 /** A wreck or junk heap under the pointer (right-click: its card, DESIGN §30). */
 function inspectHeapAt(clientX: number, clientY: number): boolean {
   const g = groundAt(clientX, clientY);
@@ -1095,7 +1120,7 @@ canvas.addEventListener('pointerup', (e) => {
   }
   if (!p || Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 6) return;
   // A right-click on a building opens its card, where it can be taken down or moved (DESIGN §24.13).
-  if (p.button === 2) { if (!inspectBuildingAt(e.clientX, e.clientY) && !inspectCampAt(e.clientX, e.clientY)) inspectHeapAt(e.clientX, e.clientY); return; }
+  if (p.button === 2) { if (!inspectBuildingAt(e.clientX, e.clientY) && !inspectCampAt(e.clientX, e.clientY) && !inspectHeapAt(e.clientX, e.clientY)) inspectRuinAt(e.clientX, e.clientY); return; }
   if (p.button !== 0) return;
   // A click: try to select a survivor.
   const r = canvas.getBoundingClientRect();
@@ -1110,6 +1135,8 @@ canvas.addEventListener('pointerup', (e) => {
   if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
     const m = world.folk.mound;
     if (Math.hypot(hitPoint.x - m.x, hitPoint.z - m.z) < m.r + 1) { hud.inspect({ folk: true }); return; }
+    // A building of the old world (restored: the building it is now), before its district (DESIGN §37)?
+    if (inspectRuinAt(e.clientX, e.clientY)) return;
     // A district of the old world?
     const d = world.districts.find((x) => Math.hypot(hitPoint.x - x.x, hitPoint.z - x.z) < 20
       && world.pois.some((q) => q.kind === 'ruin' && q.name === x.name && q.discovered));
@@ -1611,6 +1638,12 @@ const veilDebug = {
       if (!h.owner) giveDistrict(colony, d.id, 'village');
       const p = requestRestore(colony, r.id);
       if (typeof p === 'string') continue;
+      // Done at once: the trees on its plot come down too, as the restorers would fell them (DESIGN §37).
+      for (const id of p.clearTrees) {
+        const tr = w.trees[id];
+        tr.felled = true; w.treeAt[idx(w, tr.tx, tr.tz)] = -1;
+        colony.events.push({ type: 'felled', tree: id, dirX: 1, dirZ: 0 });
+      }
       completeProject(w, v, colony.community, p);
       syncScene();
       return r;
