@@ -13,10 +13,10 @@ NAME = 'folk_scout'
 BODY = 'man'  # which of the game's pools: man | woman | child
 
 PAL = dict(
-    skin='#a86b45', hair='#2b1f18', eye='#24160e', eye_white='#efe6d6',
+    skin='#b27a50', hair='#2b1f18', eye='#24160e', eye_white='#efe6d6',
     tunic='#cdbb92', trousers='#4a403b', wraps='#d8c9a3', wrap_line='#a8946c',
     boot='#7a5234', sole='#3a281b', cloak='#7c9656', scarf='#d4836a',
-    strap='#553823', buckle='#b39d73', patch='#7a4a2e', glove='#46332a',
+    cloak_edge='#a8a466', strap='#553823', buckle='#b39d73', patch='#7a4a2e', glove='#46332a',
     satchel='#95673a', sack='#d6c69c', roll='#a4733e',
 )
 
@@ -30,7 +30,7 @@ def build(k):
     M = {key: k.mat(slot, PAL[key]) for key, slot in dict(
         skin='skin', hair='hair', eye='eye', eye_white='eye_white', tunic='cloth_tunic', trousers='cloth_trousers',
         wraps='cloth_wraps', wrap_line='cloth_wrap_line', boot='boot', sole='boot_sole', cloak='cloth_cloak',
-        scarf='cloth_scarf', strap='strap', buckle='strap_buckle', patch='strap_patch', glove='strap_glove',
+        scarf='cloth_scarf', cloak_edge='cloth_cloak_edge', strap='strap', buckle='strap_buckle', patch='strap_patch', glove='strap_glove',
         satchel='pack', sack='pack_sack', roll='roll').items()}
     J, HC, HR = k.J, k.HEAD_C, k.HEAD_R
     parts = []
@@ -50,21 +50,21 @@ def build(k):
                [(0.152, 0.108), (0.148, 0.104), (0.154, 0.104), (0.168, 0.11), (0.162, 0.1), (0.07, 0.065)], M['tunic'], segs=10), SPINE)
     add(k.tube('neck', [(0, -0.005, 1.36), (0, -0.005, 1.47)], [0.052, 0.05], M['skin'], segs=8), ['Neck', 'Head'])
     # Trousers: a seat, then baggy legs gathered at the shin.
-    add(k.tube('seat', [(0, 0.005, z) for z in (0.76, 0.86, 0.96)], [(0.15, 0.11), (0.162, 0.115), (0.152, 0.108)], M['trousers'], segs=10),
+    add(k.tube('seat', [(0, 0.005, z) for z in (0.76, 0.86, 0.96)], [(0.158, 0.115), (0.175, 0.125), (0.155, 0.11)], M['trousers'], segs=10),
         ['Hips', 'Abdomen'])
     pair(lambda s: k.tube('leg', [(0.088, 0.005, 0.86), (0.1, 0.005, 0.76), (0.108, 0.0, 0.58), (0.11, -0.005, 0.45), (0.112, 0.008, 0.33)],
-                          [0.098, 0.1, 0.094, 0.09, 0.064], M['trousers'], segs=8), ['Hips', 'UpperLeg.*', 'LowerLeg.*'])
-    add(k.box('patch_thigh', (0.118, -0.094, 0.62), (0.07, 0.012, 0.075), M['patch'], rot=(0, 0.1, 0.12)), ['UpperLeg.L'])
-    add(k.box('patch_knee', (-0.108, -0.09, 0.44), (0.062, 0.012, 0.06), M['patch'], rot=(0.15, -0.1, -0.1)), ['UpperLeg.R', 'LowerLeg.R'])
+                          [0.108, 0.122, 0.128, 0.118, 0.068], M['trousers'], segs=8), ['Hips', 'UpperLeg.*', 'LowerLeg.*'])
+    add(k.box('patch_thigh', (0.13, -0.118, 0.6), (0.075, 0.012, 0.08), M['patch'], rot=(0, 0.1, 0.12)), ['UpperLeg.L'])
+    add(k.box('patch_knee', (-0.118, -0.112, 0.44), (0.066, 0.012, 0.064), M['patch'], rot=(0.15, -0.1, -0.1)), ['UpperLeg.R', 'LowerLeg.R'])
     # Leg wraps with darker bands, then boots (shaft follows the shin, the foot follows the foot).
     pair(lambda s: k.tube('wrap', [(0.112, 0.012, 0.34), (0.112, 0.014, 0.19)], [0.066, 0.064], M['wraps'], segs=8), 'LowerLeg.*')
     for z, tilt in ((0.22, 0.12), (0.27, -0.1), (0.315, 0.14)):
         pair(lambda s, z=z, tilt=tilt: k.ring('wrapband', (0.112, 0.013, z), 0.066, 0.006, M['wrap_line'], segs=8, minor=3, rot=(tilt, 0.05, 0)), 'LowerLeg.*')
-    pair(lambda s: k.tube('bootshaft', [(0.112, 0.016, 0.205), (0.112, 0.016, 0.09)], [0.07, 0.068], M['boot'], segs=8), 'LowerLeg.*')
-    pair(lambda s: k.ring('bootcuff', (0.112, 0.016, 0.2), 0.072, 0.012, M['boot'], segs=8, minor=4), 'LowerLeg.*')
-    pair(lambda s: k.tube('foot', [(0.112, 0.07, 0.055), (0.112, 0.01, 0.06), (0.113, -0.08, 0.05), (0.114, -0.135, 0.042)],
-                          [(0.058, 0.052), (0.066, 0.058), (0.062, 0.042), (0.042, 0.028)], M['boot'], segs=8), 'Foot.*')
-    pair(lambda s: k.box('sole', (0.113, -0.03, 0.009), (0.135, 0.235, 0.02), M['sole'], bevel=0.006), 'Foot.*')
+    pair(lambda s: k.tube('bootshaft', [(0.112, 0.016, 0.215), (0.112, 0.016, 0.09)], [0.078, 0.076], M['boot'], segs=8), 'LowerLeg.*')
+    pair(lambda s: k.ring('bootcuff', (0.112, 0.016, 0.21), 0.08, 0.013, M['boot'], segs=8, minor=4), 'LowerLeg.*')
+    pair(lambda s: k.tube('foot', [(0.112, 0.075, 0.058), (0.112, 0.01, 0.064), (0.113, -0.085, 0.052), (0.114, -0.15, 0.044)],
+                          [(0.066, 0.058), (0.076, 0.064), (0.072, 0.048), (0.05, 0.032)], M['boot'], segs=8), 'Foot.*')
+    pair(lambda s: k.box('sole', (0.113, -0.035, 0.01), (0.155, 0.265, 0.022), M['sole'], bevel=0.006), 'Foot.*')
     # Arms: tunic sleeves, wrist wraps, fingerless gloves, fingers.
     arm = ['Shoulder.*', 'UpperArm.*', 'LowerArm.*']
     pair(lambda s: k.tube('sleeve', [(0.175, 0.0, 1.33), J['shoulder'], J['elbow'], (0.266, -0.016, 0.9)],
@@ -75,16 +75,17 @@ def build(k):
     pair(lambda s: k.spike('thumb', (0.262, -0.058, 0.795), (0.256, -0.075, 0.755), 0.014, M['skin'], segs=4), 'Wrist.*')
 
     # ------------------------------------------------ head
-    head = add(k.ico('head', HC, (HR[0] * 1.04, HR[1] * 1.04, HR[2] * 1.02), M['skin'], subdiv=2), 'Head')
+    head = add(k.ico('head', HC, (HR[0] * 1.04, HR[1] * 1.04, HR[2] * 1.02), M['skin'], subdiv=3, keep=0.45), 'Head')
     for v in head.data.vertices:  # a narrower jaw
         if v.co.z < HC[2]:
             f = 1 - 0.14 * (HC[2] - v.co.z) / HR[2]
             v.co.x *= f; v.co.y = HC[1] + (v.co.y - HC[1]) * f
-    add(k.spike('nose', (0, -0.117, 1.548), (0, -0.142, 1.532), 0.017, M['skin'], segs=4, rot=math.pi / 4), 'Head')
+    add(k.uvs('nose', (0, -0.118, 1.54), (0.017, 0.011, 0.02), M['skin'], segs=6, rings=4), 'Head')  # small and round (a point reads as a beak)
     pair(lambda s: k.uvs('ear', (0.111, 0.005, 1.548), (0.016, 0.026, 0.034), M['skin'], segs=6, rings=4), 'Head')
-    pair(lambda s: k.uvs('eyewhite', (0.042, -0.114, 1.567), (0.024, 0.012, 0.026), M['eye_white'], segs=8, rings=4), 'Head')
-    pair(lambda s: k.uvs('iris', (0.043, -0.122, 1.563), (0.015, 0.009, 0.019), M['eye'], segs=6, rings=4), 'Head')
-    pair(lambda s: k.box('brow', (0.045, -0.118, 1.604), (0.042, 0.012, 0.009), M['hair'], rot=(0, -0.12, 0.08)), 'Head')
+    pair(lambda s: k.uvs('eyewhite', (0.043, -0.109, 1.567), (0.028, 0.009, 0.03), M['eye_white'], segs=8, rings=4), 'Head')
+    pair(lambda s: k.uvs('iris', (0.044, -0.116, 1.564), (0.022, 0.008, 0.026), M['eye'], segs=6, rings=4), 'Head')
+    add(k.box('mouth', (0, -0.112, 1.508), (0.034, 0.01, 0.007), M['eye'], rot=(0, 0, 0)), 'Head')
+    pair(lambda s: k.box('brow', (0.046, -0.114, 1.608), (0.048, 0.014, 0.012), M['hair'], rot=(0, -0.12, 0.08)), 'Head')
     # Hair: a cap over the crown and back, then curls and a fringe.
     cap = k.ico('haircap', (HC[0], HC[1] + 0.006, HC[2] + 0.012), (HR[0] * 1.13, HR[1] * 1.12, HR[2] * 1.1), M['hair'], subdiv=2)
     import bmesh
@@ -152,14 +153,15 @@ def build(k):
                     z -= jag * jags[j] if j % 2 == 0 else -jag * 0.25
                 row.append((d[0] * rx, d[1] * ry + 0.01, z))
             grid.append(row)
-        return k.sheet(name, grid, M['cloak'], thickness=0.012)
+        # The last band of faces (the hem's points) is sun-bleached, as in the concept.
+        return k.sheet(name, grid, M['cloak'], thickness=0.012, extra=[M['cloak_edge']], face_mat=lambda i, j: 1 if i == rows - 2 else 0)
     back = lambda phi: max(0.0, -math.cos(phi))   # 1 at the back
     sides = lambda phi: abs(math.sin(phi))         # 1 at the sides (over the arms)
     body_bones = ['Chest', 'Torso', 'Abdomen', 'Hips', 'UpperArm.L', 'UpperArm.R', 'UpperLeg.L', 'UpperLeg.R']
     # Lower tier: to mid-thigh at the back and front, shorter over the arms so the hands show.
     add(cloak('cloak', 1.33, (0.2, 0.14),
-              hem=lambda phi: 0.64 + 0.3 * sides(phi) ** 4,
-              r_hem=lambda phi: (0.3, 0.17 + 0.09 * back(phi)),
+              hem=lambda phi: 0.62 + 0.1 * sides(phi) ** 2,
+              r_hem=lambda phi: (0.32, 0.17 + 0.09 * back(phi)),
               jag=0.07, open_front=0.42, cols=30, rows=6, seed=3), body_bones)
     # Upper tier (the capelet): from the neck over the shoulders.
     add(cloak('capelet', 1.41, (0.095, 0.088),
@@ -167,5 +169,7 @@ def build(k):
               r_hem=lambda phi: (0.285, 0.18 + 0.07 * back(phi)),
               jag=0.055, open_front=0.36, cols=24, rows=4, seed=5), ['Chest', 'Neck', 'Shoulder.L', 'Shoulder.R', 'UpperArm.L', 'UpperArm.R'])
     # The hood, gathered behind the neck.
+    # A bigger head, as in the concept: everything on the Head bone, scaled about the top of the neck.
+    k.scale_about(parts, 'Head', (0, HC[1], 1.44), 1.12)
     add(k.uvs('hood', (0, 0.1, 1.44), (0.12, 0.07, 0.065), M['cloak'], segs=8, rings=5), ['Chest', 'Neck'])
     return parts

@@ -58,7 +58,10 @@ export class Stage {
   opts = { zoom: 4, pixel: false, raw: true, spin: false, clip: 'Walk' };
   clips = new Map<string, THREE.AnimationClip>();
   private loader = new GLTFLoader();
-  private yaw = Math.PI / 4;
+  yaw = Math.PI / 4;
+  /** Camera pitch; the game's is atan(1/√2). 0 looks straight on (silhouette comparisons). */
+  pitch = Math.atan(1 / Math.SQRT2);
+  ground: THREE.Mesh;
   private group = new THREE.Group();
   private mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }); // as the game's pixel look (people.ts)
   private adultH = 1.7;
@@ -72,7 +75,7 @@ export class Stage {
     const sun = new THREE.DirectionalLight('#ffe2b0', 2.2);
     sun.position.set(-6, 10, 4);
     this.scene.add(sun);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({ color: '#7d9560' }));
+    const ground = this.ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshLambertMaterial({ color: '#7d9560' }));
     ground.rotation.x = -Math.PI / 2;
     this.scene.add(ground, this.group);
     new ResizeObserver(() => this.resize()).observe(canvas.parentElement!);
@@ -143,8 +146,8 @@ export class Stage {
 
   private frame(dt: number) {
     if (this.opts.spin) this.yaw += dt * 0.4;
-    const d = 80, horiz = Math.cos(Math.atan(1 / Math.SQRT2)) * d;
-    this.cam.position.set(this.look.x + Math.sin(this.yaw) * horiz, this.look.y + Math.sin(Math.atan(1 / Math.SQRT2)) * d, this.look.z + Math.cos(this.yaw) * horiz);
+    const d = 80, horiz = Math.cos(this.pitch) * d;
+    this.cam.position.set(this.look.x + Math.sin(this.yaw) * horiz, this.look.y + Math.sin(this.pitch) * d, this.look.z + Math.cos(this.yaw) * horiz);
     this.cam.lookAt(this.look);
     if (this.cam.zoom !== this.opts.zoom) { this.cam.zoom = this.opts.zoom; this.cam.updateProjectionMatrix(); }
     for (const c of this.chars) c.mixer.update(dt);

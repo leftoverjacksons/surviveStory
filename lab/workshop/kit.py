@@ -124,13 +124,18 @@ def tube(name, path, radii, material, segs=8, caps=(True, True), twist=0.0, offs
     fix_normals(ob)
     return ob
 
-def ico(name, center, radii, material, subdiv=2):
+def ico(name, center, radii, material, subdiv=2, keep=1.0):
+    """An icosphere (ellipsoid). keep < 1: collapse-decimate to that share of the triangles,
+    which gives small irregular facets (hand-cut) instead of a few big regular ones."""
     bm = bmesh.new()
     bmesh.ops.create_icosphere(bm, subdivisions=subdiv, radius=1.0)
     for v in bm.verts:
         v.co = Vector((v.co.x * radii[0] + center[0], v.co.y * radii[1] + center[1], v.co.z * radii[2] + center[2]))
     me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free()
     ob = link(bpy.data.objects.new(name, me)); ob.data.materials.append(material)
+    if keep < 1:
+        d = ob.modifiers.new('dec', 'DECIMATE'); d.ratio = keep
+        apply_modifiers(ob)
     return ob
 
 def uvs(name, center, radii, material, segs=8, rings=6):
@@ -192,12 +197,18 @@ def spike(name, base, tip, r, material, segs=4, rot=0.0):
     fix_normals(ob)
     return ob
 
-def sheet(name, grid, material, thickness=0.0):
-    """A surface from a grid of points (rows × cols); optionally given thickness."""
+def sheet(name, grid, material, thickness=0.0, extra=(), face_mat=None):
+    """A surface from a grid of points (rows × cols); optionally given thickness.
+    extra: more materials; face_mat(row, col) → material index (0 = `material`, 1.. = extra)."""
     rows, cols = len(grid), len(grid[0])
     verts = [V(p) for row in grid for p in row]
     faces = [(i * cols + j, i * cols + j + 1, (i + 1) * cols + j + 1, (i + 1) * cols + j) for i in range(rows - 1) for j in range(cols - 1)]
     ob = mesh_object(name, verts, faces, material)
+    for m in extra:
+        ob.data.materials.append(m)
+    if face_mat:
+        for f, (i, j) in zip(ob.data.polygons, [(i, j) for i in range(rows - 1) for j in range(cols - 1)]):
+            f.material_index = face_mat(i, j)  # solidify keeps each face's material
     if thickness:
         m = ob.modifiers.new('solid', 'SOLIDIFY'); m.thickness = thickness; m.offset = 0
         apply_modifiers(ob)
@@ -213,6 +224,14 @@ def fix_normals(ob):
     bm = bmesh.new(); bm.from_mesh(ob.data)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
     bm.to_mesh(ob.data); bm.free()
+
+def scale_about(parts, bone, pivot, k):
+    """Scale every part weighted rigidly to `bone` about `pivot` (e.g. the head about the neck top)."""
+    p = V(pivot)
+    for ob, b in parts:
+        if b == bone:
+            for v in ob.data.vertices:
+                v.co = p + (v.co - p) * k
 
 def jitter(ob, amount, seed):
     """Hand-made unevenness: move each vertex a little (welded vertices move together)."""
