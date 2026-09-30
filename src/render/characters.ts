@@ -16,6 +16,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const URLS = import.meta.glob('../assets/people/*.glb', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
+/** Parts libraries by build (lab/workshop/build.py --parts): every part a skinned mesh on one skeleton. */
+const PART_URLS = import.meta.glob('../assets/people/parts/*.glb', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
 export interface Outfit {
   name: string;
@@ -115,6 +117,68 @@ export async function loadCharacters(): Promise<CharacterKit> {
   const adultH = adults.reduce((n, o) => n + o.height, 0) / Math.max(1, adults.length);
   for (const o of outfits) if (o.child && adults.length) o.height = adultH;
   return { outfits, clips };
+}
+
+// ---------- composed from parts (DESIGN: lab/workshop) ----------
+
+export interface PartsKit {
+  /** Library scene by build ('hero', 'stout'); never modified, cloned per outfit. */
+  libs: Map<string, THREE.Object3D>;
+  /** Composed outfits by Dress.key: survivors dressed alike share geometry. */
+  cache: Map<string, Outfit>;
+  /** Figure height per build (body and head, without hair), so hairstyles don't change anyone's size. */
+  heights: Map<string, number>;
+}
+
+/** glTF node names lose '.', '[', ']', ':' and '/' in three.js (PropertyBinding.sanitizeNodeName). */
+const nodeName = (n: string) => n.replace(/\s/g, '_').replace(/[[\].:/]/g, '');
+
+export async function loadParts(): Promise<PartsKit | null> {
+  const entries = Object.entries(PART_URLS);
+  if (!entries.length) return null;
+  const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  const kit: PartsKit = { libs: new Map(), cache: new Map(), heights: new Map() };
+  await Promise.all(entries.map(async ([path, url]) => {
+    const build = path.split('/').pop()!.replace(/^parts_|\.glb$/g, '');
+    kit.libs.set(build, (await loadGlb(loader, url)).scene);
+  }));
+  return kit;
+}
+
+/** One library scene with only these parts, merged into one skinned mesh. */
+function composeScene(lib: THREE.Object3D, parts: string[]): { root: THREE.Object3D; mesh: THREE.SkinnedMesh } | null {
+  const root = cloneSkinned(lib);
+  root.userData = lib.userData;
+  const keep = new Set(parts.map(nodeName));
+  // Each part is a node (a mesh, or a group with one mesh per colour slot) beside the armature.
+  const drop: THREE.Object3D[] = [];
+  root.traverse((o) => {
+    if ((o as THREE.Bone).isBone || !o.parent || o === root) return;
+    if (((o as THREE.SkinnedMesh).isSkinnedMesh || o.type === 'Group') && !keep.has(o.name) && !keep.has(o.parent.name)) drop.push(o);
+  });
+  for (const o of drop) o.removeFromParent();
+  const mesh = mergeOutfit(root);
+  return mesh ? { root, mesh } : null;
+}
+
+export function composeOutfit(kit: PartsKit, build: string, parts: string[], key: string): Outfit | null {
+  const hit = kit.cache.get(key);
+  if (hit) return hit;
+  const lib = kit.libs.get(build) ?? kit.libs.get('hero');
+  if (!lib) return null;
+  if (!kit.heights.has(build)) {
+    const base = composeScene(lib, ['body.base', 'head.face']);
+    if (base) { base.root.updateMatrixWorld(true); base.mesh.skeleton.pose(); const b = new THREE.Box3().setFromObject(base.root, true); kit.heights.set(build, b.max.y - b.min.y || 1.6); }
+  }
+  const c = composeScene(lib, parts);
+  if (!c) return null;
+  c.root.updateMatrixWorld(true);
+  c.mesh.skeleton.pose();
+  const extras = (lib.userData ?? {}) as { slots?: string[]; colors?: [number, number, number][] };
+  const outfit: Outfit = { name: key, female: false, child: false, template: c.root, slots: extras.slots ?? [], colors: extras.colors ?? [], height: kit.heights.get(build) ?? 1.6 };
+  kit.cache.set(key, outfit);
+  return outfit;
 }
 
 // ---------- one survivor ----------

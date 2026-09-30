@@ -4,10 +4,11 @@ Character workshop: build characters from recipes (recipes.py) out of parts
 (lab/figures/library/).
 
     python lab/workshop/build.py <recipe>...        a whole character per recipe → <pool>_<recipe>.glb
-    python lab/workshop/build.py --parts [--build hero]
+    python lab/workshop/build.py --parts [--build hero] [--game]
         every part as its own skinned mesh on one skeleton → parts_<build>.glb and
         parts_<build>.json (categories, parts, colour slots, and the recipes), for
-        composing survivors at run time (the studio's Compose view)
+        composing survivors at run time (the studio's Compose view); --game also copies
+        the .glb into src/assets/people/parts/, where the game dresses survivors from it
 
 (with Blender's Python module, bpy: lab/figures/.venv-bpy after setup.py, or
 `blender -b -P lab/workshop/build.py -- <args>`).
@@ -55,6 +56,12 @@ if '--parts' in argv:
     with open(os.path.join(LIB, f'parts_{build}.json'), 'w') as f:
         json.dump(manifest, f, indent=1)
     print('parts library:', f'parts_{build}.glb', len(meshes), 'parts')
+    if '--game' in argv:
+        import shutil
+        game = os.path.join(REPO, 'src', 'assets', 'people', 'parts')
+        os.makedirs(game, exist_ok=True)
+        shutil.copy(os.path.join(LIB, f'parts_{build}.glb'), game)
+        print('game:', os.path.join('src/assets/people/parts', f'parts_{build}.glb'))
 else:
     # ------------------------------------------------ whole characters
     for name in argv:

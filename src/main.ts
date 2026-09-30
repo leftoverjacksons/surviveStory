@@ -14,7 +14,7 @@ import { buildSite } from './render/sites';
 import { mergeStatic } from './render/merge';
 import { TreeField } from './render/trees';
 import { RESTORED_GLOW, buildRuins as buildOldWorld, registerCutaway, syncRuins } from './render/ruins';
-import { loadAnimals, loadCharacters } from './render/characters';
+import { loadAnimals, loadCharacters, loadParts } from './render/characters';
 import { obstacleKey, obstaclesFor } from './render/clearance';
 import { Bushes, Herds, buildFairyRing, buildRuins } from './render/nature';
 import { Fireflies, Orb, Wisps } from './render/mystic';
@@ -292,7 +292,8 @@ const people = new People(world);
 people.group.name = 'people';
 scene.add(people.group);
 // Character models load in the background; until then people are simple figures.
-loadCharacters().then((kit) => { people.setKit(kit); folkView.setKit(kit); lightPeopleLayer(scene); }).catch((e) => console.warn('characters:', e));
+Promise.all([loadCharacters(), loadParts().catch((e) => { console.warn('parts:', e); return null; })])
+  .then(([kit, parts]) => { people.setKit(kit, parts); folkView.setKit(kit); lightPeopleLayer(scene); }).catch((e) => console.warn('characters:', e));
 
 /** Trees make room for buildings (finished or planned). */
 let clearanceKey = '';

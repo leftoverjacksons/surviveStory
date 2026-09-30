@@ -4,7 +4,11 @@ import type { Agent } from '../sim/colony';
 import type { Survivor } from '../sim/community';
 import { WATER_Y, heightAt, standHeight, type World } from '../sim/world';
 import { SOFT, enhance, lambert } from './util';
-import { makeCharacter, type Character, type CharacterKit } from './characters';
+import { composeOutfit, makeCharacter, type Character, type CharacterKit, type PartsKit } from './characters';
+import { dress } from './dress';
+
+/** `?classic`: the earlier premade figures instead of survivors dressed from parts. */
+const CLASSIC = typeof location !== 'undefined' && new URLSearchParams(location.search).has('classic');
 
 export const CLOTH = ['#6f7d5c', '#8a6a4a', '#5a6b7a', '#7a4f45', '#9a8a60', '#4f6a5a', '#6b5a7a', '#8a7a6a'];
 const SKIN = ['#e0b896', '#c99a74', '#a8764f', '#7d5537', '#f0cfb0'];
@@ -12,8 +16,8 @@ const HAIR = ['#2a1d14', '#5a3b22', '#8a8070', '#1a1a1a', '#a0522d'];
 
 /** A child's height by age in metres (about 0.75 m at one, 1.6 m at sixteen). */
 const heightAtAge = (age: number) => Math.min(1.62, 0.75 + 0.055 * Math.max(1, age));
-/** What a rig was built for: grown people never change; children change every year. */
-const lookOf = (s: Survivor) => (s.age >= 16 ? 'grown' : `age${s.age}`);
+/** What a rig was built for: children change every year; everyone changes with what they wear (dress.ts). */
+const lookOf = (s: Survivor) => (s.age >= 16 ? 'grown' : `age${s.age}`) + (s.age >= 13 ? `|${dress(s).key}` : '');
 
 interface Rig {
   /** Which figure and size it was built for (a child's is rebuilt as they grow). */
@@ -42,6 +46,8 @@ interface ModelParts {
   clip: string;
   /** Hand-held props, placed at the right wrist each frame. */
   held: THREE.Object3D[];
+  /** How far the body drops to sit on a seat about 0.4 m high (from this figure's hip height). */
+  sitDrop: number;
 }
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3();
@@ -80,15 +86,17 @@ export class People {
   selected = 0;
 
   private kit: CharacterKit | null = null;
+  private parts: PartsKit | null = null;
   private survivors = new Map<number, Survivor>();
   private modelMat = enhance(new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: !SOFT }), { season: 'none' });
 
   constructor(private world: World) {}
 
-  /** Character models arrived: redraw everyone with them. */
-  setKit(kit: CharacterKit) {
+  /** Character models arrived: redraw everyone with them (dressed from parts unless `?classic`). */
+  setKit(kit: CharacterKit, parts: PartsKit | null = null) {
     if (!kit.outfits.length) return;
     this.kit = kit;
+    this.parts = CLASSIC ? null : parts;
     for (const [id, r] of this.rigs) {
       if (r.fade > 0) continue;
       const s = this.survivors.get(id);
@@ -118,10 +126,16 @@ export class People {
     const kind = kit.outfits.filter((o) => o.child === kid);
     const byKind = kind.length ? kind : kit.outfits.filter((o) => !o.child);
     const pool = byKind.filter((o) => o.female === female || o.child);
-    const outfit = (pool.length ? pool : byKind)[Math.floor(s.id / 2) % (pool.length || byKind.length)];
+    let outfit = (pool.length ? pool : byKind)[Math.floor(s.id / 2) % (pool.length || byKind.length)];
+    // Grown people and teenagers are dressed from parts by role (dress.ts); children keep the child build.
+    const d = this.parts && !kid ? dress(s) : null;
+    const composed = d && this.parts ? composeOutfit(this.parts, d.build, d.parts, d.key) : null;
+    if (composed) outfit = composed;
     const grownTall = 0.94 + ((s.id * 37) % 11) / 100;
     const tall = s.age >= 16 ? grownTall : Math.min(grownTall, heightAtAge(s.age) / (kid && kind.length ? 1.7 * 0.74 : 1.7));
-    const ch = makeCharacter(outfit, { skin: s.id * 7 + 3, hair: s.id * 5 + 1, hue: (s.hue * 0.137) % 1, tall }, this.modelMat);
+    // Elders go grey or white (characters.ts HAIR[2] and HAIR[6]).
+    const hair = composed && s.age >= 55 ? [2, 6][s.id % 2] : s.id * 5 + 1;
+    const ch = makeCharacter(outfit, { skin: s.id * 7 + 3, hair, hue: (s.hue * 0.137) % 1, tall }, this.modelMat);
     ch.mesh.castShadow = true;
     ch.mesh.receiveShadow = true;
     ch.mesh.layers.set(1);
@@ -141,7 +155,10 @@ export class People {
     r.root.add(pick);
     const actions = new Map<string, THREE.AnimationAction>();
     for (const [name, clip] of kit.clips) actions.set(name, ch.mixer.clipAction(clip));
-    r.model = { ch, actions, clip: '', held: [r.axe, r.rod] };
+    r.root.updateMatrixWorld(true);
+    const base = ch.root.getWorldPosition(new THREE.Vector3()).y;
+    const hip = (ch.bone('UpperLeg.L')?.getWorldPosition(new THREE.Vector3()).y ?? base + 0.82) - base;
+    r.model = { ch, actions, clip: '', held: [r.axe, r.rod], sitDrop: Math.max(0.1, hip - 0.4) };
     this.play(r.model, 'Idle', 0);
   }
 
@@ -479,7 +496,7 @@ export class People {
       r.body.position.set(0, 0.25, 0.85);
     } else if (seated) {
       // Sit: hips down to seat height, thighs forward, shins down.
-      r.body.position.y = -0.42;
+      r.body.position.y = -m.sitDrop;
       r.body.updateMatrixWorld(true);
       for (const side of ['L', 'R']) {
         aim(B(`UpperLeg.${side}`), B(`LowerLeg.${side}`), dir(side === 'L' ? -0.05 : 0.05, -0.1, 1));

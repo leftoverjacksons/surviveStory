@@ -87,16 +87,41 @@ game would apply from its own data.
   (near-greys stay).
 - Held items use `pack_*`, so they keep their colours.
 
-## For the game (not done yet: needs the user's go-ahead)
+## In the game (this branch; `?classic` for the earlier figures)
 
-- **`characters.ts`:** load `parts_hero.glb`, and compose each survivor from
-  sim data. The mapping: role → top, bottom and tool; season → outerwear;
-  equipment → held item and bag; family and age → hair and build.
-- **Children:** a child build.
-- **Hue grouping:** re-hue related slots together (`cloth_cloak` with
-  `cloth_cloak_edge`), grouped by name prefix.
-- **Triangle budget:** a full scout is about 5,100 triangles (the cloak alone
-  is 1,160); the gardener is about 3,000. The game's figures are about 2,750.
+- **Assets:** `src/assets/people/parts/parts_<build>.glb`, refreshed with
+  `build.py --parts --build <b> --game`.
+- **`src/render/dress.ts`:** what a survivor wears, one part per slot, steady
+  per person (by id).
+  - Role gives the clothes: builder, farmer, tender, forager, fisher, maker,
+    scout, attune, rest.
+  - Hair and beard follow presentation and age; some people are stout.
+  - Presentation: the simulation doesn't model sex. Names that usually read
+    one way are drawn that way; the many that read either way follow id
+    parity, as the earlier figures did.
+- **`characters.ts#loadParts` / `composeOutfit`:** clone a library, keep the
+  chosen parts, merge them into one skinned mesh. The result is cached by the
+  dress key, so survivors dressed alike share geometry.
+  - Figures are normalised by body and head height, without hair, so a bun
+    doesn't shrink anyone.
+- **`people.ts`:**
+  - grown people and teenagers are composed; children keep the child figures
+    until there is a child build;
+  - `lookOf` includes the dress key, so a role change re-dresses the survivor;
+  - sitting drops by the figure's own hip height (`sitDrop`), since the hero
+    legs are shorter;
+  - elders' hair is grey or white.
+- **Held items:** the game's own tools (axe, rod, basket, log) are still the
+  props placed at the right wrist. The parts library's held items (lantern,
+  trowel, mallet, all left hand) aren't used in the game yet.
+- **Cost:** the single-file build goes from 2.79 MB to 3.25 MB (both
+  libraries). The tests pass (193), and the single-file smoke test runs
+  without errors.
+- **Colours:** the game re-colours clothing per survivor, so the palette
+  comes out pastel; the scout's cloak, for example, can be lilac. Grouping
+  related slots and narrowing the hues is the next colour pass.
+- **Shots:** `shots/in_game.png`, top row the earlier figures, bottom row the
+  same survivors dressed from parts.
 
 ## History
 
