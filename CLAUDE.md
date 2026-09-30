@@ -249,7 +249,7 @@ reference: Tiny Glade.
     seed asked), deer unstuck, GRAPHICS PANEL (`ui/gfx.ts`, key G: pixel size incl. off, outlines, colour steps,
     surface strength `uSurface`, bloom, exposure, shadows, tufts, painted grass `uGrassPaint`; presets). Composer is
     sized by `sizeComposer` (never setPixelRatio alone). Eat before bed if food < 45.
-    §35 SNOW (not published): snow settles while falling and melts when not cold (`snowCold`, `uSnow` ground /
+    §35 SNOW (published v46): snow settles while falling and melts when not cold (`snowCold`, `uSnow` ground /
     `uRoofSnow` tops, main.ts season block), FOOTPRINTS (`render/footprints.ts`, `uFootTex`; people and deer; fade
     1.5 days, faster in snowfall), snowfall thickens with depth. `__game.snow(v)`.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
