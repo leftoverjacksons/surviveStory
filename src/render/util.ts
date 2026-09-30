@@ -135,6 +135,10 @@ export const worldUniforms = {
   uVeil: { value: 0 },
   /** See-through woods: 0 full, 1 canopies stippled on the Folk's Wild, 2 stippled everywhere. */
   uThin: { value: 1 },
+  /** Graphics panel (ui/gfx.ts): strength of the pixel-scale surface patterns, 0..1. */
+  uSurface: { value: 1 },
+  /** Graphics panel: grass painted into the turf (0 off .. 1), an alternative to tufts of geometry. */
+  uGrassPaint: { value: 0 },
 };
 /** Back-compat alias used by older call sites. */
 export const windUniforms = worldUniforms;
@@ -316,6 +320,36 @@ const SURFACE_GLSL = `
     }
     return mix(col, col * k + tint, fade);
   }
+
+  // Grass painted into the turf (graphics panel): each small cell may hold a clump, a lit tip above a
+  // shaded foot, fading as it goes sub-pixel. Only on green, near-level ground.
+  vec3 grassPaint(vec3 col, vec3 wp, vec3 wn) {
+    if (uGrassPaint <= 0.0 || wn.y < 0.8) return col;
+    if (!(col.g > col.r * 1.05 && col.g > col.b * 1.1)) return col;
+    // Clumps on an irregular grid (jittered, thinned by a slow patchiness), three blades each: lit tips
+    // over a shaded foot, each clump its own shade of green. "Up" on screen is -z in world.
+    float S = 1.25;
+    float patchy = sh21(floor(wp.xz * 0.18)) * 0.5 + sh21(floor(wp.xz * 0.45) + 9.0) * 0.5;
+    float lod = lodk(S * 1.6);
+    float light = 0.0, shade = 0.0, hueK = 0.0;
+    for (int oy = -1; oy <= 0; oy++) for (int ox = -1; ox <= 0; ox++) {
+      vec2 c = floor(wp.xz * S) + vec2(float(ox), float(oy));
+      if (sh21(c) > 0.25 + 0.5 * patchy) continue;
+      vec2 o = c + vec2(0.15 + 0.7 * sh21(c + 1.7), 0.15 + 0.7 * sh21(c + 3.1));
+      vec2 d = wp.xz * S - o;
+      for (int b = 0; b < 3; b++) {
+        float fb = float(b) - 1.0;
+        float bx = d.x - fb * 0.11 - d.y * fb * 0.35;
+        float hgt = 0.3 + 0.14 * sh21(c + fb * 5.3);
+        float blade = step(abs(bx), 0.045 * (1.0 + d.y * 1.5)) * step(-hgt, d.y) * step(d.y, 0.0);
+        if (blade > 0.0) { light = max(light, 0.5 - d.y / hgt * 0.5); hueK = sh21(c + 7.7); }
+      }
+      shade = max(shade, step(abs(d.x), 0.2) * step(0.0, d.y) * step(d.y, 0.08));
+    }
+    vec3 tipCol = col * (1.12 + 0.22 * light) + vec3(0.02, 0.03, -0.01) * (hueK - 0.5);
+    col = mix(col, tipCol, step(0.001, light) * uGrassPaint * lod);
+    return col * (1.0 - 0.2 * shade * uGrassPaint * lod);
+  }
 `;
 
 
@@ -423,7 +457,8 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       uniform float uSnow; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
       varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
       ${thin ? 'varying float vThin;' : ''}
-      ${surfaceKind ? SURFACE_GLSL : ''}`,
+      ${surfaceKind ? `uniform float uSurface; uniform float uGrassPaint;
+${SURFACE_GLSL}` : ''}`,
     );
     if (thin === 'solid') {
       fs = fs.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
@@ -444,7 +479,8 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
     }
     if (surfaceKind) {
       fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
-        diffuseColor.rgb = surfaceTex(diffuseColor.rgb, vWP, vWN, ${surfaceKind});`);
+        diffuseColor.rgb = mix(diffuseColor.rgb, surfaceTex(diffuseColor.rgb, vWP, vWN, ${surfaceKind}), uSurface);
+        ${surfaceKind === 2 ? 'diffuseColor.rgb = grassPaint(diffuseColor.rgb, vWP, vWN);' : ''}`);
     }
     if (season !== 'none') {
       fs = fs.replace(

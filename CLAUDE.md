@@ -244,6 +244,11 @@ reference: Tiny Glade.
     §33 (published v44): ruins cut at their own floor (`userData.cutAt` through `mergeStatic`), hall furniture,
     clearance for hall/power/sawpit/hearth, autopilot strips wrecks near fires. Seed-6 slowness not reproducible
     (≤200 ms/day to day 200); "paused view" was a harness artefact.
+    §34 (playtest v44, not published): seats round fires (`camp.ts#seats`), plots over rocks (not houses/yard items),
+    plot drawing on lit tiles (`render/drafttiles.ts`), Folk paths bend round blocked tiles (crossing not reproduced;
+    seed asked), deer unstuck, GRAPHICS PANEL (`ui/gfx.ts`, key G: pixel size incl. off, outlines, colour steps,
+    surface strength `uSurface`, bloom, exposure, shadows, tufts, painted grass `uGrassPaint`; presets). Composer is
+    sized by `sizeComposer` (never setPixelRatio alone). Eat before bed if food < 45.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

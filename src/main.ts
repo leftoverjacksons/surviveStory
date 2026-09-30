@@ -30,6 +30,7 @@ import { claimPlot, homeForAsker, outlinePlot, plotFailAt } from './sim/homes';
 import { DraftTiles } from './render/drafttiles';
 import { KeepOut } from './render/keepout';
 import { Tray } from './ui/tray';
+import { GfxPanel } from './ui/gfx';
 import { dropAnsweredHomes } from './sim/requests';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
@@ -127,7 +128,44 @@ const iso = new IsoCamera(view.clientWidth / view.clientHeight);
 iso.bounds = world.w / 2 - 8;
 if (saved?.camera && loaded) { iso.target.x = saved.camera.x; iso.target.z = saved.camera.z; iso.zoom = iso.zoomGoal = saved.camera.zoom; iso.yaw = iso.yawGoal = saved.camera.yaw; }
 const sky = new Sky(scene);
-const { composer, bloom, grade, syncXray } = createComposer(renderer, scene, iso.camera, view.clientWidth, view.clientHeight);
+const { composer, bloom, grade, outline, syncXray } = createComposer(renderer, scene, iso.camera, view.clientWidth, view.clientHeight);
+/**
+ * Keep the composer's buffers the renderer's size: its pixel ratio follows the renderer's, and its
+ * size is given in CSS pixels. (It was built round a render target, so it took that target's width as
+ * its own: setting only the ratio would scale the buffers down a second time.)
+ */
+function sizeComposer() {
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(view.clientWidth, view.clientHeight);
+}
+/** The pixel look's parts, adjusted live (ui/gfx.ts, key G; DESIGN §34). */
+let pixelScale = PIXEL || 1;
+const gfx = new GfxPanel({
+  pixel: !!PIXEL,
+  defaults: { px: PIXEL || 1, outline: true, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
+  apply(s, changed) {
+    if (PIXEL && (changed === null || changed === 'px')) {
+      pixelScale = s.px;
+      renderer.setPixelRatio(1 / s.px);
+      sizeComposer();
+      renderer.domElement.style.imageRendering = s.px > 1 ? 'pixelated' : 'auto';
+      iso.snapRows = Math.round(view.clientHeight / s.px);
+    }
+    if (outline) outline.enabled = s.outline;
+    if (PIXEL) grade.uniforms.uSteps.value = s.steps;
+    worldUniforms.uSurface.value = s.surface;
+    worldUniforms.uGrassPaint.value = s.grassPaint;
+    renderer.toneMappingExposure = s.exposure;
+    if (changed === null || changed === 'shadows') {
+      if (renderer.shadowMap.enabled !== s.shadows) {
+        renderer.shadowMap.enabled = s.shadows;
+        scene.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
+      }
+    }
+    const tufts = scene.getObjectByName('tufts');
+    if (tufts) tufts.visible = s.tufts;
+  },
+});
 renderer.localClippingEnabled = true;
 const roofs = new RoofControl();
 
@@ -145,6 +183,7 @@ const terrainGroup = buildTerrain(world);
 let lastGround = 0;
 terrainGroup.name = 'terrain';
 scene.add(terrainGroup);
+gfx.refresh();
 const station = buildSite(world.site);
 // The site's static parts, baked; roofs, the fallen section, door and lamps stay separate.
 mergeStatic(station.group, new Set<THREE.Object3D>([...station.roofs, station.store.fallen, station.store.door, ...station.store.glow]), true);
@@ -581,6 +620,7 @@ function setAutopilot(on: boolean) {
   hud.render();
 }
 document.getElementById('autopilot-btn')!.addEventListener('click', () => setAutopilot(!autopilot));
+document.getElementById('gfx-btn')?.addEventListener('click', () => gfx.toggle());
 document.getElementById('autopilot-btn')!.setAttribute('aria-pressed', String(autopilot));
 document.getElementById('council')!.addEventListener('pointermove', () => { if (autopilot) councilAutoAt = performance.now() + COUNCIL_AUTO_MS; });
 /** Each frame: under autopilot, count down an unanswered council and settle it on the favourite. */
@@ -1114,6 +1154,7 @@ window.addEventListener('keydown', (e) => {
     if (speed === 0) setSpeed(lastSpeed); else { lastSpeed = speed; setSpeed(0); }
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
   else if (k === 'r') cycleRoofs();
+  else if (k === 'g') gfx.toggle();
   else if (k === 'o') setWoods((worldUniforms.uThin.value + 1) % 3);
   else if (k === 'b' && !veil) buildPanel.toggle();
   else if (k === 't' && build?.kind === 'place') { build.turn = (build.turn + 1) % 4; placeHover(lastPointer.x, lastPointer.y); }
@@ -1129,12 +1170,11 @@ window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener('resize', () => {
   const w = view.clientWidth, h = view.clientHeight;
   renderer.setSize(w, h);
-  composer.setSize(w, h);
-  bloom.setSize(w, h);
+  sizeComposer(); // (bloom is sized with it)
   iso.resize(w / h);
-  if (PIXEL) iso.snapRows = Math.round(h / PIXEL);
+  if (PIXEL) iso.snapRows = Math.round(h / pixelScale);
 });
-if (PIXEL) iso.snapRows = Math.round(view.clientHeight / PIXEL);
+if (PIXEL) iso.snapRows = Math.round(view.clientHeight / pixelScale);
 
 // ---------- loop ----------
 const vignette = document.getElementById('vignette')!;
@@ -1156,7 +1196,7 @@ function adaptQuality(dt: number) {
   if (perfStep === 1) {
     if (PIXEL) return; // already drawing at a fraction of the screen
     renderer.setPixelRatio(1);
-    composer.setPixelRatio(1);
+    sizeComposer();
   } else {
     renderer.shadowMap.type = THREE.PCFShadowMap;
     sky.sun.shadow.mapSize.set(1024, 1024);
@@ -1226,7 +1266,7 @@ function frame() {
   }
   iso.update(dt);
   // Pixel art: shift the enlarged image by what the camera snap took away, so panning stays smooth.
-  if (PIXEL) renderer.domElement.style.transform = `translate(${(iso.residual.x * PIXEL).toFixed(2)}px, ${(-iso.residual.y * PIXEL).toFixed(2)}px)`;
+  if (PIXEL) renderer.domElement.style.transform = `translate(${(iso.residual.x * pixelScale).toFixed(2)}px, ${(-iso.residual.y * pixelScale).toFixed(2)}px)`;
   iso.target.y = heightAt(world, iso.target.x, iso.target.z) * 0.6;
 
   // World.
@@ -1309,7 +1349,7 @@ function frame() {
     return { x: a.x, z: a.z, facing: a.facing, boatId: f?.boat ?? 0 };
   }));
   mushroomGlow.color.setRGB(0.5, 1.2, 1.0).multiplyScalar(0.4 + sky.night * 1.6);
-  bloom.strength = 0.45 + sky.night * 0.5;
+  bloom.strength = (0.45 + sky.night * 0.5) * gfx.s.bloom;
 
   syncXray();
   const tDraw = performance.now();

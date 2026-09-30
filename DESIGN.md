@@ -4001,3 +4001,73 @@ The user, sitting down with v44 ("before anything, just sharing thoughts"):
 5. **Deer get stuck on things.** Screenshot: two deer overlapping each other
    on a rock or stump. Likely: grazing targets and movement ignore blocked
    tiles and each other.
+
+**§34, what was done** (after the user's second round of notes: "use the
+pixelated stuff for textures while selectively turning off the overall
+effect? … a debug panel … to tweak graphical effects live"; "I don't even
+see benches"; "plots over rocks, just no buildings over them"; "is there
+some other method than tiny triangles everywhere?"):
+- **Seats round every fire** (`render/camp.ts#seats`, `main.ts#fireSeats`):
+  - a log round at each seat position (`sites.ts#seatSpot`), for exactly
+    the ring of people who gather at that fire;
+  - three rounds wait at an unused fire;
+  - the old fire and hamlet fires alike.
+- **Rocks in plots** (`homes.ts#plotTileWhy`, `rockAt`, `clearOfRocks`):
+  - a plot may be drawn over rocks;
+  - the house is fitted clear of them (`houseSite` already refused
+    blocked tiles, and the fitter tries other spots);
+  - yard features that would stand on a rock are left out, and the rock
+    stays in the yard;
+  - rubble and walls still refuse a plot. Test: `tests/plotrocks.test.ts`.
+- **Plot and field drawing on the ground's grid**
+  (`render/drafttiles.ts`):
+  - the cursor is a yellow tile, and clicked corners snap to tile centres;
+  - every tile the outline passes through is lit: corners pale, edges
+    gold, the edge that would close the shape dim;
+  - the thin line and dots are gone.
+- **Folk paths** (`folk.ts#layFolkLand`): a path takes its random bend if
+  it crosses nothing blocked. Otherwise it takes the nearest bend that is
+  clear, or the one that crosses least. The user's crossing could not be
+  reproduced: on 60 worlds (5 sites × 12 seeds), no path tile lies within
+  a tile of a ruin, before or after. Asked the user for the seed.
+- **Deer** (`render/nature.ts`):
+  - targets are reached only by a clear straight line;
+  - the nose is checked as well as the body, and tree trunks are solid;
+  - after a blocked step the deer turns to its new target at once;
+  - it repicks after 2 s without progress;
+  - herd-mates keep 1.4 apart, and spawns are checked.
+
+  Measured headless (4 worlds, 300 s):
+
+  | | before | after |
+  |---|---|---|
+  | on a blocked tile or tree | 7.5% of samples | 0 |
+  | overlapping another deer | 344 | 0 |
+  | walking but not moving | 2.4% | 0.17% |
+- **Graphics panel** (`ui/gfx.ts`; key G, or *Graphics…* under Testing
+  tools; remembered per browser in `ss-gfx`):
+  - Controls, all live:
+    - pixel size 1–6 (1 = full resolution);
+    - outlines;
+    - colour steps 0–32;
+    - surface-pattern strength (`worldUniforms.uSurface`);
+    - bloom, exposure, shadows;
+    - grass tufts on or off (the `tufts` group);
+    - grass painted into the turf (`uGrassPaint`, `util.ts#grassPaint`).
+  - Presets:
+    - *Pixel art* (the published look);
+    - *Crisp + textures* (full resolution, pixel-scale patterns kept: what
+      the user asked for);
+    - *Clean*.
+  - Painted grass is irregular three-blade clumps drawn in the ground's
+    shader, with no geometry. It is off by default, for the user to
+    compare.
+- **Bug found on the way:** the composer is built round a render target,
+  so three.js takes that target's width as its CSS width. The old resize
+  handler happened to be right, but setting only the pixel ratio shrank
+  the buffers again (a blurred 1/9 image). The composer is now sized by
+  `main.ts#sizeComposer`: renderer ratio, then the CSS size.
+- **Bug found on the way:** people went to bed with just under 38 food and
+  slept to 0 (sleep isn't interrupted by hunger), which the "nobody goes
+  hungry" test caught on a changed trajectory. Now anyone below 45 eats
+  before turning in (`colony.ts`, the sleep branch).
