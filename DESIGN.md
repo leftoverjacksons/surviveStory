@@ -4666,3 +4666,61 @@ Open questions for §38.10–38.14:
 - Is iron offending the Folk a good tension, or too punishing while the
   Folk are also companions?
 - Carrying: 2 slots each plus the lantern, or a shared team pack?
+
+### 38.16 The user's answers (after §38.15)
+
+1. **The dark returns.** Until a district is cleared, ground goes back to
+   murk soon after the light leaves it (within about a turn). Nothing is
+   remembered as visible; the team knows only what their lights show now,
+   plus echoes (§38.14), which also fade. Once a district is cleared, it
+   stays visible.
+2. **Two carrying slots per person** (plus the lantern). Agreed for now.
+3. **Echoes from home** (explained; the user's answer pending). The
+   question is how much the player knows before choosing a mission:
+   - (a) *scouted*: a seer or watchtower can sound into the murk from the
+     village edge, and the mission offer shows what that found ("two
+     echoes, one deep, near the old school"); XCOM-style briefing, so
+     choosing a mission and packing for it are informed decisions;
+   - (b) *blind*: nothing is known until the team walks in;
+   - (c) *mixed*: soundings from home give only vague echoes (direction and
+     count, never kind), so a mission is chosen with partial knowledge.
+4. **Iron and the Folk** (explained; the user's answer pending). In
+   folklore, cold iron repels the fair folk. The game already uses this at
+   home: iron over a door keeps the Wee Folk's mischief out (§25.5,
+   `sim/fae.ts`). In missions, an iron line would be the strongest barrier
+   against hedges and lamps, but:
+   - a Folk companion near it loses heart (their Nerve drops);
+   - laid in Folk country, it lowers standing;
+   - a salt line does the same job without offence but is weaker and washes
+     away in rain.
+
+   Choosing iron would be choosing effectiveness over the relationship.
+5. **Characters need much more work.** The user: "we're definitely going to
+   have to do a lot of work on character graphics and animation. We could
+   get away with lower fidelity when it was the town building." Missions put
+   the camera close and the player's attention on a few people. Needed
+   (to be coordinated with the user's character branch; this branch does not
+   touch `render/characters.ts`, `render/people.ts`, `scripts/blender/` or
+   `assets/people/`):
+   - **a closer mission camera**, and a figure readable at that distance:
+     a face or clear head shape, distinct silhouettes per person (hair,
+     coat, hat, build), and clothing colours that are theirs;
+   - **held props:** the lantern in hand (with its light attached to the
+     hand bone), a torch, a bell, a satchel showing the two slots;
+   - **animations:**
+     - idle, walk, dash;
+     - move shuttered (hunched, lantern closed under a coat);
+     - raise lantern;
+     - kneel and set something down (a ward, an offering);
+     - draw a line (salt or iron);
+     - listen (head bowed) and sound the Veil (arm out, a visible ring);
+     - offer with both hands;
+     - steady someone (a hand on a shoulder);
+     - flinch, shaken, and breaking (sinking down);
+     - being lured (walking slack toward a light);
+     - being taken (fading into light);
+     - a greeting, and grief, for debriefs and home;
+   - **marks** as attachments or tints (a grey streak, a scar, a Folk gift
+     that glows), so change shows on the figure (§38.4.4);
+   - **spirit figures** of the same fidelity: remnants as the people they
+     were, hedges, lamps, the Hollow.

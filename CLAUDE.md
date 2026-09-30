@@ -268,6 +268,9 @@ reference: Tiny Glade.
     with provenance, spirit × light table); WARDS as placed shapes (lantern pool, salt/iron line, rowan ring,
     bell, hearthstone) with carrying slots; FINDING: signs, passive Sight, SOUNDING (seers' sonar: echoes,
     triangulation, heard by spirits), radio/compass/rod for non-seers. Still design only.
+    §38.16 USER ANSWERS: murk returns about a turn after the light leaves (until cleared); 2 slots each; missions
+    need far better CHARACTER graphics + animation (list in §38.16, coordinate with the user's character branch).
+    Pending: echoes from home (scouted/blind/mixed), iron offending the Folk.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
