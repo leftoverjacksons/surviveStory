@@ -273,6 +273,11 @@ reference: Tiny Glade.
     §38.17 SETTLED: echoes from home are MIXED (count + rough place; a watchtower/strong seer upgrades to a full
     briefing); IRON offends the Folk (companion Nerve, standing in Folk country; salt the gentler option; milder
     fallback noted); mission mechanics start with existing figures, camera no closer. Still open: §38.9.
+    §38.18 STEP 1 BUILT (not published): FREE MOVEMENT in clearings (`sim/veilmove.ts`: VeilGrid, reachField, pathTo,
+    lineOfSight; `Unit.x/z` world coords, `reachOf/walkCost/moveUnit(x,z)/approachPoint/reaches/threatsAt` in haunt.ts;
+    ranges are circles, BESIDE 1.6; lamps need line of sight to lure); two-ring soft overlay + path dots + ghost + threat
+    rings (`render/clearing.ts` ReachOverlay); village paths pulled taut (`path.ts#tautPath`). `__game.veilHoverAt(d)`.
+    Next: step 2 (the dark) per §38.15.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

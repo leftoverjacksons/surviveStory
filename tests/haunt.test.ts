@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { alive, createCommunity } from '../src/sim/community';
 import { createColony, tick } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
-import { Zone, idx, paintZone, toTileX, toTileZ, zoneAllowed } from '../src/sim/world';
+import { Zone, idx, paintZone, tileX, tileZ, toTileX, toTileZ, zoneAllowed } from '../src/sim/world';
 import { act, finish, giveDistrict, startClearing, type Clearing } from '../src/sim/haunt';
 import { playTurn } from '../src/sim/clearbot';
 
@@ -125,7 +125,7 @@ describe('what remnants want', () => {
     s.need = 'object'; s.known = 2;
     const cl = startClearing(col, hi, [alive(col.community)[0].id]) as Clearing;
     const u = cl.units[0];
-    u.tx = s.tx + 1; u.tz = s.tz; u.ap = 2;
+    u.x = tileX(col.world, s.tx) + 1; u.z = tileZ(col.world, s.tz); u.ap = 2;
     expect(act(col, cl, u.id, 'offer_object', s.id)).toMatch(/Search their house/);
     expect(act(col, cl, u.id, 'search', s.id)).toBeNull();
     expect(cl.found[s.id]).toBeTruthy();

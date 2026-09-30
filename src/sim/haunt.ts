@@ -25,6 +25,7 @@ import { Rng } from './rng';
 import { isFullMoon } from './calendar';
 import { disturb, nurture, resonanceAt } from './veil';
 import { Ground, Zone, idx, inBounds, reveal, tileX, tileZ, toTileX, toTileZ, type World } from './world';
+import { VeilGrid, cells, distAt, lineOfSight, pathTo, reachField, ruinAtPoint, standable, walkableTile, type Occupant, type Pt, type ReachField } from './veilmove';
 
 // ---------- data ----------
 
@@ -173,27 +174,7 @@ function markHaunted(w: World, d: District, v: 0 | 1) {
   w.zoneVersion++;
 }
 
-/** Ground a clearing team can cross: anything but water, standing trees and wrecks; ruins can be walked through. */
-function walkable(w: World, tx: number, tz: number): boolean {
-  if (!inBounds(w, tx, tz)) return false;
-  const i = idx(w, tx, tz);
-  if (w.ground[i] === Ground.Water) return false;
-  const t = w.treeAt[i];
-  if (t >= 0 && !w.trees[t].felled) return false;
-  if (w.heaps.some((h) => h.tx === tx && h.tz === tz)) return false;
-  if (w.blocked[i] && !ruinAtTile(w, tx, tz)) return false;
-  return true;
-}
-
-function ruinAtTile(w: World, tx: number, tz: number): Ruin | undefined {
-  const x = tileX(w, tx), z = tileZ(w, tz);
-  return w.ruins.find((r) => {
-    if (Math.abs(x - r.x) > r.w + r.d || Math.abs(z - r.z) > r.w + r.d) return false;
-    const cs = Math.cos(r.yaw), sn = Math.sin(r.yaw);
-    const px = x - r.x, pz = z - r.z;
-    return Math.abs(px * cs - pz * sn) <= r.w / 2 + 0.2 && Math.abs(px * sn + pz * cs) <= r.d / 2 + 0.2;
-  });
-}
+const walkable = walkableTile;
 
 // ---------- the home sim ----------
 
@@ -289,7 +270,10 @@ const first = (s: Survivor) => s.name.split(' ')[0];
 export interface Unit {
   id: number;
   name: string;
-  tx: number; tz: number;
+  /** Where they stand, in world units (DESIGN §38.10: free movement). */
+  x: number; z: number;
+  /** The way they last walked, for drawing them along it. */
+  trail?: Pt[];
   nerve: number; maxNerve: number;
   ap: number;
   sight: number;
@@ -318,7 +302,7 @@ export const faeUnitId = (faeId: number) => -1000 - faeId;
 /** The Folk will walk into the Veil with the village once they are friendly and have been met. */
 export const canAskFolk = (col: Colony) => col.folk.met && col.folk.standing >= 45;
 
-export interface Ward { tx: number; tz: number; r: number }
+export interface Ward { x: number; z: number; r: number }
 
 export interface Clearing {
   haunt: number;
@@ -338,7 +322,13 @@ export interface Clearing {
 }
 
 export const AP_PER_TURN = 2;
-export const STEPS_PER_AP = 4;
+/** How far one action's walk goes (world units), for someone of ordinary stride. */
+export const MOVE_PER_AP = 4.5;
+/** Close enough to touch, hand over, sit beside. */
+export const BESIDE = 1.6;
+/** Every old "within n paces" is now a circle of n + this. */
+const PACE = 0.6;
+const within = (n: number) => n + PACE;
 
 export type Reading = 'none' | 'chill' | 'luminous' | 'coherent';
 const RANK: Reading[] = ['none', 'chill', 'luminous', 'coherent'];
@@ -346,7 +336,13 @@ const RANK: Reading[] = ['none', 'chill', 'luminous', 'coherent'];
 function clRng(cl: Clearing): Rng { const r = new Rng(cl.rng); return r; }
 function saveRng(cl: Clearing, r: Rng) { cl.rng = r.state; }
 
-export const cheb = (a: { tx: number; tz: number }, b: { tx: number; tz: number }) => Math.max(Math.abs(a.tx - b.tx), Math.abs(a.tz - b.tz));
+/** Where a spirit is, in world units (spirits still keep to the tiles they haunt). */
+export const spiritAt = (col: Colony, s: Spirit): Pt => ({ x: tileX(col.world, s.tx), z: tileZ(col.world, s.tz) });
+/** Distance between two things in a clearing: team members (x, z) or spirits (tx, tz). */
+export function dist(col: Colony, a: Unit | Spirit | Pt, b: Unit | Spirit | Pt): number {
+  const pa = 'tx' in a ? spiritAt(col, a) : a, pb = 'tx' in b ? spiritAt(col, b) : b;
+  return Math.hypot(pa.x - pb.x, pa.z - pb.z);
+}
 
 export function clearingHaunt(col: Colony, cl: Clearing): Haunt { return col.haunts[cl.haunt]; }
 export function clearingDistrict(col: Colony, cl: Clearing): District { return col.world.districts[col.haunts[cl.haunt].district]; }
@@ -375,7 +371,7 @@ export function readingOf(col: Colony, u: Unit, s: Spirit): Reading {
   const surv = col.community.survivors.find((x) => x.id === u.id);
   const res = resonanceAt(col, tileX(col.world, s.tx), tileZ(col.world, s.tz));
   const v = u.sight + res * 40 + (surv?.traits.includes('orb_touched') ? 10 : 0) - s.depth;
-  if (cheb(u, s) > 10) return 'none';
+  if (dist(col, u, s) > within(10)) return 'none';
   return v < -10 ? 'none' : v < 10 ? 'chill' : v < 35 ? 'luminous' : 'coherent';
 }
 
@@ -398,18 +394,19 @@ export function startClearing(col: Colony, hauntIdx: number, team: number[], fae
   const ex = d.x - (d.x / len) * 15, ez = d.z - (d.z / len) * 15;
   const units: Unit[] = [];
   const occupied = new Set(h.spirits.filter(present).map((s) => `${s.tx},${s.tz}`));
+  const free = (tx: number, tz: number) => !occupied.has(`${tx},${tz}`) && !units.some((u) => toTileX(w, u.x) === tx && toTileZ(w, u.z) === tz);
   for (const s of members) {
-    const at = nearestFree(w, toTileX(w, ex), toTileZ(w, ez), (tx, tz) => !occupied.has(`${tx},${tz}`) && !units.some((u) => u.tx === tx && u.tz === tz));
+    const at = nearestFree(w, toTileX(w, ex), toTileZ(w, ez), free);
     const maxNerve = 8 + (s.traits.includes('brave') ? 3 : 0) + (s.traits.includes('stoic') ? 2 : 0) - (s.traits.includes('skittish') ? 3 : 0) + Math.round((s.morale - 50) / 20);
-    units.push({ id: s.id, name: first(s), tx: at.tx, tz: at.tz, nerve: maxNerve, maxNerve, ap: AP_PER_TURN, sight: s.sight, anchor: s.sight < 30, state: 'in', lured: false });
+    units.push({ id: s.id, name: first(s), x: tileX(w, at.tx), z: tileZ(w, at.tz), nerve: maxNerve, maxNerve, ap: AP_PER_TURN, sight: s.sight, anchor: s.sight < 30, state: 'in', lured: false });
   }
   // One of the Folk may come too, if they are friendly enough to be asked.
   const fae = faeId !== undefined ? col.folk.beings.find((b) => b.id === faeId) : undefined;
   if (faeId !== undefined && (!fae || !canAskFolk(col))) return 'The Folk won\'t come: they need to be friendly with the village first.';
   if (fae) {
-    const at = nearestFree(w, toTileX(w, ex), toTileZ(w, ez), (tx, tz) => !occupied.has(`${tx},${tz}`) && !units.some((u) => u.tx === tx && u.tz === tz));
+    const at = nearestFree(w, toTileX(w, ex), toTileZ(w, ez), free);
     const k = FAE_UNIT[fae.kind];
-    units.push({ id: faeUnitId(fae.id), name: fae.name, tx: at.tx, tz: at.tz, nerve: k.nerve, maxNerve: k.nerve, ap: AP_PER_TURN, sight: k.sight, anchor: false, state: 'in', lured: false, fae: fae.kind, faeId: fae.id, stride: k.stride });
+    units.push({ id: faeUnitId(fae.id), name: fae.name, x: tileX(w, at.tx), z: tileZ(w, at.tz), nerve: k.nerve, maxNerve: k.nerve, ap: AP_PER_TURN, sight: k.sight, anchor: false, state: 'in', lured: false, fae: fae.kind, faeId: fae.id, stride: k.stride });
     fae.known = true;
   }
   h.attempts++;
@@ -434,54 +431,95 @@ function nearestFree(w: World, tx: number, tz: number, ok: (tx: number, tz: numb
   return { tx, tz };
 }
 
-function blockedFor(col: Colony, cl: Clearing, self?: Unit) {
-  const h = clearingHaunt(col, cl);
-  const occ = new Set<string>();
-  for (const s of h.spirits) if (present(s)) occ.add(`${s.tx},${s.tz}`);
-  for (const u of cl.units) if (u.state === 'in' && u !== self) occ.add(`${u.tx},${u.tz}`);
+// ---------- moving: free, in two rings (DESIGN §38.10) ----------
+
+const grids = new WeakMap<Clearing, VeilGrid>();
+/** The clearing's ground: built once, when first needed (the world doesn't change while a team is in the Veil). */
+export function gridOf(col: Colony, cl: Clearing): VeilGrid {
+  let g = grids.get(cl);
+  if (!g) { const d = clearingDistrict(col, cl); g = new VeilGrid(col.world, d.x, d.z, HAUNT_RADIUS); grids.set(cl, g); }
+  return g;
+}
+
+/** Everyone and everything a unit must keep clear of. */
+export function occupantsFor(col: Colony, cl: Clearing, self?: Unit): Occupant[] {
+  const occ: Occupant[] = [];
+  for (const s of clearingHaunt(col, cl).spirits) if (present(s)) occ.push({ ...spiritAt(col, s), r: 0.75 });
+  for (const u of cl.units) if (u.state === 'in' && u !== self) occ.push({ x: u.x, z: u.z, r: 0.6 });
   return occ;
 }
 
-/** Tiles a unit can reach this turn, with the steps each takes. */
-export function reachable(col: Colony, cl: Clearing, u: Unit): Map<string, number> {
-  const out = new Map<string, number>();
-  if (u.state !== 'in' || u.ap <= 0) return out;
-  const max = u.ap * (u.stride ?? STEPS_PER_AP);
-  const occ = blockedFor(col, cl, u);
-  const w = col.world;
-  const q: [number, number, number][] = [[u.tx, u.tz, 0]];
-  const seen = new Set([`${u.tx},${u.tz}`]);
-  while (q.length) {
-    const [x, z, d] = q.shift()!;
-    if (d > 0) out.set(`${x},${z}`, d);
-    if (d >= max) continue;
-    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
-      if (!dx && !dz) continue;
-      const nx = x + dx, nz = z + dz, k = `${nx},${nz}`;
-      if (seen.has(k) || occ.has(k) || !walkable(w, nx, nz)) continue;
-      // No cutting corners between blocked tiles.
-      if (dx && dz && (!walkable(w, x + dx, z) || !walkable(w, x, z + dz))) continue;
-      seen.add(k);
-      q.push([nx, nz, d + 1]);
-    }
-  }
-  return out;
+/** How far a unit walks for one action. */
+export const moveOf = (u: Unit) => MOVE_PER_AP * (u.stride ?? 4) / 4;
+
+/** The two rings: how far they can walk and still act (inner), and how far with everything they have left (outer). */
+export interface Reach { field: ReachField; inner: number; outer: number }
+const reachMemo = new WeakMap<Clearing, { key: string; reach: Reach }>();
+export function reachOf(col: Colony, cl: Clearing, u: Unit): Reach | null {
+  if (u.state !== 'in' || u.ap <= 0) return null;
+  const occ = occupantsFor(col, cl, u);
+  // The same question is asked several times an action (preview, approach, the walk itself): remember the last answer.
+  const key = `${u.id}|${u.x},${u.z}|${u.ap}|${occ.map((o) => `${o.x},${o.z}`).join(';')}`;
+  const m = reachMemo.get(cl);
+  if (m?.key === key) return m.reach;
+  const per = moveOf(u);
+  const outer = per * u.ap;
+  const reach = { field: reachField(gridOf(col, cl), occ, { x: u.x, z: u.z }, outer), inner: u.ap > 1 ? per : 0, outer };
+  reachMemo.set(cl, { key, reach });
+  return reach;
 }
 
-const inWard = (cl: Clearing, p: { tx: number; tz: number }) => cl.wards.some((wd) => cheb(wd, p) <= wd.r);
+/** Actions a walk costs (null: out of reach). */
+export function walkCost(r: Reach, x: number, z: number, ap: number): number | null {
+  const d = distAt(r.field, x, z);
+  if (!isFinite(d) || d > r.outer + 0.05) return null;
+  return d <= (r.inner || r.outer) + 0.05 && ap > 1 && r.inner ? 1 : ap;
+}
+
+/** Where they would walk, pulled taut. */
+export function previewPath(col: Colony, cl: Clearing, u: Unit, r: Reach, x: number, z: number): Pt[] | null {
+  return pathTo(r.field, gridOf(col, cl), occupantsFor(col, cl, u), x, z);
+}
+
+/** The best place this turn to walk to near a target (within `near` of it, or as close as possible), or null if no nearer. */
+export function approachPoint(col: Colony, cl: Clearing, u: Unit, target: Pt, near = BESIDE - 0.2): { x: number; z: number; cost: number; beside: boolean } | null {
+  const r = reachOf(col, cl, u);
+  if (!r) return null;
+  const g = gridOf(col, cl), occ = occupantsFor(col, cl, u);
+  let best: { x: number; z: number; score: number; gap: number } | null = null;
+  for (const c of cells(r.field)) {
+    const gap = Math.max(0, Math.hypot(c.x - target.x, c.z - target.z) - near);
+    const score = gap * 20 + c.d;
+    if (best && score >= best.score) continue;
+    if (!standable(g, occ, c.x, c.z)) continue;
+    best = { x: c.x, z: c.z, score, gap };
+  }
+  const now = Math.max(0, Math.hypot(u.x - target.x, u.z - target.z) - near);
+  if (!best || best.gap >= now - 0.05) return null;
+  return { x: best.x, z: best.z, cost: walkCost(r, best.x, best.z, u.ap) ?? u.ap, beside: best.gap <= 0.01 };
+}
+
+const inWard = (col: Colony, cl: Clearing, p: Unit | Spirit | Pt) => cl.wards.some((wd) => dist(col, wd, p) <= within(wd.r));
 const say = (cl: Clearing, text: string) => { cl.log.push(text); if (cl.log.length > 40) cl.log.shift(); };
 
 function unitOf(cl: Clearing, id: number) { const u = cl.units.find((x) => x.id === id && x.state === 'in'); return u; }
 function spiritOf(col: Colony, cl: Clearing, id: number) { const s = clearingHaunt(col, cl).spirits.find((x) => x.id === id && present(x)); return s; }
 
-export function moveUnit(col: Colony, cl: Clearing, unitId: number, tx: number, tz: number): string | null {
+/** Walk a unit to a point (world units): one action inside the inner ring, all they have left inside the outer. */
+export function moveUnit(col: Colony, cl: Clearing, unitId: number, x: number, z: number): string | null {
   const u = unitOf(cl, unitId);
   if (!u || cl.outcome) return 'They can\'t move.';
-  const steps = reachable(col, cl, u).get(`${tx},${tz}`);
-  if (steps === undefined) return 'Too far this turn.';
-  u.ap -= Math.ceil(steps / STEPS_PER_AP);
-  u.tx = tx; u.tz = tz;
-  const inside = ruinAtTile(col.world, tx, tz);
+  const r = reachOf(col, cl, u);
+  if (!r) return 'No time left this turn.';
+  const cost = walkCost(r, x, z, u.ap);
+  if (cost === null) return 'Too far this turn.';
+  if (!standable(gridOf(col, cl), occupantsFor(col, cl, u), x, z)) return 'There isn\'t room to stand there.';
+  const path = previewPath(col, cl, u, r, x, z);
+  if (!path) return 'Too far this turn.';
+  u.ap -= cost;
+  u.trail = path;
+  u.x = x; u.z = z;
+  const inside = ruinAtPoint(col.world, x, z);
   if (inside && !cl.log[cl.log.length - 1]?.includes(inside.name)) say(cl, `${u.name} went in through the door of ${inside.name}.`);
   return null;
 }
@@ -501,14 +539,14 @@ export function hasObjectFor(col: Colony, s: Spirit, cl?: Clearing): boolean {
 export function verbsFor(col: Colony, cl: Clearing, u: Unit, s: Spirit): { verb: Verb; ok: boolean; why?: string }[] {
   const out: { verb: Verb; ok: boolean; why?: string }[] = [];
   const reading = readingOf(col, u, s);
-  const near = cheb(u, s) <= 1;
+  const near = dist(col, u, s) <= BESIDE;
   const res = col.community.resources;
   const add = (verb: Verb, ok: boolean, why?: string) => out.push({ verb, ok: ok && u.ap >= VERB_COST[verb], why: u.ap < VERB_COST[verb] ? 'Not enough time this turn.' : ok ? undefined : why });
   const more = s.known < 3 || (s.need === 'company' && s.calm < 3 && s.kind === 'remnant');
   // The Folk's own gifts.
-  if (u.fae === 'elder') add('name', cheb(u, s) <= 3 && !u.used, u.used ? 'The elder has spoken a name already tonight.' : 'Within three paces.');
-  if (u.fae === 'piper') add('play', cheb(u, s) <= 3, 'Within three paces.');
-  add('listen', reading !== 'none' && cheb(u, s) <= 5 && more, reading === 'none' ? 'They can\'t perceive it at all.' : !more ? 'There is nothing more to learn from it.' : 'Get within five paces.');
+  if (u.fae === 'elder') add('name', dist(col, u, s) <= within(3) && !u.used, u.used ? 'The elder has spoken a name already tonight.' : 'Within three paces.');
+  if (u.fae === 'piper') add('play', dist(col, u, s) <= within(3), 'Within three paces.');
+  add('listen', reading !== 'none' && dist(col, u, s) <= within(5) && more, reading === 'none' ? 'They can\'t perceive it at all.' : !more ? 'There is nothing more to learn from it.' : 'Get within five paces.');
   if (s.kind === 'hollow') {
     add('unravel', near, 'Stand beside it.');
     return out;
@@ -540,7 +578,7 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
     if (cl.wardsLeft <= 0) return 'No lanterns left to ward with.';
     if (u.ap < 1) return 'Not enough time this turn.';
     u.ap -= 1; cl.wardsLeft--;
-    cl.wards.push({ tx: u.tx, tz: u.tz, r: 2 });
+    cl.wards.push({ x: u.x, z: u.z, r: 2 });
     say(cl, `${u.name} set down a lantern and drew a ring of salt around it. Inside the light, the Veil holds back.`);
     checkBreak(cl); settleCheck(col, cl);
     return null;
@@ -548,7 +586,7 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
   if (verb === 'steady') {
     const ally = cl.units.find((x) => x.id === targetId && x.state === 'in');
     if (!ally || ally === u) return 'Choose someone else.';
-    if (cheb(u, ally) > 1) return 'Stand beside them.';
+    if (dist(col, u, ally) > BESIDE) return 'Stand beside them.';
     if (u.ap < 1) return 'Not enough time this turn.';
     u.ap -= 1;
     const gain = u.anchor || u.fae === 'hob' ? 3 : 2;
@@ -618,7 +656,7 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
       say(cl, `${cap(s.name)} decided it liked ${u.name}. It will go to live with the Folk.`);
       break;
     case 'unravel': {
-      const dmg = 1 + (inWard(cl, s) ? 1 : 0) + (u.anchor ? 1 : 0);
+      const dmg = 1 + (inWard(col, cl, s) ? 1 : 0) + (u.anchor ? 1 : 0);
       s.integrity = Math.max(0, s.integrity - dmg);
       u.nerve -= u.anchor ? 1 : 2;
       if (s.integrity <= 0) {
@@ -642,9 +680,9 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
       break;
     }
     case 'play': {
-      const calmed = clearingHaunt(col, cl).spirits.filter((x) => present(x) && x.kind !== 'hollow' && cheb(u, x) <= 3);
+      const calmed = clearingHaunt(col, cl).spirits.filter((x) => present(x) && x.kind !== 'hollow' && dist(col, u, x) <= within(3));
       for (const x of calmed) x.calm += 1;
-      const eased = cl.units.filter((x) => x.state === 'in' && cheb(u, x) <= 3);
+      const eased = cl.units.filter((x) => x.state === 'in' && dist(col, u, x) <= within(3));
       for (const x of eased) x.nerve = Math.min(x.maxNerve, x.nerve + 1);
       say(cl, `${u.name} played. ${calmed.length ? `${calmed.map((x) => cap(x.name)).join(' and ')} stopped to listen.` : 'Nothing stirred, but the team breathed easier.'}`);
       break;
@@ -679,16 +717,51 @@ function checkBreak(cl: Clearing) {
   }
 }
 
-/** Pull a unit up to n steps toward a point, over walkable free ground. */
-function pull(col: Colony, cl: Clearing, u: Unit, to: { tx: number; tz: number }, n: number) {
-  const occ = blockedFor(col, cl, u);
-  for (let k = 0; k < n; k++) {
-    if (cheb(u, to) <= 1) break;
-    const nx = u.tx + Math.sign(to.tx - u.tx), nz = u.tz + Math.sign(to.tz - u.tz);
-    if (!walkable(col.world, nx, nz) || occ.has(`${nx},${nz}`)) break;
-    u.tx = nx; u.tz = nz;
+/** Pull a unit up to n paces toward a spirit, over ground they could walk, stopping beside it. */
+function pull(col: Colony, cl: Clearing, u: Unit, to: Spirit, n: number) {
+  const g = gridOf(col, cl), occ = occupantsFor(col, cl, u).filter((o) => Math.hypot(o.x - tileX(col.world, to.tx), o.z - tileZ(col.world, to.tz)) > 0.01);
+  const t = spiritAt(col, to);
+  const from = { x: u.x, z: u.z };
+  for (let k = 0; k < n * 5; k++) {
+    const d = Math.hypot(t.x - u.x, t.z - u.z);
+    if (d <= BESIDE - 0.3) break;
+    const x = u.x + ((t.x - u.x) / d) * 0.2, z = u.z + ((t.z - u.z) / d) * 0.2;
+    if (!standable(g, occ, x, z)) break;
+    u.x = x; u.z = z;
   }
+  if (u.x !== from.x || u.z !== from.z) u.trail = [from, { x: u.x, z: u.z }];
   u.lured = true;
+}
+
+/** What a spirit does to someone standing somewhere, when the turn ends. */
+export type Threat = 'dread' | 'weeping' | 'tricks' | 'lure';
+export const THREAT_TEXT: Record<Threat, string> = { dread: 'its dread', weeping: 'its grief', tricks: 'its tricks', lure: 'its lure' };
+
+/**
+ * Would this spirit reach someone standing at a point? The same rules as the
+ * end of the turn, so the walk preview can show them (DESIGN §38.10). A lamp
+ * must be seen to lure: a wall or a wreck between hides you from it.
+ */
+export function reaches(col: Colony, cl: Clearing, s: Spirit, who: Pick<Unit, 'anchor' | 'fae'> & Pt): Threat | null {
+  if (!present(s)) return null;
+  const d = dist(col, who, s);
+  if (s.kind === 'hollow') return d <= within(4) ? 'dread' : null;
+  if (s.calm >= 2) return null;
+  if (s.kind === 'remnant') return d <= within(2) && !who.anchor ? 'weeping' : null;
+  if (s.kind === 'hedge') return d <= within(5) && !inWard(col, cl, who) ? 'tricks' : null;
+  if (d > within(8) || inWard(col, cl, who) || who.fae) return null;
+  return lineOfSight(gridOf(col, cl), spiritAt(col, s), who) ? 'lure' : null;
+}
+
+/** Everything that would reach someone standing at a point, among the spirits the team can perceive. */
+export function threatsAt(col: Colony, cl: Clearing, u: Unit, x: number, z: number): { spirit: Spirit; threat: Threat }[] {
+  const out: { spirit: Spirit; threat: Threat }[] = [];
+  for (const s of clearingHaunt(col, cl).spirits) {
+    if (!present(s) || (teamReading(col, cl, s) === 'none' && s.known < 1)) continue;
+    const t = reaches(col, cl, s, { x, z, anchor: u.anchor, fae: u.fae });
+    if (t) out.push({ spirit: s, threat: t });
+  }
+  return out;
 }
 
 export function endTurn(col: Colony, cl: Clearing) {
@@ -703,41 +776,43 @@ export function endTurn(col: Colony, cl: Clearing) {
       // Toward morning the night deepens and it presses harder.
       const deep = cl.turn >= 7 ? 1 : 0;
       for (const u of team()) {
-        if (cheb(u, s) > 4) continue;
+        if (!reaches(col, cl, s, u)) continue;
         let loss = (u.anchor ? 1 : 2) + deep;
         if (u.fae) loss = Math.ceil(loss / 2);
-        if (inWard(cl, u)) loss = Math.ceil(loss / 2);
+        if (inWard(col, cl, u)) loss = Math.ceil(loss / 2);
         u.nerve -= loss;
       }
-      if (team().some((u) => cheb(u, s) <= 4)) say(cl, `${cap(s.name)} pressed on everyone near it, like a held breath.`);
+      if (team().some((u) => reaches(col, cl, s, u))) say(cl, `${cap(s.name)} pressed on everyone near it, like a held breath.`);
     } else if (s.kind === 'remnant' && s.calm < 2) {
-      const near = team().filter((u) => cheb(u, s) <= 2 && !u.anchor);
+      const near = team().filter((u) => reaches(col, cl, s, u));
       for (const u of near) u.nerve -= 1;
       if (near.length) say(cl, `${cap(s.name)} wept. ${near.map((u) => u.name).join(' and ')} felt it in their chest.`);
     } else if (s.kind === 'hedge' && s.calm < 2) {
-      const near = team().filter((u) => cheb(u, s) <= 5 && !inWard(cl, u));
+      const near = team().filter((u) => reaches(col, cl, s, u));
       if (!near.length) continue;
       if (near.length >= 2 && rng.chance(0.4)) {
         const [a, b] = rng.shuffle([...near]).slice(0, 2);
-        [a.tx, b.tx] = [b.tx, a.tx]; [a.tz, b.tz] = [b.tz, a.tz];
+        const pa = { x: a.x, z: a.z };
+        a.trail = [pa, { x: b.x, z: b.z }]; b.trail = [{ x: b.x, z: b.z }, pa];
+        [a.x, b.x] = [b.x, a.x]; [a.z, b.z] = [b.z, a.z];
         a.nerve -= 1; b.nerve -= 1;
         say(cl, `${cap(s.name)} laughed, and ${a.name} and ${b.name} were suddenly standing in each other's places.`);
       } else {
-        const u = near.sort((x, y) => cheb(x, s) - cheb(y, s))[0];
+        const u = near.sort((x, y) => dist(col, x, s) - dist(col, y, s))[0];
         pull(col, cl, u, s, 1);
         u.nerve -= 1;
         say(cl, `Something tugged ${u.name} toward the brambles.`);
       }
     } else if (s.kind === 'lamp' && s.calm < 2) {
-      const near = team().filter((u) => cheb(u, s) <= 8 && !inWard(cl, u) && !u.fae).sort((x, y) => x.nerve - y.nerve);
+      const near = team().filter((u) => reaches(col, cl, s, u)).sort((x, y) => x.nerve - y.nerve);
       const u = near[0];
       if (!u) continue;
       pull(col, cl, u, s, 2);
       u.nerve -= 1;
-      if (cheb(u, s) <= 1 && u.nerve <= 3) {
+      if (dist(col, u, s) <= BESIDE && u.nerve <= 3) {
         u.state = 'taken';
         say(cl, `${u.name} walked after ${s.name} with a smile on their face, and the light went out, and so did they.`);
-      } else say(cl, `${u.name} found themselves walking toward ${s.name}${cheb(u, s) <= 1 ? ', close enough to feel its warmth' : ''}.`);
+      } else say(cl, `${u.name} found themselves walking toward ${s.name}${dist(col, u, s) <= BESIDE ? ', close enough to feel its warmth' : ''}.`);
     }
   }
   checkBreak(cl);
