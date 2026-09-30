@@ -1,102 +1,110 @@
 # Character workshop (lab)
 
-Characters authored in code in Blender, one file each, on the game's survivor
-skeleton. It is the counterpart of the figure studio's image-to-3D path
-(`lab/figures/`), and it files its results in the same library. The
-difference is that nothing is inferred:
+Characters built in code in Blender, from **parts** on the game's survivor
+skeleton, and dressed by **recipes**. The parts are also exported as a
+**parts library**, so survivors can be composed at run time: the game decides
+what a survivor wears and carries (role, clothes, equipment), merges those
+parts into one mesh, and re-composes it when anything changes. The figure
+studio (`lab/figures/`, `npm run figures`) shows all of this; Show →
+"Compose (parts)" is the run-time composition. Nothing here touches the game
+yet.
 
-- **Rig:** every part is placed on the game's joint table, and its bones are
-  chosen when it's built.
-- **Colour slots:** every part's material *is* its colour slot, so the game's
-  per-survivor re-colouring works exactly.
-- **Licence:** the result is our own work, with no generator licence attached.
+## Proportions: the "hero" build
+
+- **Source:** measured from the user's in-game references
+  (`concepts/*_ingame.png`).
+- **The numbers:** head with hair about 0.24 of the height (about 1:4.2),
+  skull 0.19; shoulders at 0.67 of the height; crotch to sole 0.34; hands
+  about 0.09; boots 0.13–0.16 tall. This replaces the 1:7 of DESIGN §24.14.
+- **How the build works:** `kit.BUILDS['hero']`. Every bone keeps the game
+  skeleton's direction and only its length changes: joint = parent + adult
+  offset × a factor per segment.
+  - The factors: upper leg 0.71, lower leg 0.61, spine 1.09, neck 0.67,
+    arms 0.9; head ×1.35, hands ×1.6, feet ×1.3; limbs 1.3× thicker.
+  - Because the bones' rest rotations don't change, the game's shared clips
+    (`anims.glb`, keyed as rotations) play unchanged.
+- **Other builds:** `kit.BUILDS['adult']` reproduces the game's current
+  joint table exactly. A child build is one more entry.
 
 ## Files
 
-- `kit.py`: the skeleton (copied from `scripts/blender/survivor.py`), faceted
-  building blocks (`tube`, `ico`, `uvs`, `box`, `ring`, `spike`, `sheet`,
-  `mirrored`, `jitter`), weighting (rigid to a bone, or blended among chosen
-  bones) and export.
-- `characters/<name>.py`: one character. It defines `NAME`, `BODY` (`man`,
-  `woman` or `child`: the game's pool), a palette, and
-  `build(kit) → [(object, bones)]`.
-- `concepts/`: the concept art each character is built from.
-- `build.py <name>`: builds the character, rigs it, exports it, packs it with
-  `lab/figures/pack.mjs`, and files it in `lab/figures/library/` (with
-  `library.json`, marked "own work").
-- `shots.mjs <library file> <dir>`: with `npm run figures` running, takes a
-  turnaround (front, 3/4, side, back), walking frames, and game-zoom pixel
-  views beside the current figures, plus the library thumbnail.
+- `kit.py`: builds and the joint derivation, faceted building blocks (`tube`,
+  `ico` with facet decimation, `uvs`, `box`, `ring`, `spike`, `sheet` with
+  materials per row, `mirrored`), weighting (rigid, or blended among chosen
+  bones), `skin_to`, export.
+- `parts.py`: the catalogue, one part per slot. Every position is relative to
+  the build's joints and head, so each part fits any build.
+  - body: `body.base` (neck, arms, shins, mitten hands)
+  - head: `head.face`
+  - hair: `curly`, `bun`
+  - top: `tunic`, `shirt_rolled`
+  - bottom: `baggy`, `overalls`
+  - legs: `wraps`
+  - feet: `boots`
+  - hands: `gloves_fingerless`
+  - neck: `scarf`, `bandana`
+  - waist: `belt`
+  - straps: `chest`
+  - bag: `satchel`, `plant_sack`
+  - back: `bedroll`
+  - outer: `cloak`
+  - held: `lantern`, `trowel`
+- `recipes.py`: characters as data: build, pool (man, woman or child), one part
+  per slot, colours by colour slot. So far `folk_scout` and `gardener`.
+- `build.py`:
+  - `build.py <recipe>...`: whole characters into the studio library
+    (`lab/figures/library/<pool>_<recipe>.glb`).
+  - `build.py --parts [--build hero]`: every part as its own skinned mesh on
+    one skeleton, as `parts_<build>.glb` (133 KB for 21 parts) plus
+    `parts_<build>.json` (the manifest: categories, colour slots, triangle
+    counts, recipes).
+- Checking the result, with `npm run figures` running:
+  - `shots.mjs`: turnaround and game-zoom views;
+  - `sheet.py`: lays those out beside the concept;
+  - `silhouette.mjs` and `compare.py`: silhouette overlap (IoU) against the
+    concept, band by band.
+- `concepts/`: the reference art.
 
-- `silhouette.mjs <library file> <out.png>` and `compare.py <concept> <silhouette> <overlay>`:
-  - the model's front silhouette, straight on, arms raised to the concept's T-pose;
-  - overlaid on the concept at the same height, with the overlap (IoU) and each
-    band's width in both.
-  - Overlay colours: red is shape the model lacks, blue is shape it has too much of.
-  - Arm and cloak bands are distorted by the T-pose (the cloak follows the
-    arms), so read those by eye. Head, trousers and boots compare directly.
+## Run-time composition (studio: `lab/figures/compose.ts`, `stage.ts`)
 
-```
-python lab/workshop/build.py folk_scout        # Python with bpy (lab/figures/.venv-bpy)
-npm run figures                                 # the studio: Show → Whole library
-node lab/workshop/shots.mjs man_folk_scout.glb <dir>
-```
+1. Load `parts_<build>.glb` once.
+2. For a survivor, clone it, keep the chosen parts, and merge them into one
+   skinned mesh. The game's `mergeOutfit` already merges an outfit's parts
+   this way, so the result is one draw call.
+3. Apply colours: the recipe's palette, or the game's per-survivor variety
+   (`makeCharacter`).
+4. When a survivor's clothes or equipment change, compose again.
 
-## Conventions
+The crowd view dresses random survivors by **role rules** (`ROLES` in
+`compose.ts`: gardener, scout, salvager, villager), a sketch of the rule the
+game would apply from its own data.
 
-- **Axes:** Blender Z-up; the figure faces -Y, so its right hand is at -X.
-  Adult height is 1.69 m to the top of the head.
-- **Proportions** follow the game's figures: head about 1:7 (DESIGN §24.14),
-  the same joint table for everyone.
-- **Slots by material name:**
-  - `skin*` and `hair*` are re-coloured per survivor;
-  - `eye*`, `boot*`, `strap*`, `pack*`, `roll*` and `hat*` keep their colour;
-  - any other name is clothing, re-hued per survivor at the same lightness
-    (near-greys stay).
-  - Note that each clothing slot gets its own hue offset in the game.
-- **Budget:** the game's figures are about 2,750 triangles. The Folk Scout
-  is about 4,200.
-- **Silhouette first:** a survivor is about 30 px tall at the game's default
-  zoom. Hem shapes, bedrolls, hair mass and hats read at that size; eyes and
-  buckles only show close up.
+## Colour slots (material names, as the game reads them)
 
-## Folk Scout (first character)
+- `skin*`, `hair*`: re-coloured per survivor.
+- `eye*`, `boot*`, `strap*`, `pack*`, `roll*`, `hat*`: colours kept.
+- Anything else is clothing, re-hued per survivor at the same lightness
+  (near-greys stay).
+- Held items use `pack_*`, so they keep their colours.
 
-`characters/folk_scout.py`, from `concepts/folk_scout.webp`:
+## For the game (not done yet: needs the user's go-ahead)
 
-- tunic, baggy patched trousers, leg wraps with bands, boots with soles;
-- sleeves, wrist wraps, fingerless gloves;
-- a head with ears, eyes, brows and nose; curls and a short fringe;
-- a scarf with a tail, a belt and buckle, chest straps, a satchel and sack;
-- a bedroll;
-- a two-tier jagged cloak open at the front, and a hood.
+- **`characters.ts`:** load `parts_hero.glb`, and compose each survivor from
+  sim data. The mapping: role → top, bottom and tool; season → outerwear;
+  equipment → held item and bag; family and age → hair and build.
+- **Children:** a child build.
+- **Hue grouping:** re-hue related slots together (`cloth_cloak` with
+  `cloth_cloak_edge`), grouped by name prefix.
+- **Triangle budget:** a full scout is about 5,100 triangles (the cloak alone
+  is 1,160); the gardener is about 3,000. The game's figures are about 2,750.
 
-95 parts, about 4,300 triangles.
+## History
 
-- `shots/folk_scout.png` shows, left to right: the concept, then front, 3/4,
-  back, a walking frame, head close-ups, and the figure at the game's maximum
-  zoom.
-- `shots/folk_scout_silhouette.png` is the silhouette comparison.
-
-### Changes after v1 (measured with `compare.py`)
-
-IoU went from 0.719 to 0.747.
-
-- **Head: 1.12× larger** (the user's request). Measured, the v1 head was
-  already the concept's height (17% against 18%), so the "small head" came from
-  the face. The face now has bigger, flatter eyes with large irises, thicker
-  brows, a mouth, a small round nose and warmer skin. The head mesh is
-  subdivided and collapse-decimated, giving small irregular facets rather than
-  big flat cheeks.
-- **Trousers:** baggier. At the thighs the width was 0.24 of the height
-  against the concept's 0.34.
-- **Boots:** bigger. The boot band was 0.205 against 0.277; the rest of that
-  gap is the concept's wider stance.
-- **Cloak:** hangs longer at the sides, with a sun-bleached hem band (its own
-  slot, `cloth_cloak_edge`).
-
-### Open
-
-- **Hue offsets in the game:** it re-hues each clothing slot with its own hue
-  offset, so `cloth_cloak` and `cloth_cloak_edge` would drift apart per
-  survivor. That needs a small game-side change: group slots by name prefix.
+- **v1–v2 of the Folk Scout** were a single file at the game's 1:7
+  proportions. They're superseded by parts, recipes and the hero build.
+  Silhouette IoU went from 0.719 to 0.747 across those versions.
+- **Shots:**
+  - `shots/folk_scout.png`, `shots/gardener.png`: each reference, then front,
+    3/4, back, walking, and game zoom;
+  - `shots/compose.png`: gardener from parts, the gardener re-dressed,
+    a village crowd, and the crowd in pixel mode.

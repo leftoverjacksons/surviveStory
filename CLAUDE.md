@@ -226,8 +226,12 @@ reference: Tiny Glade.
     (MIT) is the candidate for shipped figures but needs a GPU. User's GPUs: RTX 2070 8 GB (home), RTX 3050 Ti 4 GB (laptop).
   - CHARACTER WORKSHOP (lab, `lab/workshop/`, README there): characters authored in code in Blender on the game's
     skeleton (`kit.py` faceted parts + weighting; `characters/<name>.py`; `build.py <name>` → studio library;
-    `shots.mjs` turnaround). First: Folk Scout from the user's concept (~4.2k tris). The user proposed this route
-    after the image-to-3D test; iterate on it with them.
+    `shots.mjs` turnaround). The user proposed this route after the image-to-3D test; iterate on it with them.
+    NOW PARTS + RECIPES + "HERO" BUILD (user's in-game references, ~1:4.2 head, short legs, big hands/boots; supersedes
+    §24.14's 1:7; bones keep directions so anims.glb still fits): `parts.py` (21 parts by slot), `recipes.py` (folk_scout,
+    gardener), `build.py --parts` → `lab/figures/library/parts_hero.glb` + manifest; studio Show → Compose (runtime
+    composition, role-based village crowd). User's goal: the game decides each survivor's parts (role, clothes,
+    equipment) and re-composes on change. Game integration NOT done (ask first).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

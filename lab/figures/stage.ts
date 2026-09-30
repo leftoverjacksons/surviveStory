@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { makeCharacter, type Character, type Outfit } from '../../src/render/characters';
 
 const GAME = import.meta.glob('../../src/assets/people/*.glb', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
@@ -47,7 +48,20 @@ function merge(root: THREE.Object3D): THREE.SkinnedMesh | null {
   return mesh;
 }
 
-export interface StageFigure { name: string; url: string; child?: boolean; ref?: boolean }
+/**
+ * A figure to show: a whole figure (.glb at `url`), or one composed at run time from a parts
+ * library (`url` = the library, `compose.parts` = the parts to use; lab/workshop/build.py --parts),
+ * the way the game would dress a survivor from their role, clothes and equipment.
+ * `seed` sets the per-survivor re-colouring when own colours are off.
+ */
+export interface StageFigure {
+  name: string; url: string; child?: boolean; ref?: boolean;
+  compose?: { parts: string[]; palette?: Record<string, string> };
+  seed?: number;
+}
+
+/** glTF node names lose '.', '[', ']', ':' and '/' in three.js (PropertyBinding.sanitizeNodeName). */
+const nodeName = (n: string) => n.replace(/\s/g, '_').replace(/[[\].:/]/g, '');
 
 export class Stage {
   renderer: THREE.WebGLRenderer;
@@ -95,18 +109,40 @@ export class Stage {
 
   static ref(name: string): StageFigure { return { name, url: gameUrl(name)!, child: name.startsWith('child'), ref: true }; }
 
+  private libs = new Map<string, Promise<THREE.Object3D>>();
+
+  /** The scene for a figure: loaded, or cloned from a parts library keeping only the chosen parts. */
+  private async figureScene(f: StageFigure): Promise<THREE.Object3D> {
+    if (!f.compose) return (await this.loader.loadAsync(f.url)).scene;
+    if (!this.libs.has(f.url)) this.libs.set(f.url, this.loader.loadAsync(f.url).then((g) => g.scene));
+    const lib = await this.libs.get(f.url)!;
+    const root = cloneSkinned(lib);
+    root.userData = lib.userData;
+    const keep = new Set(f.compose.parts.map(nodeName));
+    // Each part is a node (a mesh, or a group of one mesh per colour slot) directly under the armature.
+    const drop: THREE.Object3D[] = [];
+    root.traverse((o) => { if (((o as THREE.SkinnedMesh).isSkinnedMesh || o.type === 'Group') && o.parent && !(o as THREE.Bone).isBone && !keep.has(o.name) && !keep.has(o.parent.name)) drop.push(o); });
+    for (const o of drop) if (!keep.has(o.name)) o.removeFromParent();
+    return root;
+  }
+
   private async outfit(f: StageFigure): Promise<Outfit | null> {
-    const gltf = await this.loader.loadAsync(f.url);
-    if (!merge(gltf.scene)) return null;
-    const ex = (gltf.scene.userData ?? {}) as { slots?: string[]; colors?: [number, number, number][] };
-    gltf.scene.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(gltf.scene, true);
+    const scene = await this.figureScene(f);
+    if (!merge(scene)) return null;
+    const ex = (scene.userData ?? {}) as { slots?: string[]; colors?: [number, number, number][] };
+    scene.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(scene, true);
     let slots = ex.slots ?? [];
     // "Own colours": a studio figure keeps its authored skin, hair and clothing (renamed like a pack,
     // which the game never re-colours); off, it is re-coloured per survivor as in the game.
     if (this.opts.raw && !f.ref) slots = slots.map(() => 'pack'); // (a name with 'hair' in it would still be re-coloured)
+    let colors = ex.colors ?? [];
+    if (f.compose?.palette) {  // the recipe's colours over the library's defaults
+      const pal = f.compose.palette, c = new THREE.Color();
+      colors = (ex.slots ?? []).map((n, i) => (pal[n] ? (c.set(pal[n]), [c.r, c.g, c.b] as [number, number, number]) : colors[i]));
+    }
     const child = !!f.child;
-    return { name: f.name, female: false, child, template: gltf.scene, slots, colors: ex.colors ?? [], height: child ? this.adultH : box.max.y - box.min.y || 1 };
+    return { name: f.name, female: false, child, template: scene, slots, colors, height: child ? this.adultH : box.max.y - box.min.y || 1 };
   }
 
   /** Show these figures in a row, replacing whatever was shown. */
@@ -118,7 +154,8 @@ export class Stage {
     this.chars = [];
     const shown = outfits.filter((o): o is Outfit => !!o);
     shown.forEach((o, i) => {
-      const c = makeCharacter(o, { skin: i, hair: i + 2, hue: 0.08 + i * 0.21, tall: o.child ? 0.74 : 1 }, this.mat);
+      const n = figs.find((f) => f.name === o.name)?.seed ?? i;
+      const c = makeCharacter(o, { skin: n, hair: n + 2, hue: 0.08 + n * 0.21, tall: o.child ? 0.74 : 1 }, this.mat);
       c.root.position.x = (i - (shown.length - 1) / 2) * 1.1;
       this.group.add(c.root);
       this.chars.push(c);

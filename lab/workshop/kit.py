@@ -13,37 +13,85 @@ survivor at the same lightness; near-greys and whites stay as authored).
 import bpy, bmesh, math, random
 from mathutils import Vector, Matrix
 
-# ---------------------------------------------------------------- skeleton (from scripts/blender/survivor.py)
-J = dict(
+# ---------------------------------------------------------------- skeleton and builds
+# The game's adult joint table (scripts/blender/survivor.py). Other builds keep
+# every bone's DIRECTION and change only lengths (joint = parent + adult offset
+# × a factor per segment), so the bones' rest rotations, and with them the
+# game's shared clips (anims.glb, which key rotations), fit every build.
+ADULT = dict(
     pelvis=(0, 0, 0.86), waist=(0, 0, 0.98), belly=(0, 0, 1.1), chest=(0, 0, 1.24), neck=(0, 0, 1.38), head=(0, 0, 1.44),
     hip=(0.1, 0.005, 0.82), knee=(0.108, 0.0, 0.46), ankle=(0.112, 0.015, 0.1), toe=(0.112, -0.1, 0.045),
     shoulder=(0.195, 0, 1.31), elbow=(0.25, 0.01, 1.06), wrist=(0.27, -0.02, 0.84), hand=(0.277, -0.035, 0.76),
 )
-HEAD_C = (0, -0.005, 1.555)
-HEAD_R = (0.108, 0.117, 0.13)
-TOP = 1.69
+ADULT_HEAD_C, ADULT_HEAD_R = (0, -0.005, 1.555), (0.108, 0.117, 0.13)
+
+# Builds: segment length factors, head/hand/foot size, and thickness (limbs, torso).
+BUILDS = {
+    # The game's current figures (DESIGN §24.14): head about 1:7.
+    'adult': dict(spine=1, neck=1, upper_leg=1, lower_leg=1, foot=1, upper_arm=1, lower_arm=1, hand=1,
+                  head=1, head_lift=0, shoulder_x=1, shoulder_z=1, hip_x=1, limb=1, torso=1),
+    # The user's in-game references (lab/workshop/concepts/*_ingame.png), measured: head with hair
+    # about 0.24 of the height, legs (crotch to sole) about 0.34, shoulders at about 0.67, hands
+    # about 0.09, boots 0.13-0.16. Stocky and about four heads tall.
+    'hero': dict(spine=1.09, neck=0.67, upper_leg=0.71, lower_leg=0.61, foot=1.3, upper_arm=0.9, lower_arm=0.9, hand=1.6,
+                 head=1.35, head_lift=0.03, shoulder_x=1.05, shoulder_z=0.8, hip_x=1.1, limb=1.3, torso=1.15),
+}
+
+def derive(b):
+    """Joint table, head centre and radii for build b (a BUILDS entry)."""
+    A = {k: Vector(v) for k, v in ADULT.items()}
+    off = lambda a, c: A[a] - A[c]
+    hip_off = off('hip', 'pelvis'); hip_off = Vector((hip_off.x * b['hip_x'], hip_off.y, hip_off.z))
+    # The pelvis height that puts the soles on the ground.
+    P = -hip_off.z - off('knee', 'hip').z * b['upper_leg'] - off('ankle', 'knee').z * b['lower_leg'] + A['ankle'].z * b['foot']
+    J = {'pelvis': Vector((0, 0, P))}
+    for j, parent, f in (('waist', 'pelvis', 'spine'), ('belly', 'waist', 'spine'), ('chest', 'belly', 'spine'),
+                         ('neck', 'chest', 'spine'), ('head', 'neck', 'neck')):
+        J[j] = J[parent] + off(j, parent) * b[f]
+    J['hip'] = J['pelvis'] + hip_off
+    J['knee'] = J['hip'] + off('knee', 'hip') * b['upper_leg']
+    J['ankle'] = J['knee'] + off('ankle', 'knee') * b['lower_leg']
+    J['toe'] = J['ankle'] + off('toe', 'ankle') * b['foot']
+    so = off('shoulder', 'neck')
+    J['shoulder'] = J['neck'] + Vector((so.x * b['shoulder_x'], so.y, so.z * b['shoulder_z']))
+    J['elbow'] = J['shoulder'] + off('elbow', 'shoulder') * b['upper_arm']
+    J['wrist'] = J['elbow'] + off('wrist', 'elbow') * b['lower_arm']
+    J['hand'] = J['wrist'] + off('hand', 'wrist') * b['hand']
+    hc = J['head'] + (Vector(ADULT_HEAD_C) - A['head']) * b['head'] + Vector((0, 0, b['head_lift']))  # lift: the chin clears the neckwear
+    hr = tuple(r * b['head'] for r in ADULT_HEAD_R)
+    return {k: tuple(v) for k, v in J.items()}, tuple(hc), hr
 
 def _sym(name, h, t, parent):
     return [(f'{name}.{side}', (h[0] * s, h[1], h[2]), (t[0] * s, t[1], t[2]), parent.replace('*', side) if parent else None)
             for side, s in (('L', 1), ('R', -1))]
 
-BONES = [
-    ('Root', (0, 0, 0), (0, 0.15, 0), None),
-    ('Hips', J['pelvis'], J['waist'], 'Root'),
-    ('Abdomen', J['waist'], J['belly'], 'Hips'),
-    ('Torso', J['belly'], J['chest'], 'Abdomen'),
-    ('Chest', J['chest'], J['neck'], 'Torso'),
-    ('Neck', J['neck'], J['head'], 'Chest'),
-    ('Head', J['head'], (0, 0, TOP), 'Neck'),
-]
-BONES += _sym('Shoulder', (0.04, 0, J['shoulder'][2]), J['shoulder'], 'Chest')
-BONES += _sym('UpperArm', J['shoulder'], J['elbow'], 'Shoulder.*')
-BONES += _sym('LowerArm', J['elbow'], J['wrist'], 'UpperArm.*')
-BONES += _sym('Wrist', J['wrist'], J['hand'], 'LowerArm.*')
-BONES += _sym('UpperLeg', J['hip'], J['knee'], 'Hips')
-BONES += _sym('LowerLeg', J['knee'], J['ankle'], 'UpperLeg.*')
-BONES += _sym('Foot', J['ankle'], J['toe'], 'LowerLeg.*')
-DEFORM = [n for n, *_ in BONES if n != 'Root']
+def set_build(name):
+    """Make `name` the current build: J, HEAD_C, HEAD_R, TOP, B (its factors), BONES, SEGS, DEFORM."""
+    global J, HEAD_C, HEAD_R, TOP, B, BUILD, BONES, SEGS, DEFORM
+    BUILD, B = name, BUILDS[name]
+    J, HEAD_C, HEAD_R = derive(B)
+    TOP = HEAD_C[2] + HEAD_R[2]  # top of the skull
+    # The Head bone keeps the adult's direction (straight up) and length ratio.
+    BONES = [
+        ('Root', (0, 0, 0), (0, 0.15, 0), None),
+        ('Hips', J['pelvis'], J['waist'], 'Root'),
+        ('Abdomen', J['waist'], J['belly'], 'Hips'),
+        ('Torso', J['belly'], J['chest'], 'Abdomen'),
+        ('Chest', J['chest'], J['neck'], 'Torso'),
+        ('Neck', J['neck'], J['head'], 'Chest'),
+        ('Head', J['head'], (0, 0, J['head'][2] + 0.25 * B['head']), 'Neck'),
+    ]
+    BONES += _sym('Shoulder', (0.04 * B['shoulder_x'], 0, J['shoulder'][2]), J['shoulder'], 'Chest')
+    BONES += _sym('UpperArm', J['shoulder'], J['elbow'], 'Shoulder.*')
+    BONES += _sym('LowerArm', J['elbow'], J['wrist'], 'UpperArm.*')
+    BONES += _sym('Wrist', J['wrist'], J['hand'], 'LowerArm.*')
+    BONES += _sym('UpperLeg', J['hip'], J['knee'], 'Hips')
+    BONES += _sym('LowerLeg', J['knee'], J['ankle'], 'UpperLeg.*')
+    BONES += _sym('Foot', J['ankle'], J['toe'], 'LowerLeg.*')
+    DEFORM = [n for n, *_ in BONES if n != 'Root']
+    SEGS = {n: (Vector(h), Vector(t)) for n, h, t, _ in BONES if n != 'Root'}
+
+set_build('adult')
 
 def V(*p):
     return Vector(p[0] if len(p) == 1 else p)
@@ -258,8 +306,6 @@ def seg_dist(p, a, b):
     t = max(0, min(1, (p - a).dot(ab) / max(ab.length_squared, 1e-9)))
     return (a + ab * t - p).length
 
-SEGS = {n: (V(h), V(t)) for n, h, t, _ in BONES if n != 'Root'}
-
 def weight(ob, bone):
     """bone=None: blend the nearest bones (distance^-4). bone='Chest' etc.: rigid.
     bone=[names]: blend among those bones only (cloaks, skirts)."""
@@ -290,9 +336,8 @@ def make_armature():
     bpy.ops.object.mode_set(mode='OBJECT')
     return ob
 
-def assemble(name, parts):
-    """parts: [(object, bone spec)] → one skinned mesh on the game's skeleton."""
-    rig = make_armature()
+def skin_to(rig, name, parts):
+    """parts: [(object, bone spec)] → one skinned mesh `name` on `rig`."""
     objs = []
     for ob, bone in parts:
         weight(ob, bone)
@@ -301,21 +346,32 @@ def assemble(name, parts):
     for ob in objs:
         ob.select_set(True)
     bpy.context.view_layer.objects.active = objs[0]
-    bpy.ops.object.join()
+    if len(objs) > 1:
+        bpy.ops.object.join()
     ob = bpy.context.active_object
-    ob.name = f'{name}_mesh'
+    ob.name = name
     for p in ob.data.polygons:
         p.use_smooth = False  # faceted, like the game's pixel look
     mod = ob.modifiers.new('rig', 'ARMATURE'); mod.object = rig
     ob.parent = rig
-    return rig, ob
+    return ob
 
-def export(path, rig, ob):
+def assemble(name, parts):
+    """parts: [(object, bone spec)] → the armature and one skinned mesh on it."""
+    rig = make_armature()
+    return rig, skin_to(rig, f'{name}_mesh', parts)
+
+def export_many(path, rig, meshes):
     bpy.ops.object.select_all(action='DESELECT')
-    rig.select_set(True); ob.select_set(True)
+    rig.select_set(True)
+    for ob in meshes:
+        ob.select_set(True)
     bpy.ops.export_scene.gltf(filepath=path, export_format='GLB', use_selection=True, export_animations=False,
                               export_apply=False, export_yup=True, export_skins=True, export_morph=False,
                               export_materials='EXPORT')
+
+def export(path, rig, ob):
+    export_many(path, rig, [ob])
 
 def triangles(ob):
     return sum(len(p.vertices) - 2 for p in ob.data.polygons)

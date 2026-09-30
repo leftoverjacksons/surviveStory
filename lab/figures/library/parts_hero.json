@@ -1,0 +1,268 @@
+{
+ "build": "hero",
+ "parts": {
+  "body.base": {
+   "category": "body",
+   "slots": [
+    "skin"
+   ],
+   "triangles": 284
+  },
+  "head.face": {
+   "category": "head",
+   "slots": [
+    "skin",
+    "eye_white",
+    "eye",
+    "hair"
+   ],
+   "triangles": 480
+  },
+  "hair.curly": {
+   "category": "hair",
+   "slots": [
+    "hair"
+   ],
+   "triangles": 749
+  },
+  "hair.bun": {
+   "category": "hair",
+   "slots": [
+    "hair",
+    "hat_band"
+   ],
+   "triangles": 315
+  },
+  "top.tunic": {
+   "category": "top",
+   "slots": [
+    "cloth_tunic",
+    "cloth_wraps"
+   ],
+   "triangles": 312
+  },
+  "top.shirt_rolled": {
+   "category": "top",
+   "slots": [
+    "cloth_shirt"
+   ],
+   "triangles": 344
+  },
+  "bottom.baggy": {
+   "category": "bottom",
+   "slots": [
+    "cloth_trousers",
+    "strap_patch"
+   ],
+   "triangles": 244
+  },
+  "bottom.overalls": {
+   "category": "bottom",
+   "slots": [
+    "cloth_denim",
+    "strap_button",
+    "strap_patch"
+   ],
+   "triangles": 520
+  },
+  "legs.wraps": {
+   "category": "legs",
+   "slots": [
+    "cloth_wraps",
+    "cloth_wrap_line"
+   ],
+   "triangles": 352
+  },
+  "feet.boots": {
+   "category": "feet",
+   "slots": [
+    "boot",
+    "boot_sole",
+    "boot_lace"
+   ],
+   "triangles": 480
+  },
+  "hands.gloves_fingerless": {
+   "category": "hands",
+   "slots": [
+    "strap_glove"
+   ],
+   "triangles": 216
+  },
+  "neck.scarf": {
+   "category": "neck",
+   "slots": [
+    "cloth_scarf"
+   ],
+   "triangles": 188
+  },
+  "neck.bandana": {
+   "category": "neck",
+   "slots": [
+    "cloth_bandana"
+   ],
+   "triangles": 88
+  },
+  "waist.belt": {
+   "category": "waist",
+   "slots": [
+    "strap",
+    "strap_buckle"
+   ],
+   "triangles": 108
+  },
+  "straps.chest": {
+   "category": "straps",
+   "slots": [
+    "strap",
+    "strap_buckle"
+   ],
+   "triangles": 104
+  },
+  "bag.satchel": {
+   "category": "bag",
+   "slots": [
+    "pack",
+    "strap",
+    "pack_sack"
+   ],
+   "triangles": 116
+  },
+  "bag.plant_sack": {
+   "category": "bag",
+   "slots": [
+    "pack",
+    "strap",
+    "pack_leaf",
+    "pack_flower",
+    "pack_flower_eye"
+   ],
+   "triangles": 230
+  },
+  "back.bedroll": {
+   "category": "back",
+   "slots": [
+    "roll",
+    "strap"
+   ],
+   "triangles": 128
+  },
+  "outer.cloak": {
+   "category": "outer",
+   "slots": [
+    "cloth_cloak",
+    "cloth_cloak_edge"
+   ],
+   "triangles": 1160
+  },
+  "held.lantern": {
+   "category": "held",
+   "slots": [
+    "pack_metal",
+    "pack_glass"
+   ],
+   "triangles": 204
+  },
+  "held.trowel": {
+   "category": "held",
+   "slots": [
+    "pack_wood",
+    "pack_steel"
+   ],
+   "triangles": 60
+  }
+ },
+ "recipes": {
+  "folk_scout": {
+   "build": "hero",
+   "pool": "man",
+   "parts": {
+    "body": "body.base",
+    "head": "head.face",
+    "hair": "hair.curly",
+    "top": "top.tunic",
+    "bottom": "bottom.baggy",
+    "legs": "legs.wraps",
+    "feet": "feet.boots",
+    "hands": "hands.gloves_fingerless",
+    "neck": "neck.scarf",
+    "waist": "waist.belt",
+    "straps": "straps.chest",
+    "bag": "bag.satchel",
+    "back": "back.bedroll",
+    "outer": "outer.cloak",
+    "held": "held.lantern"
+   },
+   "palette": {
+    "skin": "#b27a50",
+    "hair": "#241a14",
+    "cloth_tunic": "#cdbb92",
+    "cloth_trousers": "#4a403b",
+    "cloth_cloak": "#7c9656",
+    "cloth_cloak_edge": "#a8a466",
+    "cloth_scarf": "#d4836a"
+   }
+  },
+  "gardener": {
+   "build": "hero",
+   "pool": "woman",
+   "parts": {
+    "body": "body.base",
+    "head": "head.face",
+    "hair": "hair.bun",
+    "top": "top.shirt_rolled",
+    "bottom": "bottom.overalls",
+    "feet": "feet.boots",
+    "hands": "hands.gloves_fingerless",
+    "neck": "neck.bandana",
+    "bag": "bag.plant_sack",
+    "held": "held.trowel"
+   },
+   "palette": {
+    "skin": "#d9a57c",
+    "hair": "#1c1a22",
+    "hat_band": "#d8c070",
+    "cloth_shirt": "#e2d3ad",
+    "cloth_denim": "#3e5a7e",
+    "cloth_bandana": "#6f7f3a",
+    "strap_glove": "#4a4a48",
+    "boot": "#7a5234"
+   }
+  }
+ },
+ "defaults": {
+  "skin": "#b27a50",
+  "eye": "#20140c",
+  "eye_white": "#efe6d6",
+  "hair": "#1c1a22",
+  "hat_band": "#d8c070",
+  "cloth_tunic": "#cdbb92",
+  "cloth_wraps": "#d8c9a3",
+  "cloth_shirt": "#e2d3ad",
+  "cloth_trousers": "#4a403b",
+  "strap_patch": "#8a9a6a",
+  "cloth_denim": "#3e5a7e",
+  "strap_button": "#b8a878",
+  "cloth_wrap_line": "#a8946c",
+  "boot": "#7a5234",
+  "boot_sole": "#3a281b",
+  "boot_lace": "#c9a36a",
+  "strap_glove": "#46332a",
+  "cloth_scarf": "#d4836a",
+  "cloth_bandana": "#6f7f3a",
+  "strap": "#553823",
+  "strap_buckle": "#b39d73",
+  "pack": "#8a6238",
+  "pack_sack": "#d6c69c",
+  "pack_leaf": "#5f8a3e",
+  "pack_flower": "#f2ecd8",
+  "pack_flower_eye": "#e0b040",
+  "roll": "#a4733e",
+  "cloth_cloak": "#7c9656",
+  "cloth_cloak_edge": "#a8a466",
+  "pack_metal": "#4a3a2e",
+  "pack_glass": "#ffd27a",
+  "pack_wood": "#8a5a34",
+  "pack_steel": "#8f9294"
+ }
+}

@@ -1,12 +1,24 @@
 [
  {
   "file": "man_folk_scout.glb",
+  "added": "2026-09-30 20:14",
   "name": "folk scout",
   "body": "man",
-  "from": "lab/workshop/characters/folk_scout.py",
-  "generator": "workshop (Blender, authored in code)",
+  "build": "hero",
+  "recipe": "folk_scout",
+  "generator": "workshop (Blender, parts + recipe)",
   "licence": "own work",
-  "triangles": 4324,
-  "added": "2026-09-30 19:28"
+  "triangles": 5125
+ },
+ {
+  "file": "woman_gardener.glb",
+  "added": "2026-09-30 20:14",
+  "name": "gardener",
+  "body": "woman",
+  "build": "hero",
+  "recipe": "gardener",
+  "generator": "workshop (Blender, parts + recipe)",
+  "licence": "own work",
+  "triangles": 3017
  }
 ]

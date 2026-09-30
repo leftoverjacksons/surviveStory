@@ -4,6 +4,7 @@
  * which runs gen.py → rig.py → pack.mjs; see README.md.
  */
 import { Stage, REFS, type StageFigure } from './stage';
+import { Composer } from './compose';
 
 interface Slot { index: number; name: string; label: string; color: [number, number, number]; count: number }
 interface Figure {
@@ -27,10 +28,13 @@ const work = (f: Figure, file: string) => `/api/work/${f.id}/${file}?v=${f.stamp
 let state: State = { env: {}, figures: [], library: [], queue: 0 };
 let selected: string | null = localStorage.getItem('studio.sel');
 let shownKey = '';
+let detailKey = '';
 
 // ---------------------------------------------------------------- stage
 const stage = new Stage($<HTMLCanvasElement>('c'));
 await stage.init();
+const composer = new Composer($('detail'), () => { detailKey = ''; refreshStage(); });
+const composing = () => $<HTMLSelectElement>('show').value === 'compose';
 for (const n of stage.clips.keys()) $<HTMLSelectElement>('clip').add(new Option(n, n, n === 'Walk', n === 'Walk'));
 const bind = (id: string, key: 'zoom' | 'pixel' | 'raw' | 'spin' | 'clip', after?: () => void) => {
   const el = $<HTMLInputElement>(id);
@@ -47,7 +51,10 @@ bind('pixel', 'pixel', () => stage.resize());
 bind('raw', 'raw', () => { shownKey = ''; refreshStage(); });
 bind('spin', 'spin');
 bind('clip', 'clip', () => stage.play());
-$('show').addEventListener('input', () => refreshStage());
+$('show').addEventListener('input', async () => {
+  if (composing()) { await composer.load(); composer.render(); } else detailKey = '';
+  render();
+});
 $('refs').addEventListener('input', () => refreshStage());
 // Pixel mode snaps the zoom to the game's range, and back to a close-up when it's off.
 $('pixel').addEventListener('input', () => {
@@ -59,13 +66,15 @@ $('pixel').addEventListener('input', () => {
 function refreshStage() {
   const refs = $<HTMLInputElement>('refs').checked ? REFS.map((n) => Stage.ref(n)) : [];
   let figs: StageFigure[];
-  if ($<HTMLSelectElement>('show').value === 'library') {
+  if (composing()) {
+    figs = [...(composer.mode === 'crowd' ? [] : refs), ...composer.figures()];
+  } else if ($<HTMLSelectElement>('show').value === 'library') {
     figs = [...refs, ...state.library.map((e) => ({ name: e.file, url: `/api/library/${e.file}`, child: e.body === 'child' }))];
   } else {
     const f = state.figures.find((x) => x.id === selected);
     figs = [...refs, ...(f && f.files.includes('packed.glb') ? [{ name: f.id, url: work(f, 'packed.glb'), child: f.body === 'child' }] : [])];
   }
-  const key = JSON.stringify([figs.map((f) => f.url), stage.opts.raw]);
+  const key = JSON.stringify([figs.map((f) => [f.url, f.compose, f.seed]), stage.opts.raw]);
   if (key === shownKey) return;
   shownKey = key;
   void stage.show(figs);
@@ -159,10 +168,10 @@ function select(id: string) {
 
 // ---------------------------------------------------------------- detail panel
 const SLOT_NAMES = ['skin', 'hair', 'cloth', 'boot', 'hat', 'pack', 'strap', 'eye'];
-let detailKey = '';
 const armed = new Set<string>(); // two-click confirmations (browser dialogs are blocked in some frames)
 
 function renderDetail() {
+  if (composing()) return;  // the Compose panel owns the right-hand column
   const f = state.figures.find((x) => x.id === selected);
   const key = JSON.stringify(f ?? null) + [...armed].join();
   if (key === detailKey) return;
@@ -258,4 +267,4 @@ async function poll() {
 }
 setInterval(poll, 2000);
 void poll();
-Object.assign(window, { __studio: { stage, get state() { return state; }, select, refUrl: (n: string) => Stage.ref(n).url } });
+Object.assign(window, { __studio: { stage, composer, get state() { return state; }, select, refUrl: (n: string) => Stage.ref(n).url } });
