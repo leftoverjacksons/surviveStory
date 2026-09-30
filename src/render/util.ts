@@ -127,6 +127,10 @@ export const worldUniforms = {
   uZone: { value: 0 },
   /** Season look, 0..1 each. */
   uSnow: { value: 0 },
+  /** Snow on roofs and other tops (DESIGN §35): catches and holds a little more than the ground. */
+  uRoofSnow: { value: 0 },
+  /** Footprints pressed into the snow (render/footprints.ts), 4 texels a tile. */
+  uFootTex: { value: null as THREE.Texture | null },
   uAutumn: { value: 0 },
   uBare: { value: 0 },
   uBlossom: { value: 0 },
@@ -454,7 +458,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       `#include <common>
       uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform sampler2D uZoneTex; uniform float uVeil;
       uniform float uFogSize; uniform float uTime; uniform float uZone;
-      uniform float uSnow; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
+      uniform float uSnow; uniform float uRoofSnow; uniform sampler2D uFootTex; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
       varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
       ${thin ? 'varying float vThin;' : ''}
       ${surfaceKind ? `uniform float uSurface; uniform float uGrassPaint;
@@ -487,10 +491,13 @@ ${SURFACE_GLSL}` : ''}`,
         '#include <color_fragment>',
         `#include <color_fragment>
         {
-          float snowK = uSnow * smoothstep(0.35, 0.8, vUp) * (0.85 + 0.15 * vHash);
+          float snowK = ${season === 'ground' || season === 'grass' ? 'uSnow' : 'uRoofSnow'} * smoothstep(0.35, 0.8, vUp) * (0.85 + 0.15 * vHash);
           ${season === 'ground' ? '// Paths people keep are kept clear of snow (DESIGN §23.7).\n          snowK *= 1.0 - 0.8 * smoothstep(0.2, 0.6, texture2D(uWearTex, (vWP.xz + uFogSize * 0.5) / uFogSize).r);' : ''}
           ${SEASON_GLSL[season]}
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.94, 0.98), snowK);
+          ${season === 'ground' ? `// Footprints (DESIGN §35): pressed-in snow, shaded blue-grey, fading as the print fills in.
+          { float fp = texture2D(uFootTex, (vWP.xz + uFogSize * 0.5) / uFogSize).r * smoothstep(0.12, 0.4, snowK);
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.57, 0.7), fp * 0.85); }` : ''}
           ${shade > 0 ? 'diffuseColor.rgb *= mix(0.7, 1.1, vShade * vShade * (3.0 - 2.0 * vShade));' : ''}
         }`,
       );

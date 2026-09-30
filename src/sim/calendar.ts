@@ -87,6 +87,15 @@ export interface SeasonLook {
 }
 
 /**
+ * How cold it is for snow to lie (0..1, DESIGN §35): from late autumn to the thaw. Snow that falls
+ * builds up; it melts when this drops, and not while it's deep winter.
+ */
+export function snowCold(dayFrac: number): number {
+  const d = (((dayFrac - 1) % DAYS_PER_YEAR + DAYS_PER_YEAR) % DAYS_PER_YEAR) * (48 / DAYS_PER_YEAR);
+  return smooth(34, 37, d) * (1 - smooth(45.5, 47.5, d));
+}
+
+/**
  * Visual season state for a fractional day (e.g. day 40.5 is midday on day 40).
  * Transitions are smooth across the season boundaries.
  */

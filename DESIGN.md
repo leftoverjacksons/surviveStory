@@ -4071,3 +4071,57 @@ some other method than tiny triangles everywhere?"):
   slept to 0 (sleep isn't interrupted by hunger), which the "nobody goes
   hungry" test caught on a changed trajectory. Now anyone below 45 eats
   before turning in (`colony.ts`, the sleep branch).
+
+### §35. Snow that settles, footprints that fade
+
+The user, after v45: "can we get footsteps in the snow that fade slowly?
+snow falling in the winter? piling up on rooftops etc?"
+
+Before this:
+- snowflakes fell on snowy days;
+- snow cover followed a fixed seasonal curve, jumping to 60% whenever it
+  snowed;
+- it covered the ground and every upward-facing surface, roofs included;
+- worn paths stayed clear.
+
+- **Settling and melting** (`main.ts`, the season block;
+  `calendar.ts#snowCold`):
+  - Snow builds up only while it falls: the ground is fully white after
+    about 7 game hours, and roofs, tops of cars and canopies after about
+    4.5 (they catch it first).
+  - It melts when it isn't cold: over about 1.2 days in the thaw, faster
+    in rain, and roofs about 30% faster than the ground (a heated roof
+    sheds it). It does not melt in deep winter.
+  - Ground and tufts use `uSnow`; everything else uses `uRoofSnow`.
+  - A loaded game starts from the season's usual look.
+  - The snowfall thickens as the snow settles (45% of the flakes drawn at
+    first, all of them on deep snow).
+- **Footprints** (`render/footprints.ts`, `worldUniforms.uFootTex`):
+  - They are pressed into a texture of 4 texels a tile.
+  - People step every 0.42 units, alternating left and right, heel and
+    toe. Deer step shorter and leave fore and hind hoofprints.
+  - Nobody leaves prints indoors, afloat, or on snow thinner than 25%.
+  - A print fades over 1.5 game days, or in about 8 hours while fresh snow
+    falls. The fade accrues on a clock that runs faster in snowfall, so
+    old prints are filled in too.
+  - In the ground's shader a print is shaded blue-grey (85% at a fresh
+    print). It needs snow at least 12–40% thick there, so prints don't
+    show on bare, worn paths.
+  - Only the trodden region is recomputed and uploaded, four times a
+    second.
+- **Checked:**
+  - Seed 4, day 25: bare at 08:00, and white ground and roofs after 7
+    hours of snowfall.
+  - On a snowy dawn, trails of prints run from the bedrolls round the fire
+    to the kitchen and the yard. A debug pass drew them red to confirm
+    placement.
+  - Debug hooks: `__game.snow(v)` (set the depth), `__game.footprints()`.
+- **Harness note:** footprints are sampled per rendered frame. In the
+  screenshot harness (about 1 fps) the game must advance about a game
+  minute per frame, or walkers jump and leave no prints. In play, frames
+  are frequent at any speed.
+- **Not yet:**
+  - snow drifts or depth geometry on roofs (the cover is a colour, not
+    thickness);
+  - icicles;
+  - breath in the cold.

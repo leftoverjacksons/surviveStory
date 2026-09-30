@@ -5,7 +5,7 @@ import { SITE_KINDS, seatSpot, type SiteKind } from './sim/sites';
 import { generateWorld, siteKindFor } from './sim/worldgen';
 import { Zone, heightAt, paintZone, reveal, tileX, tileZ, toTileX, toTileZ } from './sim/world';
 import { createField, deleteField, fieldAtPoint } from './sim/fields';
-import { daylightHours, seasonLook } from './sim/calendar';
+import { daylightHours, seasonLook, snowCold } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
 import { FogTexture, WearTexture, ZoneTexture, buildTerrain } from './render/terrain';
 import { FieldsView, Precipitation } from './render/land';
@@ -28,6 +28,7 @@ import { FOLK_WORKS, addFae, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
 import { claimPlot, homeForAsker, outlinePlot, plotFailAt } from './sim/homes';
 import { DraftTiles } from './render/drafttiles';
+import { Footprints } from './render/footprints';
 import { KeepOut } from './render/keepout';
 import { Tray } from './ui/tray';
 import { GfxPanel } from './ui/gfx';
@@ -175,6 +176,10 @@ const zoneTex = new ZoneTexture(world);
 worldUniforms.uZoneTex.value = zoneTex.texture;
 const wear = new WearTexture(world);
 worldUniforms.uWearTex.value = wear.texture;
+/** Footprints in the snow, and how deep the snow lies (DESIGN §35). */
+const footprints = new Footprints(world);
+worldUniforms.uFootTex.value = footprints.texture;
+let snowCover = -1, roofSnow = -1, lastSnowMinute = -1;
 const resonance = new ResonanceTexture(colony);
 worldUniforms.uResTex.value = resonance.texture;
 worldUniforms.uFogSize.value = world.w;
@@ -1274,14 +1279,32 @@ function frame() {
   const dayFrac = colony.minute / 1440 + 1;
   const weather = colony.weather;
   const look = seasonLook(dayFrac, weather === 'snow');
-  worldUniforms.uSnow.value = look.snow;
+  // Snow builds up while it falls and melts when it's warm enough (DESIGN §35); roofs catch it a little faster.
+  {
+    const dm = lastSnowMinute < 0 ? 0 : Math.max(0, Math.min(240, colony.minute - lastSnowMinute));
+    lastSnowMinute = colony.minute;
+    if (snowCover < 0) { snowCover = look.snow; roofSnow = look.snow; } // a loaded game starts as the season looks
+    const cold = snowCold(dayFrac);
+    if (weather === 'snow') {
+      snowCover = Math.min(1, snowCover + dm / (60 * 7));
+      roofSnow = Math.min(1, roofSnow + dm / (60 * 4.5));
+    } else {
+      const melt = (1 - cold) * dm / (1440 * 1.2) + (weather === 'rain' ? dm / (1440 * 0.5) : 0);
+      snowCover = Math.max(0, snowCover - melt);
+      roofSnow = Math.max(0, roofSnow - melt * 1.3); // a heated roof sheds it sooner
+    }
+  }
+  worldUniforms.uSnow.value = snowCover;
+  worldUniforms.uRoofSnow.value = roofSnow;
+  footprints.update(colony.minute, snowCover, weather === 'snow',
+    [...colony.agents.filter((a) => !a.indoors && !a.afloat).map((a) => ({ id: `a${a.id}`, x: a.x, z: a.z })), ...herds.positions()], t);
   worldUniforms.uAutumn.value = look.autumn;
   worldUniforms.uBare.value = look.bare;
   worldUniforms.uBlossom.value = look.blossom;
   const gloom = weather === 'rain' ? 1 : weather === 'snow' ? 0.7 : weather === 'overcast' ? 0.6 : weather === 'fog' ? 0.4 : 0;
   sky.follow(iso.target);
-  sky.setHour(veil ? 20.75 : hour, daylightHours(dayFrac), veil ? 0 : gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, look.snow);
-  precip.update(dt, t, iso.target, weather === 'rain' ? 'rain' : weather === 'snow' ? 'snow' : null);
+  sky.setHour(veil ? 20.75 : hour, daylightHours(dayFrac), veil ? 0 : gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, Math.max(snowCover, weather === 'snow' ? 0.5 : 0));
+  precip.update(dt, t, iso.target, weather === 'rain' ? 'rain' : weather === 'snow' ? 'snow' : null, weather === 'snow' ? 0.45 + 0.55 * snowCover : 1);
   // Seeing through their eyes: a selected survivor's Sight tints the world and reveals the Veil.
   const viewer = people.selected ? community.survivors.find((s) => s.id === people.selected) : undefined;
   const sightK = viewer ? viewer.sight / 100 : 0;
@@ -1528,6 +1551,9 @@ const veilDebug = {
     return r;
   },
   /** Clear the nearest district with a house, restore the house and finish it (DESIGN §24.16). Returns the ruin. */
+  /** Set how deep the snow lies, ground and roofs, 0..1 (DESIGN §35; it then builds up or melts from there). */
+  snow(v: number) { snowCover = roofSnow = Math.max(0, Math.min(1, v)); },
+  footprints: () => footprints,
   /** Tow the wreck nearest the fire to the yard (DESIGN §30); returns its id, and opens its card. */
   towNearest() {
     const c = world.campfire;

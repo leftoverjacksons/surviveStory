@@ -346,6 +346,10 @@ export class Herds {
       }
     }
   }
+  /** Where each deer is standing (for footprints in the snow). */
+  positions(): { id: string; x: number; z: number; hoofed: boolean }[] {
+    return this.deer.filter((d) => d.root.visible).map((d, i) => ({ id: `d${i}`, x: d.root.position.x, z: d.root.position.z, hoofed: true }));
+  }
   update(dt: number, agents: Agent[]) {
     for (const d of this.deer) d.update(dt, agents, this.herdOf.get(d)!);
   }
