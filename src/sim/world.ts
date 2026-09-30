@@ -68,6 +68,8 @@ export interface Heap {
   source?: number; material?: Material;
   /** Marked by the player to be stripped first and cleared away (salvage.ts). */
   marked?: boolean;
+  /** Being pushed to a new place (DESIGN §30): the target tile and the work done and needed. */
+  tow?: { tx: number; tz: number; work: number; need: number };
 }
 export interface WallBlock { tx: number; tz: number; h: number }
 

@@ -418,7 +418,7 @@ export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene
       c.layers.set(1);
     }
   };
-  return { composer, bloom, grade, syncXray };
+  return { composer, bloom, grade, outline, syncXray };
 }
 
 /** Lights must also shine (and cast shadows) on layer 1, where people are. */

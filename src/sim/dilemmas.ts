@@ -16,8 +16,9 @@ import { WILD_RADIUS, changeStanding, landWanted } from './folk';
 import { Zone, paintZone } from './world';
 import type { Rng } from './rng';
 import { FESTIVALS, type Proposal, type ProposalKind } from './council';
+import { FOLK_SUITED, giveDistrict } from './haunt';
 
-export type DilemmaKind = 'strangers' | 'folk_land' | 'winter' | 'quarrel' | 'celebrate';
+export type DilemmaKind = 'strangers' | 'folk_land' | 'winter' | 'quarrel' | 'celebrate' | 'district';
 export type CommitKind = 'ration' | 'all_hands';
 
 export interface Question { kind: DilemmaKind; title: string; text: string }
@@ -53,6 +54,26 @@ export function dilemmaDue(col: Colony, rng: Rng): { question: Question; options
   const day = c.day, pop = alive(c).length;
   const taken = new Set<number>();
   const since = (k: string) => day - (asked[k] ?? -99);
+
+  // A district is quiet now (DESIGN §26): what becomes of it? Asked once, the day after it's cleared.
+  const quiet = col.haunts.find((h) => h.state === 'cleared' && !h.owner && asked[`district${h.district}`] === undefined);
+  if (quiet) {
+    asked[`district${quiet.district}`] = day;
+    const d = col.world.districts[quiet.district];
+    const suited = FOLK_SUITED.includes(d.kind);
+    const hill = col.world.folk.mound.name;
+    return {
+      question: { kind: 'district', title: `${d.name} is quiet now`, text: `Whatever lived there has gone to its rest. The walls are standing and the streets are empty. Who should have it?${suited ? ` The Folk of ${hill} have been watching it.` : ''}` },
+      options: [
+        { kind: 'district_village', title: 'Resettle it: it\'s the village\'s', cost: {}, effect: 'Its salvage, roofs and ground are ours to zone and build on; houses can be restored as homes.' + (suited ? ' The Folk wanted it, and will say nothing.' : ''),
+          pitch: 'Good roofs going begging. We could live there by spring.', proposer: speaker(col, (s) => (s.role === 'builder' ? 1 : 0) + (has(s, 'hoarder') ? 0.8 : 0) - s.sight / 60, taken, rng).id, about: [quiet.district] },
+        { kind: 'district_folk', title: `Give it to the Folk of ${hill}`, cost: {}, effect: 'It becomes the Wild: the paving greens, the mycelium runs into it, and the Folk may raise knowes there and live in its ruins. They are much warmer to us.',
+          pitch: 'Let it go back to the green. They\'ll make it lovely, and they\'ll remember we gave it.', proposer: speaker(col, (s) => s.sight / 20 + (s.role === 'attune' ? 1 : 0), taken, rng).id, about: [quiet.district] },
+        { kind: 'district_shared', title: 'Share it: a street for both', cost: {}, effect: 'The village may build and garden there, and the Folk may make their works among the gardens and raise knowes at its edge. Slower for both; the strongest blessing.',
+          pitch: 'Why choose? Gardens by day, lanterns by night.', proposer: speaker(col, (s) => s.stats.empathy / 10 + s.sight / 60, taken, rng).id, about: [quiet.district] },
+      ],
+    };
+  }
 
   // Winter won't add up (early autumn, once a year).
   if (seasonOf(day) === 'autumn' && dayOfSeason(day) <= 3 && since('winter') > DAYS_PER_SEASON * 2) {
@@ -174,6 +195,9 @@ export function dilemmaAffinity(col: Colony, s: Survivor, p: Option): number | u
       return (bondValue(col.community, s.id, mine) - bondValue(col.community, s.id, other)) / 100;
     }
     case 'mend': return (has(s, 'tender') ? 0.3 : 0) + 0.15;
+    case 'district_village': return (s.role === 'builder' ? 0.3 : 0) + (has(s, 'hoarder') ? 0.3 : 0) - s.sight / 150;
+    case 'district_folk': return s.sight / 120 + (s.fae ?? 0) / 150;
+    case 'district_shared': return 0.1 + s.stats.empathy / 60;
     case 'not_now': return (has(s, 'hoarder') ? 0.3 : 0) + (s.role === 'builder' ? 0.1 : 0) - (s.morale < 60 ? 0.3 : 0);
     default: return undefined;
   }
@@ -239,6 +263,9 @@ export function applyDilemma(col: Colony, p: Proposal): boolean {
     }
     case 'not_now':
       log(c, 'No festival this time. The work went on.', 'info');
+      return true;
+    case 'district_village': case 'district_folk': case 'district_shared':
+      giveDistrict(col, p.about?.[0] ?? -1, kind === 'district_folk' ? 'folk' : kind === 'district_shared' ? 'shared' : 'village');
       return true;
     default: return false;
   }

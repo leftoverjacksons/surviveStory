@@ -14,8 +14,11 @@ describe('the chronicle (DESIGN §22.3)', () => {
     expect(ch.samples.at(-1)!.day).toBe(col.community.day - 1); // taken as each day ends
     expect(ch.events.length).toBeGreaterThan(3);
     expect(new Set(ch.events.map((e) => e.kind)).size).toBeGreaterThan(1);
-    // Each log line is read once.
-    expect(new Set(ch.events.map((e) => `${e.day}|${e.text}`)).size).toBe(ch.events.length);
+    // Each log line is read once (two alike on one day, e.g. two lanterns finished, are two lines).
+    const inLog = new Map<string, number>(), read = new Map<string, number>();
+    for (const l of col.community.log) inLog.set(`${l.day}|${l.text}`, (inLog.get(`${l.day}|${l.text}`) ?? 0) + 1);
+    for (const e of ch.events) read.set(`${e.day}|${e.text}`, (read.get(`${e.day}|${e.text}`) ?? 0) + 1);
+    for (const [k, n] of read) expect(n).toBeLessThanOrEqual(inLog.get(k) ?? n);
   }, 60000);
 
   it('classifies the log by what it says', () => {

@@ -4,7 +4,9 @@ import { createColony, tick, type Colony } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
 import { canPlace, footAt, placeProject } from '../src/sim/buildings';
 import { declineRequest, grantWork, putFirst, requestsDaily, requestsOf, type Request } from '../src/sim/requests';
-import { waitingHouseholds } from '../src/sim/homes';
+import { claimPlot, homeForAsker, outlinePlot, waitingHouseholds } from '../src/sim/homes';
+import { dropAnsweredHomes } from '../src/sim/requests';
+import { Rng } from '../src/sim/rng';
 import { toTileX, toTileZ } from '../src/sim/world';
 
 function grown(seed = 3, days = 24): Colony {
@@ -35,6 +37,27 @@ describe('the request tray (DESIGN §23.4)', () => {
     expect(putFirst(c, q.id)).toBe(true);
     expect(c.village.homeQueue[0]).toBe(q.household);
     expect(declineRequest(c, q.id)).toBe(false); // a home ask waits; it can't be refused
+  }, 120000);
+
+  it('a plot drawn from a household\'s ask is theirs at once, and the ask leaves the tray (not the next morning)', () => {
+    const c = createColony(generateWorld(5), createCommunity(5));
+    c.village.autoPlan = false; // the player plans, as in the game
+    for (let d = 0; d < 3; d++) { tick(c, 1440); requestsDaily(c); }
+    const q = requestsOf(c).find((x) => x.kind === 'plot')!;
+    expect(q).toBeTruthy();
+    const w = c.world, f = w.campfire;
+    let plot = null;
+    for (let r = 10; r < 40 && !plot; r += 2) for (let a = 0; a < 12 && !plot; a++) {
+      const cx = f.x + Math.cos(a) * r, cz = f.z + Math.sin(a) * r;
+      const pts = [{ x: cx - 4, z: cz - 5 }, { x: cx + 4, z: cz - 5 }, { x: cx + 4, z: cz + 5 }, { x: cx - 4, z: cz + 5 }];
+      const plan = outlinePlot(w, c.village, pts, new Rng(7));
+      if (typeof plan !== 'string') plot = claimPlot(c, plan, new Rng(7));
+    }
+    expect(plot).toBeTruthy();
+    expect(homeForAsker(c, q.household!, plot!)).toBeNull();
+    expect(plot!.household).toBe(q.household);
+    dropAnsweredHomes(c);
+    expect(requestsOf(c).some((x) => x.id === q.id)).toBe(false);
   }, 120000);
 
   it('placing what was asked for, near their house, fulfils the ask and gladdens the asker', () => {

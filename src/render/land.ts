@@ -205,8 +205,10 @@ export class Precipitation {
     for (const o of [this.rain, this.snow]) { o.frustumCulled = false; o.visible = false; this.group.add(o); }
   }
 
-  update(dt: number, t: number, center: THREE.Vector3, kind: 'rain' | 'snow' | null) {
+  /** `density` 0..1: how much of the fall is drawn (snow thickens as it settles, DESIGN §35). */
+  update(dt: number, t: number, center: THREE.Vector3, kind: 'rain' | 'snow' | null, density = 1) {
     this.group.position.set(center.x, center.y, center.z);
+    this.snow.geometry.setDrawRange(0, Math.round(this.N * Math.max(0, Math.min(1, density))));
     this.rain.visible = kind === 'rain';
     this.snow.visible = kind === 'snow';
     if (kind === 'rain') {

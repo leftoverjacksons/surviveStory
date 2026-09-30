@@ -62,7 +62,7 @@ reference: Tiny Glade.
   claude.ai artifact https://claude.ai/artifact/5PAyD8AiMBG9fQDNbCCMPc.
   **Ask before republishing** if the user may be mid-game, because a
   republish reloads their page.
-- Branch: `claude/peaceful-planck-ons669`. No PRs unless asked.
+- Branch: `claude/peaceful-planck-ons669`. No new PRs unless asked; the branch has PR https://github.com/leftoverjacksons/surviveStory/pull/1 (opened by the user), which every push updates.
 - The user prefers precise, scientific, non-self-aggrandising communication.
 
 ## State (update every session)
@@ -218,6 +218,61 @@ reference: Tiny Glade.
     Wee night calls → favour or mischief with real costs, iron over doors), WISPS by default + FULL FORM in moments
     (`showSelf`, `Fae.moment`; placeholder figures = ghosted survivor figures; Blender figures saved for the user),
     the RESTLESS (laid-to-rest spirits drift to the hill; every 3rd quickens a Wee one). Not yet: the Strange. Published v38.
+    §25.6 (published v39): new villages start with the mycelium grown through the Wild to the Ring (`growMycelium`, Folk roots
+    as hubs) and a settlement (dwelling + dew knowe, Wee band); a growth asks WHERE the knowe rises (Asks tray → knowe tool,
+    `placeKnowe`; the Folk choose after 3 days; autopilot at once); new knowes get a trunk at once (`reachKnowe`).
+    DESIGN §26 (after v39; user doing CHARACTER WORK ON ANOTHER BRANCH: don't touch render/characters.ts, render/people.ts,
+    scripts/blender/, assets/people/): the council asks who a cleared district belongs to (dilemma `district`); Folk/shared
+    districts are THEIR COUNTRY (`folkDistricts`, knowes may rise there, mycelium roots to them), they live in its ruins
+    (`folkRuins`, `roomFor`, ghost homes drawn), no room → lights drift toward the nearest haunted district. NOT published yet.
+    Published v40. EVERYTHING MOVABLE §27: fire + stockpile (`sim/hearth.ts`, right-click card → Move; `camp.ts#relocate`),
+    homes (even lived in; family first in line, plot tool opens), backyard trades, kitchen (`site.kitchen` follows), fishing
+    works come down together, restored ruins pulled down; only the found shelter stays.
+    RESETTLING §28: HAMLET FIRE (`DEFS.hearth`, build menu; only in a village/shared cleared district, ≥28 from other fires;
+    `hearth.ts#fires/fireFor/whyNotHamletFire`); people gather at the fire nearest their home (`seatOf`); autopilot lays one
+    (`autopilotHamlet`). §27 + §28 published v41.
+    §29 BUILT (published v42): the found shelter can be repaired from its card, pulled down (`Building.gone`,
+    `pullDownShelter`) or "moved" (a Commons hall, `DEFS.hall`, `hallOf`); homes offer Improve. The Great Hill
+    sits 42–60 from the fire (buffer), knowes keep `KNOWE_KEEP_OFF` from it.
+    §30 BUILT (published v42): WRECKS right-click card (strip/leave/tow to yard/tow elsewhere/stop), emptied wrecks
+    vanish and free their tiles (`clearHeap`, `heapTiles`), TOWING (`towHeap`, `tow` task, `Heap.tow`, `yardSpot`;
+    the nearest free people come). The station car is now a normal wreck. Next: electric carts, parts with provenance.
+    §31 FIXES (not published): a plot drawn from a home ask goes to that household at once and the ask clears
+    (`homeForAsker`, `dropAnsweredHomes`); cutaway cuts each village building at its own floor (`cutMaterialFor`).
+    §31 + §32 published v43 (§32 BUILD MENU GROWS: `sim/unlocks.ts`, hidden / glimpsed / open by world facts,
+    sections, `Village.unlocked/fresh`, *new* marks, gold ring on Build).
+    §33 (published v44): ruins cut at their own floor (`userData.cutAt` through `mergeStatic`), hall furniture,
+    clearance for hall/power/sawpit/hearth, autopilot strips wrecks near fires. Seed-6 slowness not reproducible
+    (≤200 ms/day to day 200); "paused view" was a harness artefact.
+    §34 (playtest v44, published v45): seats round fires (`camp.ts#seats`), plots over rocks (not houses/yard items),
+    plot drawing on lit tiles (`render/drafttiles.ts`), Folk paths bend round blocked tiles (crossing not reproduced;
+    seed asked), deer unstuck, GRAPHICS PANEL (`ui/gfx.ts`, key G: pixel size incl. off, outlines, colour steps,
+    surface strength `uSurface`, bloom, exposure, shadows, tufts, painted grass `uGrassPaint`; presets). Composer is
+    sized by `sizeComposer` (never setPixelRatio alone). Eat before bed if food < 45.
+    §35 SNOW (published v46): snow settles while falling and melts when not cold (`snowCold`, `uSnow` ground /
+    `uRoofSnow` tops, main.ts season block), FOOTPRINTS (`render/footprints.ts`, `uFootTex`; people and deer; fade
+    1.5 days, faster in snowfall), snowfall thickens with depth. `__game.snow(v)`.
+    §36 PLAYTEST NOTES v46 (to do, captured): crisp desire paths (wear texture is 1 texel/tile, linear), Folk
+    companions in a clearing leave a lasting bond with the team, RESTORE IS HARD TO FIND (only Build → The old
+    world → Restore a ruin; add a right-click ruin card with Restore / Pull down, and say so after clearing).
+    §37 RESTORED HOUSES AS ORDINARY HOMES (a86dcad, in progress, not published): ruin card, family names,
+    plot trees felled; open: plot still looks overgrown in shots, stakes faint.
+    §38 THE CENTRE MOVES (user's direction after v46; DESIGN ONLY, NOT STARTED — wait for the user):
+    XCOM/Wildermyth short tactical missions are the heart, a small cast (~8–14) of real characters,
+    Crusader Kings-style ties that remember WHY (reason records) and shape home life; buildings equip
+    missions; logistics goes to the background. Build order §38.8: make one clearing mission good →
+    ties with reasons → consequences at home → resize the village → more mission types.
+    Open questions for the user in §38.9 (death, control at home, cast size, time between missions).
+    §38.10–38.15 (user's mission mechanics, agreed: two rings, free movement): grid stays as an invisible index;
+    the MURK over haunted districts; LANTERNS (raised/shuttered/set down, fuel from home, kinds + tailored parts
+    with provenance, spirit × light table); WARDS as placed shapes (lantern pool, salt/iron line, rowan ring,
+    bell, hearthstone) with carrying slots; FINDING: signs, passive Sight, SOUNDING (seers' sonar: echoes,
+    triangulation, heard by spirits), radio/compass/rod for non-seers. Still design only.
+    §38.16 USER ANSWERS: murk returns about a turn after the light leaves (until cleared); 2 slots each; missions
+    need far better CHARACTER graphics + animation (list in §38.16, coordinate with the user's character branch).
+    §38.17 SETTLED: echoes from home are MIXED (count + rough place; a watchtower/strong seer upgrades to a full
+    briefing); IRON offends the Folk (companion Nerve, standing in Folk country; salt the gentler option; milder
+    fallback noted); mission mechanics start with existing figures, camera no closer. Still open: §38.9.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

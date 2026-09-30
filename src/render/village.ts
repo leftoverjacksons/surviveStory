@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {
   footCenter, footFloor, type Footprint, type Project, type Village,
 } from '../sim/buildings';
-import { CAR } from '../sim/layout';
+import { heapPos } from '../sim/salvage';
 import type { Site } from '../sim/sites';
 import type { Building } from '../sim/buildings';
 import { WATER_Y, heightAt, tileX, tileZ, type Heap, type World } from '../sim/world';
@@ -10,10 +10,10 @@ import type { StoreParts } from './station';
 import { homeLayout, houseFloor, housePoint } from '../sim/homes';
 import { buildHouse, foundationUnder } from './house';
 import { cellarMesh, domeMesh, shrineMesh, tradeMesh } from './trades';
-import { sawpitMesh, solarMesh, turbineMesh, windmillMesh } from './power';
+import { hearthMesh, sawpitMesh, solarMesh, turbineMesh, windmillMesh } from './power';
 import type { HouseSpec } from '../sim/homes';
 import { mergeStatic } from './merge';
-import type { RoofControl } from './roofs';
+import { CUT_HEIGHT, cutMaterialFor, type RoofControl } from './roofs';
 import { glowTexture, makeRand } from './util';
 
 import { BULB, GHOST, GLOW, box, cyl, mat, smooth } from './kit';
@@ -589,8 +589,15 @@ function localBeds(kind: string, tier: number): { x: number; z: number }[] {
 }
 
 /** The hall: a long table down the middle of the old shelter, with benches both sides. */
-function hallSeats(site: Site): Slot[] {
-  const T = site.hallTable;
+function hallSeats(site: Site): Slot[] { return tableSeats(site.hallTable); }
+
+/** A built commons hall (DESIGN §29): the long table runs down its length. */
+function builtHallTable(world: World, b: Building): Site['hallTable'] {
+  const c = footCenter(world, b.foot);
+  return { x: c.x, z: c.z, len: Math.max(b.foot.w, b.foot.d) - 2, axis: b.foot.w >= b.foot.d ? 'x' : 'z' };
+}
+
+function tableSeats(T: Site['hallTable']): Slot[] {
   const out: Slot[] = [];
   const n = Math.max(2, Math.floor((T.len - 0.6) / 0.78) + 1);
   for (let i = 0; i < n; i++) for (const s of [-1, 1]) {
@@ -632,8 +639,8 @@ export function bedSlot(world: World, village: Village, b: Building, index: numb
 
 /** Where someone sits indoors (eating, or spending the evening): seat `index`. */
 export function seatSlot(world: World, village: Village, b: Building, index: number): Slot | null {
-  void world;
   if (b.kind === 'store') { const seats = hallSeats(village.site); return seats[index % seats.length]; }
+  if (b.kind === 'hall') { const seats = tableSeats(builtHallTable(world, b)); return seats[index % seats.length]; }
   if (b.kind === 'home') {
     const plot = village.plots.find((x) => x.id === b.plot);
     if (!plot) return null;
@@ -693,12 +700,13 @@ export class VillageView {
       case 'cellar': g = cellarMesh(W + 0.2, D + 0.2, tier, p); break;
       case 'dome': g = domeMesh(W + 0.2, D + 0.2, p, growth, (f.tx * 7349 + f.tz * 131) >>> 0); break;
       case 'shrine': g = shrineMesh(W, D, tier, p, seed, glow); break;
-      case 'toolshop': case 'tailor': case 'smokehouse': case 'tavern': g = tradeMesh(kind, W, D, tier, p, (f.tx * 7349 + f.tz * 131) >>> 0, clad, glow); break; // same look as a site and when finished
+      case 'toolshop': case 'tailor': case 'smokehouse': case 'tavern': case 'hall': g = tradeMesh(kind, W, D, tier, p, (f.tx * 7349 + f.tz * 131) >>> 0, clad, glow); break; // same look as a site and when finished
       case 'annex': g = leanTo(W + 0.3, D + 0.3, p, glow); break;
       case 'windmill': g = windmillMesh(p, seed); break;
       case 'solar': g = solarMesh(W, D, p); break;
       case 'turbine': g = turbineMesh(p); break;
       case 'sawpit': g = sawpitMesh(W, D, p); break;
+      case 'hearth': g = hearthMesh(p); break;
       case 'jetty': {
         const len = (facing === 1 || facing === 3) ? f.w : f.d;
         g = jetty(len, tier, p);
@@ -795,6 +803,8 @@ export class VillageView {
 
   /** Hand roofs and building materials to the roof control. */
   private register(root: THREE.Object3D) {
+    // Cut at knee height above this building's own floor (its group stands at its floor, DESIGN §31).
+    const cutAt = root.position.y + CUT_HEIGHT;
     root.traverse((o) => {
       if (o.userData.roofGroup) { this.roofs.addRoof(o); return; }
       const m = o as THREE.Mesh;
@@ -802,7 +812,11 @@ export class VillageView {
       const mm = m.material as THREE.Material;
       let inBuilding = false;
       for (let q: THREE.Object3D | null = o; q; q = q.parent) if (q.userData.building) { inBuilding = true; break; }
-      if (inBuilding && mm !== GHOST && mm.blending !== THREE.AdditiveBlending) this.roofs.addCutMaterial(mm);
+      if (inBuilding && mm !== GHOST && mm.blending !== THREE.AdditiveBlending && !Array.isArray(m.material)) {
+        const cm = cutMaterialFor(mm, cutAt);
+        m.material = cm;
+        this.roofs.addCutMaterial(cm);
+      }
       // Anything above wall height on a building is roof.
       if (o.parent?.userData.building && o.position.y > 2.25) this.roofs.addRoof(o);
     });
@@ -819,9 +833,16 @@ export class VillageView {
     const v = this.village;
     const live = new Set<string>();
     const st = v.buildings.find((b) => b.kind === 'store')!;
+    // Pulled down (DESIGN §29): nothing of it is drawn (main.ts hides the site's own meshes).
+    if (st.gone) {
+      this.store.fallen.visible = false;
+      if (this.roofDone) { this.group.remove(this.roofDone); this.roofDone = null; }
+      if (this.storeInterior) { this.group.remove(this.storeInterior); this.storeInterior = null; }
+      this.storeInteriorKey = 'gone';
+    }
     this.store.door.material = mat(st.level >= 1 ? '#6b4f33' : '#141816', false);
-    this.store.fallen.visible = st.level < 2 && this.roofs.mode === 'shown';
-    if (st.level >= 2 && !this.roofDone) {
+    this.store.fallen.visible = st.level < 2 && this.roofs.mode === 'shown' && !st.gone;
+    if (st.level >= 2 && !this.roofDone && !st.gone) {
       this.roofDone = roofPatch(this.village.site, 1);
       this.roofDone.userData.roofGroup = true;
       mergeStatic(this.roofDone);
@@ -831,7 +852,7 @@ export class VillageView {
     // Inside the shelter: junk before it's cleared, cots after, a long table once it's the hall.
     const site = this.village.site;
     const S = site.shelter;
-    const ikey = `${st.level}:${st.beds}`;
+    const ikey = st.gone ? 'gone' : `${st.level}:${st.beds}`;
     const hall = st.level >= 3;
     if (ikey !== this.storeInteriorKey) {
       this.storeInteriorKey = ikey;
@@ -907,7 +928,7 @@ export class VillageView {
       // An upgrade in progress keeps the old building standing until it's done.
       const id = `b${b.id}`;
       live.add(id);
-      const key = `${b.kind}${b.tier}:${Math.round(b.growth * 5)}`;
+      const key = `${b.kind}${b.tier}:${Math.round(b.growth * 5)}${b.kind === 'kitchen' && !v.site.kitchenCovered ? ':open' : ''}`;
       this.upsert(id, key, (glow) => {
         const g = this.meshFor(b.kind, b.tier, b.foot, b.facing, 1, b.growth, b.id, glow, b.clad);
         g.userData.buildingId = b.id;
@@ -989,7 +1010,7 @@ export class VillageView {
     const dt = t - this.lastSpin; this.lastSpin = t;
     for (const s of this.spinners) s.rotation.z -= (s.userData.spin as number) * Math.min(0.1, Math.max(0, dt));
     const st = this.village.buildings.find((b) => b.kind === 'store')!;
-    for (const m of this.store.glow) m.visible = lit && occupied.has(st.id);
+    for (const m of this.store.glow) m.visible = lit && occupied.has(st.id) && !st.gone;
     for (const b of this.village.buildings) {
       const e = this.entries.get(`b${b.id}`);
       if (!e) continue;
@@ -1030,7 +1051,7 @@ const PILE_TONES: Record<string, string[]> = {
 
 export class HeapsView {
   group = new THREE.Group();
-  private views = new Map<number, { g: THREE.Group; cabin?: THREE.Object3D; parts: THREE.Object3D[]; last: number }>();
+  private views = new Map<number, { g: THREE.Group; cabin?: THREE.Object3D; parts: THREE.Object3D[]; last: number; at?: string }>();
 
   /** Heaps from world generation; later ones (caches) are added as they appear. */
   private initial: number;
@@ -1038,8 +1059,6 @@ export class HeapsView {
   constructor(private world: World) {
     this.initial = world.heaps.length;
     for (const h of world.heaps) {
-      // The station's own car is already modelled with the station.
-      if (world.site.kind === 'station' && h.kind === 'car' && Math.hypot(tileX(world, h.tx) - CAR.x, tileZ(world, h.tz) - CAR.z) < 1.5) continue;
       const v = h.kind === 'car' ? this.car(h) : this.pile(h);
       this.views.set(h.id, v);
       this.group.add(v.g);
@@ -1147,7 +1166,17 @@ export class HeapsView {
         this.group.add(nv.g);
       }
       const v = this.views.get(h.id);
-      if (!v || v.last === h.scrap) continue;
+      if (!v) continue;
+      // Emptied: the shell was hauled off with the last load (salvage.ts#clearHeap).
+      v.g.visible = h.scrap > 0;
+      // Towed: it moves along as they push (salvage.ts#heapPos).
+      const at = `${h.tx},${h.tz},${h.tow ? h.tow.work : -1}`;
+      if (at !== v.at) {
+        v.at = at;
+        const p = heapPos(this.world, h);
+        v.g.position.set(p.x, heightAt(this.world, p.x, p.z) - (h.kind === 'car' ? 0.06 : 0), p.z);
+      }
+      if (v.last === h.scrap) continue;
       v.last = h.scrap;
       const frac = h.scrap / h.max;
       const keep = Math.ceil(v.parts.length * frac);

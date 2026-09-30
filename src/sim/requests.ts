@@ -96,6 +96,12 @@ function asks(col: Colony, s: Survivor): [Omit<Request, 'id' | 'since' | 'until'
   return out;
 }
 
+/** A home ask answered (a plot drawn and taken): it goes from the tray at once, not the next morning. */
+export function dropAnsweredHomes(col: Colony) {
+  const list = requestsOf(col);
+  for (const q of [...list]) if (q.kind === 'plot' && fulfilled(col, q)) list.splice(list.indexOf(q), 1);
+}
+
 /** Once a day: settle what was answered, fade what wasn't, and let new asks come in. */
 export function requestsDaily(col: Colony) {
   const c = col.community, v = col.village;

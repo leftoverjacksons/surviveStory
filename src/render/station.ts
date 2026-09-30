@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CANOPY, CAR, SIGN, STORE } from '../sim/layout';
+import { CANOPY, SIGN, STORE } from '../sim/layout';
 import { PIXEL, enhance, enhanced, lambert, makeRand, shadowed } from './util';
 
 /** Surfaces that vines should grow over, collected while building the station. */
@@ -233,27 +233,7 @@ export function buildStation(): StationBuild {
   g.add(sign);
   surfaces.push(boxSurface(new THREE.Vector3(SIGN.x, 2.5, SIGN.z), new THREE.Vector3(0.35, 5, 0.35), ['px', 'nx', 'pz', 'nz'], 0.6));
 
-  // Abandoned car, rusting into the apron.
-  const car = new THREE.Group();
-  const carBody = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.8, 1.8), lambert('#6d5a44'));
-  carBody.position.y = 0.55;
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.7, 1.6), lambert('#5c4a39'));
-  cabin.position.set(-0.3, 1.25, 0);
-  const winMat = lambert('#1d2527');
-  const ws = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.62), winMat);
-  ws.position.set(-0.3, 1.28, 0);
-  car.add(carBody, cabin, ws);
-  for (const [wx, wz] of [[-1.4, 0.9], [1.4, 0.9], [-1.4, -0.9], [1.4, -0.9]]) {
-    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.2, 8), lambert('#2a2826'));
-    rim.rotation.x = Math.PI / 2;
-    rim.position.set(wx, 0.22, wz);
-    car.add(rim);
-  }
-  car.position.set(CAR.x, -0.1, CAR.z);
-  car.userData.noCut = true;
-  car.rotation.set(0, CAR.rot, 0.04);
-  g.add(car);
-  surfaces.push(boxSurface(new THREE.Vector3(CAR.x, 0.8, CAR.z), new THREE.Vector3(4.2, 1.4, 1.8), ['py', 'pz', 'nx'], 0.8));
+  // The abandoned car on the apron is drawn with the other wrecks (render/village.ts#HeapsView), so it can be stripped and towed (DESIGN §30).
 
   // Fuel barrels, long empty.
   for (let i = 0; i < 3; i++) {

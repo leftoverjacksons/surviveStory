@@ -3594,3 +3594,1163 @@ winter: 16 people, morale 77, 9.7 homes, the Folk hill at level 1.7.
 
 **Not yet:** the Strange; the real Folk figures (Blender, the user's);
 council emissaries in full form.
+
+### 25.6 A new village sees the Folk from day 1; you choose where knowes rise (built)
+The user, playing v38: no mycelium in a new game, and no knowes. Both were
+there by design but invisible for a long time: the network started as a
+single cell, and the hill grew about 1.7 times in two years. Their answers:
+the network should spread through the Wild and to the Ring from the start;
+a small settlement from the start; knowes still come with growth, but the
+player is asked where.
+- **The network, grown from the start:** `createColony` runs 40 days of
+  growth without effects (`mycelium.ts#growMycelium`). Across the five
+  sites it covers 95–100% of the Wild and reaches the Ring.
+- **The Folk's own roots** (in `capacity`): a trunk from the hill to each
+  knowe, and along their path from the hill to the Ring, carries the
+  network whatever the ground. These cells are hubs, so they don't thin
+  out on a long path. On the station site the Ring is 50 units away.
+- **A small settlement from the start** (`townhouse.ts#foundSettlement`): a
+  dwelling-knowe and a dew-knowe round the Great Hill, and a Wee band (a
+  hob and a sprite) living in them, 5 of the Folk in all.
+  - On the motel site there is room for only the first: the hill is ringed
+    by water, ruins and haunted districts. Clearing districts opens room
+    later (B).
+- **Where a knowe rises** (`knoweDue`, `placeKnowe`, `letFolkChoose`,
+  `whyNotKnowe`):
+  - In a player's game, a growth puts a knowe in waiting. The Asks tray
+    shows it with **Choose where** (a placement tool round the Great Hill,
+    with a reason for any bad spot) and **Let them choose**.
+  - After 3 days (`KNOWE_WAIT`) the Folk choose themselves.
+  - Autopilot and self-planning villages raise it at once.
+  - Site rules: 1 to 24 beyond the hill's edge; also keeps clear of
+    haunted districts' ruins, where the ground is dead to the mycelium.
+- **The mycelium follows:** a new knowe gets a trunk from the hill at once
+  (`reachKnowe`), and the root keeps it.
+- **Tests:** `townhouse.test.ts` (the start, the network reaching the Ring
+  and the knowes, asked placement, the Folk choosing after 3 days).
+  - Existing tests adjusted:
+    - the mycelium growth test starts from an empty network;
+    - the Folk land test raises the level until land is short;
+    - the chronicle test allows two alike lines on a day (two lanterns
+      finished).
+
+## 26. Cleared districts become places, and the Folk grow into them (after version 39)
+The rest of §24.4, and the core of B. The user (after v39) asked me to
+choose from the list. They are doing character work on another branch, so
+the character files are left alone (`render/characters.ts`,
+`render/people.ts`, `scripts/blender/`, `assets/people/`).
+
+### 26.1 Built
+- **The council asks** (`dilemmas.ts`, question `district`). The first
+  council after a district is cleared asks who should have it (once per
+  district, most pressing first):
+  - **Resettle it: the village's.** Its salvage, roofs and ground to zone
+    and build on; builders favour it.
+  - **Give it to the Folk.** It becomes the Wild; high Sight and fondness
+    for the Folk favour it.
+  - **Share it.** Empathy favours it.
+
+  The answer is `giveDistrict`, as the district card already did; the
+  card's buttons still work. Autopilot still gives districts at once.
+- **Their country** (`townhouse.ts#folkDistricts`, `inFolkCountry`,
+  radius 14): districts given to the Folk or shared are their country
+  beyond the hill.
+  - Knowes may rise there, whatever the distance from the Great Hill (the
+    placement tool allows it, with the reason given otherwise). When their
+    country is freer of trees than the hill's surroundings, the Folk's own
+    choice (`knoweSite`) goes there.
+  - The mycelium's roots run from the hill to each such district (hubs at
+    0.7), so the network reaches it and branches on.
+- **They live in its old buildings** (`folkRuins`, `roomFor`). Each standing
+  ruin in a district given to the Folk houses 2 of them. It counts toward
+  Rest and toward what the next knowe must be.
+  - Drawn (`render/townhouse.ts#ruinHome`): each such ruin as the Folk keep
+    it, whole in light, with a pale roof, warm windows and a lit door. It
+    follows the lodges' visibility rules (a shimmer; clear with Sight at
+    night; plain in the Veil view).
+- **The push toward the districts** (`lookingToward`): when a growth finds
+  no room for a knowe, the news says where their lights drift at dusk:
+  the nearest district still haunted.
+- The Folk card has a "Their country" line: the hill, the knowes, the
+  districts, the ruins they live in, and their room.
+- Debug hook: `__game.give(district, 'village' | 'folk' | 'shared')` clears
+  a district and gives it.
+- **Tests:** `tests/country.test.ts`.
+
+### 26.2 Next
+- **Resettle, for the village:** a second hearth and green in a district
+  given to the village, so households can live there with their own
+  evening fire. This is its own round.
+
+## 27. Everything can be moved (after version 40)
+The user: make sure everything can be moved, including the hearth (the fire
+they gather at).
+- **The fire** (`sim/hearth.ts#moveFire`): right-click it for its card, then
+  **Move**. A placement tool shows the fire's ring.
+  - Rules: open, explored ground with room for the seats and bedrolls
+    (radius 2.5 clear; nothing built within 4.6 plus the building's size;
+    clear of the stockpile), reachable on foot.
+  - It is carried at once, in a pot of embers. Everything that works from
+    the fire reads its place live: bedrolls, the evening circle, festivals
+    still to come, plot and lane layout, the Folk's night calls.
+  - People sitting, eating or sleeping outdoors at the old fire get up and
+    find the new one.
+- **The stockpile** (`moveStockpile`), also by right-click: the same size,
+  on open ground clear of the fire and buildings. The woodyard and chopping
+  block are chosen again beside it. Hauling and splitting start again to
+  the new place. Its stacks sit on the ground where it now is.
+- **Homes:** can be moved, and taken down even while lived in.
+  - The household waits first in line for a new plot.
+  - Moving brings back everything, and the plot tool opens ("Draw the
+    family a new plot").
+  - Backyard trades on the plot come down with it.
+- **Backyard trades:** can be moved to another household's plot.
+- **The canopy kitchen:** can be moved. It is placed again anywhere and
+  stands where it is placed (`site.kitchen` follows it, in the open).
+- **The fishing works** come down together, with the fishery; the fishers
+  go back to foraging. Move them by painting the Fishing zone at another
+  shore.
+- **Restored houses of the old world:** "Pull down" razes them for their
+  salvage (`finishRaze`). Their plot is freed, and any family waits for a
+  new home.
+- **Only the found shelter stays**: the old building the site started in.
+- Renderer (`render/camp.ts#relocate`): the fire pit, rack, chopping block
+  and bedrolls move with the sim.
+- Debug hooks: `__game.moveFire(x, z)`, `__game.moveStockpile(x, z)`.
+- **Tests:** `tests/hearth.test.ts`, plus new cases in `dismantle.test.ts`
+  (a lived-in home, the kitchen) and `restorehome.test.ts` (pulling a
+  restored house down).
+
+## 28. Resettling a district: the hamlet's fire (after version 40)
+The user chose it after §27. It is the village's side of §26: a district
+the village takes becomes a hamlet with its own fire.
+- **The Hamlet fire** (build menu; `DEFS.hearth`: 2×2, 6 wood and 2 scrap,
+  90 minutes; walked into, not blocking):
+  - Only within 24 of the heart of a cleared district that is the
+    village's or shared (`hearth.ts#whyNotHamletFire`).
+  - At least 28 from any other fire, the old one included. One is laid at
+    a time.
+  - It takes its district's name when finished ("The fire at Sorrel
+    Close").
+  - Drawn (`render/power.ts#hearthMesh`): a ring of stones, logs, flames,
+    a warm point light, and split logs stacked beside it.
+- **Who gathers where** (`fireFor`): everyone gathers at the fire nearest
+  their home, the old fire if they have none.
+  - Evening circles, meals by the fire and fireside leisure take their
+    seats round that fire (`seatOf`), and people face the fire they sit by.
+  - Bedrolls for those without a roof stay at the old fire.
+- **The card** lists its households and who is by it now. It can be moved
+  or taken down like any building (§27).
+- **Autopilot** (`autopilotHamlet`): once a family lives in a resettled
+  district far from any fire, it lays a hamlet fire near their door.
+- **Soak** (6 autopilot villages, 64 days): every village started at least
+  one hamlet (two in two villages). 1 to 8 people gathered at hamlet fires.
+- Debug hook: `__game.hamlet(x, z)`.
+- **Tests:** `tests/hamlet.test.ts` (placement rules; a family in a restored
+  house gathers at its own fire while the rest use the old one).
+- **Not yet:**
+  - festivals at a hamlet;
+  - a hamlet's own green and lanes laid out from its fire;
+  - hamlet-specific councils.
+
+### §29. Full agency over the found shelter; a buffer before the Folk
+
+The user, after v41: "can we not move the starting building? i feel like
+everything should be deconstructable or moveable ... a right click menu to
+give you options to repair, deconstruct, move etc. full agency" and "move
+the wild territory and mounds a little further away from the starting human
+area ... having a buffer zone where the player decides how to or to close
+that gap at all is a choice".
+
+- **The found shelter can come down** (`dismantle.ts`):
+  - Right-click it: *Pull down* (a long job, `SHELTER_WORK` 900 minutes, up
+    to four builders) or *Move (new hall)*, which pulls it down and opens
+    placement for a **Commons hall** (`DEFS.hall`, 6×4, 36 wood and 14 scrap).
+  - When it is down (`pullDownShelter`): `Building.gone` is set, its beds
+    go to 0, 40 scrap and 12 wood come in (recorded as salvage from it),
+    and every tile the site blocked is open again (the shelter and what
+    stood round it: pumps, sheds, canopy). A kitchen under the station
+    canopy stands in the open (and gets its own pergola). Repairs still
+    queued on it are dropped, and what was brought for them goes back.
+  - Its record stays as the village's stores, so planning gates keyed on
+    its level still hold. Its door moves to the stockpile.
+  - The site's meshes leave the scene (`main.ts#syncSiteGone`), and
+    right-clicks no longer find it.
+- **The hall role** moves to `hallOf(v)`: a built Commons hall if there is
+  one, else the old shelter at level 3 if it still stands. Suppers,
+  evenings, cards, the feast aspiration and power demand all read it. The
+  built hall has a long table down its length (`seatSlot`).
+- **Repair from the card** (`shelterRepair` / `repairShelter`): the
+  shelter offers its next step at once (*Clear it out*, *Patch the roof*,
+  *Make it the hall* for 8 wood). The council's commons proposal calls the
+  same `shelterToHall`. Homes offer *Patch it up* / *Add a glasshouse*
+  (`homeImprove` / `improveHome`: the same upgrade projects the planner
+  makes, gated by need tier and glass and copper).
+- **The buffer** (`folk.ts#layFolkLand`, `townhouse.ts`):
+  - The Great Hill is placed 26–34 beyond the Ring, never within 44 of
+    the map centre. A relaxed pass (any bearing, 46–62 out) runs before
+    the last resort.
+  - Measured over 24 seeds and all five sites: 42–60 from the village fire
+    (previously about 24–44). The Ring is 14–28 from the fire, so open land
+    lies between the Ring and the Wild. Every seed still has both starting
+    knowes.
+  - Knowes may not rise within `KNOWE_KEEP_OFF` (30) plus their radius of
+    the village fire, except in Folk country.
+  - Closing the gap is the player's choice: clearing, zoning, or giving
+    districts to the Folk.
+- **Checks:**
+  - `tests/shelter.test.ts` covers repair, the hall step, pull-down effects,
+    move → hall, home improvement and the knowe keep-off.
+  - `tests/folk.test.ts` checks hill distance of 44–62.
+  - A 3-village one-year soak raised no flags.
+  - Debug hook: `__game.pullDown(x?, z?)` pulls down at once and raises a
+    hall near (x, z).
+- **Not yet:**
+  - the hall's own interior furniture (it seats people, but the table is
+    not drawn inside);
+  - moving the site's wrecks.
+
+### §30. Wrecks: a card, stripping seen, towing
+
+The user, after §29, agreed to three pieces of the car backlog: a
+right-click card for wrecks, visible stripping, and towing.
+- **Card** (right-click a wrecked car or junk heap; `hud.ts#heapCard`):
+  - It shows the scrap left of the total, what it is and where it came
+    from, and whether it is marked, being stripped (and by how many), or
+    being pushed (percent, and how many are pushing).
+  - Buttons: *Strip it* / *Leave it* (the existing `markHeap`), *Tow to
+    the yard*, *Tow elsewhere…* (the `tow` placement tool, with its reason
+    shown on hover), and *Stop pushing*.
+- **Stripping seen:**
+  - Wheels, doors and bonnet go first and the cabin last. This was already
+    drawn (`HeapsView.sync`).
+  - New: at 0 scrap the shell goes with the last load (`salvage.ts#clearHeap`).
+    The view is hidden and the tiles it blocked (a car's three along its
+    length, `heapTiles`) are freed. Before this, an emptied wreck kept
+    blocking and stayed drawn.
+- **Towing** (`towHeap`, `whyNotTow`, `yardSpot`, `stopTow`, `finishTow`;
+  the `tow` task):
+  - Refused:
+    - more than 60 away;
+    - onto water, blocked tiles, trees, plots, fields or the Folk's land;
+    - unexplored ground;
+    - a wreck already being pushed.
+  - Work: 60 + 5 × distance minutes for a car, 40 + 3 × distance for a
+    heap.
+  - Up to three push it. Whoever is free joins, not only builders, before
+    new building. When the order is given, the two nearest people at
+    interruptible work (foraging, company, tending, leisure, yard work,
+    salvage, scrounging, gardening; not carrying) put it down and come.
+  - The wreck slides along as they push (`heapPos`), and they move with it.
+    When it arrives, its old ground is freed and its new ground blocked.
+  - Stopped part way, it stays where it has got to, or goes back if that
+    spot is taken.
+  - *The yard* is the nearest open spot 4–16 from the stockpile, with a
+    tile of room all round and 6 clear of the fire.
+- **The station's forecourt car** is no longer baked into the station mesh.
+  It is drawn with the other wrecks, so it can be stripped and towed like
+  them (it looks like a generic wreck now).
+- **Checked:**
+  - Seed 5 (station), in the browser: ordered at 09:00, the forecourt car
+    was beside the stockpile by 13:00.
+  - `tests/wrecks.test.ts`: tiles, clearing at 0, a tow to the yard,
+    refusals, stopping.
+  - 185 tests pass, and a 3-village one-year soak raised no flags.
+  - Debug hook: `__game.towNearest()`.
+- **Not yet:**
+  - electric carts from junk cars;
+  - parts with provenance (batteries to the grid, tyres, windscreen glass);
+  - the autopilot never tows.
+
+### §31. Playtest fixes after v42
+
+The user's notes after playing v42.
+- **"When people ask me for a house and I say OK, it makes me plot it out,
+  but the ask doesn't go away."**
+  - Two causes:
+    - asks were settled only once a day (`requestsDaily`);
+    - a drawn plot waited for the next planning pass to be matched to a
+      waiting household, and at most two homes were started at a time.
+  - Now a plot drawn from a household's ask (*Draw a plot* in the tray;
+    `main.ts#plotFor`) is theirs at once, and their house is started
+    (`homes.ts#homeForAsker`).
+  - Answered home asks leave the tray on the next UI refresh
+    (`requests.ts#dropAnsweredHomes`), however the plot was matched.
+  - A plot drawn from the build menu still goes to whoever is first in
+    line.
+  - Test: `tests/requests.test.ts` ("a plot drawn from a household's ask
+    …").
+- **"When I cut the roofs, buildings up on foundations: you see through the
+  foundations, not inside their main floor."**
+  - The cutaway sliced everything at one world height (y = 1.15). A
+    building raised on a foundation, or standing on higher ground, was cut
+    below its floor.
+  - Now each village building is cut at 1.15 above its own floor (its
+    group stands at its floor).
+  - Materials are shared, so a building on a different floor height gets
+    copies of its materials that cut at that height (`roofs.ts#cutMaterialFor`,
+    shared per 5 cm of height).
+  - Checked on seed 7 at day 25: the highest-floored house, on stone
+    footings with steps, shows its bed, table and stove.
+  - **Not yet:** old-world ruins, restored houses included. They are merged
+    into one mesh per district, so they still cut at y = 1.15, and a ruin
+    on high ground may cut badly. Fixing them needs a per-vertex cut height
+    in the shader.
+
+### §32. The build menu grows with the village
+
+The user, after v42: "What about the build menu showing not currently
+relevant items? Should the build menu be more like a tech tree, with things
+appearing as they are relevant or unlocked by the presence of others?"
+
+Eras stay rejected (§17). Entries appear because something happened in the
+world: a craft learned, a material found, a need felt, a district cleared.
+- **Three states** (`sim/unlocks.ts#unlockOf`):
+  - *hidden*: nothing points to it yet;
+  - *glimpsed*: one step away, shown greyed with that step in the
+    villagers' words;
+  - *open*: as before.
+- **Rules:**
+
+  | Entry | Glimpsed | Open |
+  |---|---|---|
+  | plot, bunkhouse, garden, cellar, workbench, lantern, strip and clear | | from the start |
+  | shrine | from the start | someone with Sight ≥ 30, home Resonance < 0.5, or one built |
+  | tool bench, sewing room, smoke shed | need tier ≥ 1 | a household has a home (they go in its yard) |
+  | tavern | need tier ≥ 1 | need tier ≥ 2 |
+  | saw pit, windmill | workbench built | someone knows joinery |
+  | solar, turbine | glass/copper/steel seen, or a district cleared | someone knows wiring |
+  | glass dome | a district cleared | glass and steel in stores |
+  | hamlet fire | a district cleared | a district is the village's or shared |
+  | commons hall | the shelter at level 2, and no hall yet | the shelter pulled down |
+  | restore a ruin | from the start | a district cleared |
+  | Ask the Folk | | the Folk met (hidden before) |
+
+  The commons hall is hidden while any hall exists.
+- **Sections:** Shelter and home, Food and stores, Crafts, Power, Common
+  life, The old world, the Folk. A section appears only when it has an
+  entry.
+- **News** (`unlocksDaily`, run each day after the need tier):
+  - The first time an entry opens, a log line says so. There is one line
+    per kind of opening (the three yard trades share one), and the entry
+    joins `Village.fresh`.
+  - The menu marks fresh entries *new*, and the Build button has a gold
+    ring while any are unseen. Closing the menu marks them seen.
+  - The first check for a new or an older saved village records what is
+    already open, without news (`Village.unlocked`).
+- The council, the request tray, the planner and the autopilot place
+  buildings directly and are not gated by the menu.
+- **Checked:**
+  - Seed 4, day 1: 7 buildings are shown, restore is glimpsed, and no Power
+    beyond the lantern or Folk works appear.
+  - Seed 7 on autopilot, day 31: the hamlet fire, smokehouse, glass dome and
+    toolmaker's shop are marked *new*.
+  - `tests/unlocks.test.ts`.
+
+### §33. Clean-up after v43 (the open list)
+
+- **Ruins in the cutaway.**
+  - Each ruin now carries its own cut height: 1.15 above its floor, rounded
+    to 25 cm (`ruins.ts#buildDistrict`, `userData.cutAt`).
+  - `mergeStatic` gives parts with a cut height a copy of the material that
+    cuts there (`roofs.ts#cutMaterialFor`, `merge.ts#cutAtOf`). So ruins
+    merge only with ruins cut at the same height.
+  - Checked on the highest ruin on seed 7: walls cut at knee height above
+    its floor.
+  - Draw calls for the old world: 12 with the change against 13 without
+    (seed 1, farm, day 8).
+- **"The view doesn't refresh while paused":** not a bug.
+  - The scene syncs every 0.25 s of real time whatever the speed.
+  - The stale frames were the screenshot harness's (about 1 fps and a fixed
+    dt), where a sync takes several frames.
+- **Commons hall furniture:** a long table with cups, benches both sides
+  and an iron stove, seen in the cutaway (`trades.ts`, the `hall` case).
+  The hall is now in the tree-clearance table, with the saw pit, windmill,
+  solar array, turbine and hamlet fire (`clearance.ts#TOP`). Before this,
+  trees grew through all of them.
+- **Seed 6 slowness: not reproducible.**
+  - On autopilot to day 200: 90–200 ms per day, rising with population (28
+    at day 200), and no slow days.
+  - Scrap no longer runs out (8 heaps left at day 200).
+  - The earlier 3–5 s days (§22.12) were probably removed by later work;
+    which change did it is not known.
+- **Autopilot and wrecks** (`autopilot.ts#autopilotWrecks`):
+  - Wrecks and heaps within 18 of any fire are marked to be stripped, one
+    at a time, which clears the village's ground.
+  - It does not tow. Towing costs 60 + 5 × distance minutes, while
+    stripping in place costs two round trips for a car, so towing only
+    pays when a wreck is in the way.
+  - Test: `tests/wrecks.test.ts` ("autopilot and wrecks").
+
+### §34. Playtest notes on v44 (the user's; to do)
+
+The user, sitting down with v44 ("before anything, just sharing thoughts"):
+1. **People at the fire sit in mid-air.** Likely cause: seat heights taken
+   from the wrong ground (the old fire's spot after a move, or a hamlet's).
+   To reproduce.
+2. **Plot drawing is hard to read.** The user's idea:
+   - the cursor is a yellow-shaded ground tile;
+   - the border being drawn is shown as the ground tiles it will run
+     through, lit up, until the shape is closed.
+3. **"I can't build plots over rocks?"** Rocks and rubble are hard blocks
+   for plots today. Proposal: rocks allowed in the yard, and split and
+   cleared by builders where the house itself must stand.
+4. **An uncleared building crossed a fairy path to the Ring.** A
+   world-generation ordering bug: Folk paths are not routed around ruins
+   (or ruins are placed over paths).
+5. **Deer get stuck on things.** Screenshot: two deer overlapping each other
+   on a rock or stump. Likely: grazing targets and movement ignore blocked
+   tiles and each other.
+
+**§34, what was done** (after the user's second round of notes: "use the
+pixelated stuff for textures while selectively turning off the overall
+effect? … a debug panel … to tweak graphical effects live"; "I don't even
+see benches"; "plots over rocks, just no buildings over them"; "is there
+some other method than tiny triangles everywhere?"):
+- **Seats round every fire** (`render/camp.ts#seats`, `main.ts#fireSeats`):
+  - a log round at each seat position (`sites.ts#seatSpot`), for exactly
+    the ring of people who gather at that fire;
+  - three rounds wait at an unused fire;
+  - the old fire and hamlet fires alike.
+- **Rocks in plots** (`homes.ts#plotTileWhy`, `rockAt`, `clearOfRocks`):
+  - a plot may be drawn over rocks;
+  - the house is fitted clear of them (`houseSite` already refused
+    blocked tiles, and the fitter tries other spots);
+  - yard features that would stand on a rock are left out, and the rock
+    stays in the yard;
+  - rubble and walls still refuse a plot. Test: `tests/plotrocks.test.ts`.
+- **Plot and field drawing on the ground's grid**
+  (`render/drafttiles.ts`):
+  - the cursor is a yellow tile, and clicked corners snap to tile centres;
+  - every tile the outline passes through is lit: corners pale, edges
+    gold, the edge that would close the shape dim;
+  - the thin line and dots are gone.
+- **Folk paths** (`folk.ts#layFolkLand`): a path takes its random bend if
+  it crosses nothing blocked. Otherwise it takes the nearest bend that is
+  clear, or the one that crosses least. The user's crossing could not be
+  reproduced: on 60 worlds (5 sites × 12 seeds), no path tile lies within
+  a tile of a ruin, before or after. Asked the user for the seed.
+- **Deer** (`render/nature.ts`):
+  - targets are reached only by a clear straight line;
+  - the nose is checked as well as the body, and tree trunks are solid;
+  - after a blocked step the deer turns to its new target at once;
+  - it repicks after 2 s without progress;
+  - herd-mates keep 1.4 apart, and spawns are checked.
+
+  Measured headless (4 worlds, 300 s):
+
+  | | before | after |
+  |---|---|---|
+  | on a blocked tile or tree | 7.5% of samples | 0 |
+  | overlapping another deer | 344 | 0 |
+  | walking but not moving | 2.4% | 0.17% |
+- **Graphics panel** (`ui/gfx.ts`; key G, or *Graphics…* under Testing
+  tools; remembered per browser in `ss-gfx`):
+  - Controls, all live:
+    - pixel size 1–6 (1 = full resolution);
+    - outlines;
+    - colour steps 0–32;
+    - surface-pattern strength (`worldUniforms.uSurface`);
+    - bloom, exposure, shadows;
+    - grass tufts on or off (the `tufts` group);
+    - grass painted into the turf (`uGrassPaint`, `util.ts#grassPaint`).
+  - Presets:
+    - *Pixel art* (the published look);
+    - *Crisp + textures* (full resolution, pixel-scale patterns kept: what
+      the user asked for);
+    - *Clean*.
+  - Painted grass is irregular three-blade clumps drawn in the ground's
+    shader, with no geometry. It is off by default, for the user to
+    compare.
+- **Bug found on the way:** the composer is built round a render target,
+  so three.js takes that target's width as its CSS width. The old resize
+  handler happened to be right, but setting only the pixel ratio shrank
+  the buffers again (a blurred 1/9 image). The composer is now sized by
+  `main.ts#sizeComposer`: renderer ratio, then the CSS size.
+- **Bug found on the way:** people went to bed with just under 38 food and
+  slept to 0 (sleep isn't interrupted by hunger), which the "nobody goes
+  hungry" test caught on a changed trajectory. Now anyone below 45 eats
+  before turning in (`colony.ts`, the sleep branch).
+
+### §35. Snow that settles, footprints that fade
+
+The user, after v45: "can we get footsteps in the snow that fade slowly?
+snow falling in the winter? piling up on rooftops etc?"
+
+Before this:
+- snowflakes fell on snowy days;
+- snow cover followed a fixed seasonal curve, jumping to 60% whenever it
+  snowed;
+- it covered the ground and every upward-facing surface, roofs included;
+- worn paths stayed clear.
+
+- **Settling and melting** (`main.ts`, the season block;
+  `calendar.ts#snowCold`):
+  - Snow builds up only while it falls: the ground is fully white after
+    about 7 game hours, and roofs, tops of cars and canopies after about
+    4.5 (they catch it first).
+  - It melts when it isn't cold: over about 1.2 days in the thaw, faster
+    in rain, and roofs about 30% faster than the ground (a heated roof
+    sheds it). It does not melt in deep winter.
+  - Ground and tufts use `uSnow`; everything else uses `uRoofSnow`.
+  - A loaded game starts from the season's usual look.
+  - The snowfall thickens as the snow settles (45% of the flakes drawn at
+    first, all of them on deep snow).
+- **Footprints** (`render/footprints.ts`, `worldUniforms.uFootTex`):
+  - They are pressed into a texture of 4 texels a tile.
+  - People step every 0.42 units, alternating left and right, heel and
+    toe. Deer step shorter and leave fore and hind hoofprints.
+  - Nobody leaves prints indoors, afloat, or on snow thinner than 25%.
+  - A print fades over 1.5 game days, or in about 8 hours while fresh snow
+    falls. The fade accrues on a clock that runs faster in snowfall, so
+    old prints are filled in too.
+  - In the ground's shader a print is shaded blue-grey (85% at a fresh
+    print). It needs snow at least 12–40% thick there, so prints don't
+    show on bare, worn paths.
+  - Only the trodden region is recomputed and uploaded, four times a
+    second.
+- **Checked:**
+  - Seed 4, day 25: bare at 08:00, and white ground and roofs after 7
+    hours of snowfall.
+  - On a snowy dawn, trails of prints run from the bedrolls round the fire
+    to the kitchen and the yard. A debug pass drew them red to confirm
+    placement.
+  - Debug hooks: `__game.snow(v)` (set the depth), `__game.footprints()`.
+- **Harness note:** footprints are sampled per rendered frame. In the
+  screenshot harness (about 1 fps) the game must advance about a game
+  minute per frame, or walkers jump and leave no prints. In play, frames
+  are frequent at any speed.
+- **Not yet:**
+  - snow drifts or depth geometry on roofs (the cover is a colour, not
+    thickness);
+  - icicles;
+  - breath in the cold.
+
+### §36. Playtest notes on v46 (the user's; to do)
+
+The user said these don't all need doing now, but every one must be
+captured here.
+
+1. **Desire paths look blurry "at any resolution or pixel size."**
+   - Cause: the wear texture (`terrain.ts#WearTexture`) has one texel a
+     tile with linear filtering, so every path edge is a tile-wide smear.
+   - Fix options:
+     - (a) nearest filtering plus a sharp threshold in the ground shader
+       (`util.ts`, where `uWearTex` is read), so a path is either worn or
+       not, with a stepped pixel edge;
+     - (b) a higher-resolution wear texture (like the footprints' 4 a
+       tile) written along walked lines;
+     - (c) (a) plus a 1–2 texel dithered edge in the pixel look.
+   - Recommended: (a), then (c) if it looks too blocky.
+2. **A Folk being who joins people on a clearing should be bonded to
+   them.** Today a Folk companion in a clearing (§20.6, `FAE_UNIT`) leaves
+   no lasting tie.
+   - Wanted: everyone who went in with that being keeps an ongoing
+     relationship with it, as they have with each other.
+   - Ties already exist: opinions (`sim/fae.ts`, `Fae.of`, `Survivor.fae`)
+     and bonds between people (`community.ts`, `bondValue`).
+   - Proposal:
+     - a clearing shared with a Folk being raises that being's opinion of
+       each teammate, and records a named tie on both sides ("walked the
+       Veil together at Sorrel Close");
+     - the being then visits them (saucers, a night call that is always a
+       favour, not mischief);
+     - it may ask for them by name in a council;
+     - they grieve or rejoice at its fortunes;
+     - shown on the person card and the being's card.
+   - This feeds crossing (§24.6): a bonded pair is where Folk romance can
+     start.
+3. **"I just cleared some houses, but I don't see any ability to fix them
+   up and move in."**
+   - It is built (§20.4, §24.16): Build → The old world → *Restore a
+     ruin*, then click the building. A restored house becomes a household's
+     home with a plot and yard.
+   - It is hard to find: right-clicking a ruin does nothing, and the
+     district card after clearing doesn't mention it.
+   - To do:
+     - right-click a ruin → a card: what it is, what it would become, cost
+       and work, and *Restore* / *Pull down for salvage* buttons, with the
+       reason shown when a button is disabled (district not cleared, given
+       to the Folk, no way to its door);
+     - after clearing, the district card and the log line say "its houses
+       can now be restored (right-click one)";
+     - an ask in the tray when a household is waiting for a home and a
+       restorable house stands empty.
+
+### §37. Restored houses are ordinary homes (in progress; not published)
+
+The user, after restoring a cleared house: "I don't see its plot around it,
+I can't see who lives there … all I get is its old neighbourhood
+designation … right-clicking it should bring that up, to restore, and then
+it becomes just like any other house."
+
+Built (commit a86dcad):
+- right-click (or click) a ruin → a ruin card (`hud.ts#ruinCard`) with
+  *Restore* / *Pull down*, and the reason when a button is disabled;
+- a restored ruin opens its building card, not the district card
+  (`main.ts#inspectRuinAt`);
+- a restored house is named after the family that moves in (`homes.ts#moveIn`,
+  with a daily migration for older saves); before that it is "An empty house";
+- the restorers fell the trees standing on its plot (`homes.ts#treesOnRuinPlot`,
+  `restore.ts#requestRestore`).
+
+Open:
+- in screenshots the plot still looks overgrown although the sim reports no
+  tree on it (overhanging trees just outside the plot, or felled trees not
+  redrawn: not yet found);
+- the plot's stakes are faint until its fence is built.
+
+## 38. The centre moves: short missions, a small cast, lives that remember (the user's direction after v46; design only, not started)
+
+### 38.1 What the user said
+
+Asked to zoom out (spirit, hook, what works, what doesn't), the user
+restated the original vision:
+
+> "My original vision was something more like XCOM and Wildermyth, where
+> short tactical missions played out, and there was base building in
+> between. I think if I want it to be character driven, things need to stay
+> low and intimate a lot, and those encounters where I have direct control
+> over the inhabitants have the most chance for bonding with the characters
+> and creating experiences. This would also be a good source of relationship
+> building. I'm thinking of Crusader Kings also a bit with regard to how
+> those relationships affect life back at home."
+
+### 38.2 Diagnosis (what the assessment found)
+
+- The project's effort has gone mostly into a Banished-scale village
+  (up to `MAX_POP` 24 autonomous workers, chained resources, logistics).
+  The part the user cares about most, direct control in short missions, is
+  a proof of concept: about 1,400 lines (`sim/haunt.ts`, `ui/clearing.ts`,
+  `render/clearing.ts`), one mission type, four spirit kinds, and little
+  that follows the characters home.
+- Measured weaknesses (§22.11 and later soaks):
+  - about 0.4 decisions a day;
+  - council choices barely change outcomes (except Folk standing);
+  - the need ladder is done by about day 40 and nothing is striven for
+    after (no second act);
+  - many parallel systems in their smallest working form (fishing, power,
+    timber, trades, towing, hamlets), so the game is wide and shallow, and
+    features that exist are hard to find (§36.3).
+- Relationships exist in the simulation but are nearly invisible and
+  carry no history:
+  - one number a pair (`community.ts#Bond`, −100..100);
+  - a personal memory list (`Survivor` `Memory`);
+  - courtship, partners, lineage (§24.8, §24.15);
+  - Folk opinions (`sim/fae.ts`).
+
+  None of these says *why* two people feel as they do, and little of it
+  changes what anyone does.
+- Strongest assets to keep:
+  - the look and the sense of place;
+  - the Folk as a second society;
+  - salvage with provenance;
+  - clearing by relationship rather than combat (Nerve not HP; lay to rest,
+    convert, banish);
+  - full agency over plans.
+
+### 38.3 The spirit, restated
+
+A small band of survivors in an overgrown, haunted, hopeful land. You know
+every one of them by name. You lead a few of them at a time into the
+places between (haunted districts, the Folk's country, far ruins) in
+short turn-based missions. What happens out there follows them home: bonds,
+feuds, scars, marriages, grief, gifts from the Folk. At home, the village
+is where those lives play out and where the next venture is prepared.
+
+- **Home:** Wildermyth's between-chapters, XCOM's base and Crusader Kings'
+  court. Autonomous, readable, about people.
+- **Missions:** XCOM's and Wildermyth's tactical maps. Direct control,
+  short, intimate. Most characters' stories are made here.
+- **The Folk:** neither enemy nor backdrop. They give missions, join them,
+  contest the land, and make lasting ties with individuals.
+
+The tone stays: not combat-anxious; loss is real but uncanny (the taken,
+the Restless), not gore.
+
+### 38.4 Pillars
+
+1. **Missions are the heart.**
+   - A mission is 10–20 minutes, a team of 2–4 (plus at most one Folk
+     companion), on a small map.
+   - Every turn should offer several decent options (the XCOM test).
+2. **A small cast; everyone is a character.**
+   - The village holds about 8–14 people (proposal; replaces `MAX_POP` 24).
+   - Each has traits, a history, a face you recognise, and relationships
+     that remember their causes.
+   - Growth is by events, not head count: an arrival with a story, a birth,
+     someone returned from being taken, a stranger found on a mission.
+3. **Relationships remember why** (the Crusader Kings principle).
+   - A tie between two people (or a person and a Folk being) is a set of
+     remembered *reasons*, each with a weight and a slow decay, not a bare
+     number. Examples:
+     - "held the line while I was taken" +30;
+     - "left me in the Veil" −40;
+     - "talked the Hollow down together" +15;
+     - "married" +40;
+     - "took my place on the council" −10.
+   - The number shown is their sum; the reasons are shown on the card.
+   - Missions are the richest source; home adds slower ones (neighbours,
+     work, suppers, weddings, quarrels).
+4. **Missions change people** (the Wildermyth principle).
+   - Scars and marks (a grey streak after meeting a Hollow, a Folk-gift
+     that glows at night).
+   - Traits gained or lost; Sight opened.
+   - Folk bonds (§36.2).
+   - The taken come back different.
+   - Shown on the figure where possible (the character work on the other
+     branch should plan for marks and scars as attachments or tints).
+5. **Home is where consequences land.** Ties decide:
+   - who lives with whom, and who works beside whom;
+   - who speaks for or against whom in council;
+   - who courts, marries, feuds, mourns;
+   - who refuses to go out again with whom;
+   - who asks to go on the next mission, and who begs someone not to.
+6. **Buildings serve people and missions** (the XCOM base principle).
+   - Building remains, but its purpose is legible: "what do we need for the
+     next venture, and to live well between them".
+   - Examples:
+     - a hearth or infirmary restores Nerve and heals the shaken;
+     - a workshop turns salvage into kit (lanterns, wards, offerings,
+       charms);
+     - a watchtower or shrine gives a team's Sight a head start;
+     - a council hall allows larger teams or two missions a season;
+     - a garden or tavern hastens recovery and bonding.
+7. **Logistics is background.**
+   - Chores (wood, storage, towing, splitting, fields) run themselves.
+     Autopilot-style planning for chores becomes the default; the player
+     can still draw plots and place buildings.
+   - The many resource chains stay only where they feed a person's life or
+     a mission.
+
+### 38.5 The loop
+
+```
+Home (a few days at a time, real time with pause)
+  ├─ see what the last mission did: debrief, marks, ties, grief, news
+  ├─ life happens: suppers, quarrels, courtship, council (people argue
+  │    from their ties), the Folk visit their bonded
+  ├─ prepare: build and equip, rest the shaken, choose the next venture
+  └─ ventures on offer (a board, like XCOM's scan / Wildermyth's map)
+        │
+Mission (turn-based, direct control, 10–20 min)
+  ├─ choose the team (their ties matter: pairs steady each other,
+  │    rivals don't; a bonded Folk being may come)
+  ├─ play it
+  └─ outcome ladder: cleared / withdrew / someone taken / someone lost
+        │
+Debrief → back to Home
+```
+
+Pacing target (proposal): a mission offered every 2–4 days; the player
+chooses which, and when. Not every offer must be taken; offers expire, and
+leaving some undone has consequences (a Restless grows restless, a Folk
+request sours, a salvage cache is lost to the weather).
+
+### 38.6 Mission types (in order of building)
+
+1. **Clearing a haunted district** (exists, §19.10). To be deepened first
+   (§38.8).
+2. **Search for the led-astray or the taken** (the Folk have someone; the
+   team follows their trail into the Wild; exists only as a hook, §20.6).
+3. **Laying a particular Restless to rest** (a named spirit with a history
+   drawn from the old world's provenance: whose house, whose car).
+4. **Salvage run to far ruins** (off the home map; fixes the finite scrap
+   problem, §22.12 seed 6).
+5. **A Folk errand** (a Gentry asks for something fetched, returned or
+   witnessed; payment in favour or gifts).
+6. **Escort or meeting** (strangers, a neighbouring band; a source of
+   recruits and news).
+
+### 38.7 What each current system becomes
+
+| System | Becomes |
+| --- | --- |
+| Clearing (`haunt.ts`) | the heart; deepened first |
+| Bonds (`community.ts#Bond`) | ties with remembered reasons (38.4.3) |
+| Memories, lineage, gatherings | inputs and outputs of ties; shown on cards |
+| Council, dilemmas, request tray | people argue from their ties; fewer abstract choices |
+| Folk (hill, knowes, mycelium, Gentry/Wee) | mission givers, companions, contested land; bonds with individuals |
+| Nerve, Sight | per-person stats, used mostly on missions (partly already) |
+| Influence, Glimmer, Resonance | to be reduced: mission resources, or dropped (decide after step 1) |
+| Buildings and build menu | equip and restore people; the growing menu (§32) stays |
+| Logistics (wood, storage, towing, trades, power, timber) | background, autopiloted; kept where it feeds people or missions |
+| Population (`MAX_POP` 24) | a small cast, about 8–14 |
+
+Nothing is deleted before step 1 proves out; later steps are mostly
+retuning and presentation.
+
+### 38.8 Build order (proposal)
+
+1. **Make one mission good** (a clearing, about 15 minutes), then have the
+   user play it and iterate until it is worth replaying:
+   - map variety (a few hand-shaped templates per district kind, varied
+     by seed);
+   - spirits with distinct behaviour and tells that Sight reveals;
+   - verbs with real trade-offs (cost, risk, what each outcome gives
+     back to the village);
+   - a threat curve, with Nerve as the cost;
+   - pairs who steady each other;
+   - a debrief that says what happened to whom.
+2. **Ties that remember why:**
+   - reason records on each tie (people and Folk beings);
+   - produced mainly by missions;
+   - shown on the person card;
+   - `bondValue` becomes their sum, so existing behaviour keeps working.
+3. **Consequences at home:**
+   - marks, scars and traits from missions;
+   - the empty seat at supper, grief with names;
+   - courtship and feuds that follow ties;
+   - council voices that follow ties;
+   - the Folk visiting their bonded (§36.2).
+4. **Resize the village:**
+   - a small cast (about 8–14);
+   - buildings that equip and restore;
+   - chores on autopilot by default;
+   - a venture board.
+5. **More mission types**, in the order of §38.6.
+
+### 38.9 Open questions for the user
+
+1. **Death.** The vision (CLAUDE.md) says permadeath; clearings today only
+   *take* people (they return changed, §19.7). Options:
+   - (a) the taken as the heavy outcome, with death only from old age and
+     rare home events;
+   - (b) real death on missions as well, rare and signposted;
+   - (c) the taken can be lost for good if no one goes after them in time.
+   
+   (c) keeps the tone and makes rescue missions matter.
+2. **Direct control at home.** Wildermyth has none; XCOM only through menus.
+   Keep home autonomous (the player sets plans, councils and missions), or
+   allow some say over individuals there (assign a pair to live or work
+   together, ask someone to apologise)?
+3. **Cast size.** Is 8–14 right, or smaller still (Wildermyth's 5–10)?
+4. **Time between missions.** Real time with pause as now, or should home
+   advance in chunks between missions (Wildermyth's chapter breaks)?
+5. **The Veil's cost** (10 Influence, §21.9): keep, or replace with
+   preparation (kit, rest) as the gate?
+
+### 38.10 Movement: free, with two rings (agreed)
+
+The user: "I'd rather just see a radius around where the character is and
+have them walk to that." They are content with the grid for building but
+dislike its blocky roads, and would like straight lines where wanted and
+fluid shapes elsewhere. They agreed to the two rings.
+
+**The principle:** the tile grid stays underneath as an invisible index
+(passability, cost, occupancy, ownership). What the player sees and
+controls becomes continuous.
+
+**In missions (built with step 1):**
+- Positions are world coordinates, not `tx/tz` integers.
+- Two rings round the selected person, drawn as soft contours (not lit
+  squares), shrunk round walls, ruins and brambles:
+  - **inner ring:** move and still act this turn;
+  - **outer ring:** dash; no action after.
+- Reach is a distance flood over a fine hidden grid (about 4 cells a tile)
+  with taut paths, then drawn as a contour. The Chebyshev range `cheb`
+  goes: every range becomes a circle (sight, listen, offer, ward reach).
+- Line of sight is a ray test against walls and heaps. A doorway, a car
+  or a hedge conceals.
+- Previews before committing:
+  - a ghost of the figure where it would stop;
+  - the path it would walk;
+  - which known spirits would notice it there;
+  - rings showing what its lantern would light and what its actions would
+    reach.
+- **Concealment, not cover.** Nothing shoots, so the tactical position is
+  about being *unseen* (dark, behind things, shuttered), *steadied* (near
+  a teammate or inside a ward) and *lit* (in your own light, or another's).
+
+**In the village (later, cheapest first):**
+1. Taut walking paths: A* then straight lines wherever clear, so people
+   walk diagonals and curves, and desire paths follow.
+2. Drawn roads: lanes stored as lines or curves (straight with angle
+   snapping, or curved), drawn as ribbons of ground and written into the
+   grid only as movement cost. A finer wear texture traced along walked
+   lines also fixes §36.1.
+3. Free plot and field corners: outlines no longer snap to tiles; the grid
+   keeps only which tiles belong to a plot.
+4. Buildings at any angle: large (footprints, cutaway, clearance, slopes,
+   merged meshes all assume axis alignment). Deferred; only if 1–3 still
+   look rigid.
+
+### 38.11 The dark: the murk over uncleared land
+
+The user: "by default the tactical missions start with less visibility …
+maybe even on the default map there's a dark cloudiness to the uncleared
+areas so we can't really see them in advance."
+
+**On the home map:**
+- A haunted district lies under a **murk**: a slow, dark, low cloud, darker
+  than the ordinary fog of the unexplored (`world.explored`). From home you
+  see only its outline, an occasional light moving in it, and whatever has
+  been learned (§38.14).
+- Soundings from the village's edge (a watchtower, a seer at the boundary)
+  thin the murk in patches and leave echoes. Missions push it back.
+- When the district is settled, the murk lifts for good. Given to the Folk,
+  it becomes their gentler glamour (§26), not murk.
+
+**In the mission:**
+- It is night in the Veil. The ground is visible only where **light**
+  falls, or faintly where it has been seen before (remembered, greyed).
+- Spirits are not visible by light alone. They are perceived by **Sight**
+  and **sounding** (§38.14). Light shows the physical world and the
+  *signs* spirits leave, and it changes how spirits behave (§38.12).
+- So there are two kinds of knowledge on the map: *what the lanterns show*
+  (ground, doors, objects, signs) and *what the seers sense* (spirits).
+
+### 38.12 Light: the lantern as the team's instrument
+
+Not a weapon: light is how the team sees, moves, reassures, lures and
+holds ground. Everyone carries a lantern. The lantern is personal: made at
+home, improved, named, carried in the debrief, lost if its bearer is taken,
+and inheritable.
+
+**Handling (free, part of moving):**
+- **Raised:** full radius; spirits notice the bearer sooner.
+- **Shuttered:** almost dark; the bearer moves unnoticed, sees only by
+  Sight, and their Nerve drains slowly (the dark is frightening).
+- **Set down:** leaves a pool of light where it stands (the simplest ward,
+  §38.13); the bearer goes on in the dark or shares a friend's light.
+
+**Fuel:** every light has fuel counted in turns. It comes from home:
+- candles and tallow from the smoke shed;
+- lamp oil (a later trade);
+- batteries charged from the power grid (§24.17).
+
+This is the first direct line from the village economy to the mission.
+
+**Going out:** a lantern gutters when its fuel runs out or a Hollow drinks
+it. In the dark, a person loses Nerve each turn and sees nothing physical.
+Relighting costs an action. Walking to a friend and sharing their light is
+free, and it is recorded as a tie reason (§38.4.3): "shared her light with
+me".
+
+**Kinds of light** (made at the workshop from salvage with provenance, and
+from know-how):
+
+| Light | How it lights | Good for | Cost / catch |
+| --- | --- | --- | --- |
+| Tin lantern (default) | warm pool, radius about 4 | comfort (Nerve holds in it); remnants drift toward warmth | small; lamps are drawn to it |
+| Electric torch | long narrow cone, aimed | seeing far down a street; pushes hedges back; breaks a lamp's lure while on it | batteries; harsh: a remnant in the beam loses calm |
+| Foxfire jar (Folk-made, from the mycelium) | cold, dim green, radius about 2 | unseen by spirits; shows traces and Veil-depth nearby | needs Folk standing or a bonded Folk being |
+| Magnesium flare (rare, one use) | floods a wide area for one turn | reveals everything lit; stuns hedges; blinds lamps for 2 turns; a Hollow draws back | remnants scatter and lose calm; wakes every spirit near |
+| Mirror lantern (glass, §21.7) | throws a pool of light at a distance, or a beam round a corner | lighting a place without walking into it | glass; heavy (takes a carrying slot) |
+
+**Tailoring (the upgrade path):** a lantern is assembled from parts, each
+chosen at the workshop:
+- **body:** tin → brass → glass dome (radius, and whether wind or a Hollow
+  can snuff it);
+- **fuel:** tallow → oil → battery (how long it lasts);
+- **lens or filter:** clear, red (dim and unnoticed), blue (Veil-leaning:
+  shows depth);
+- **a charm** (a Folk gift, a keepsake from a laid remnant: a small unique
+  effect).
+
+Parts carry provenance ("the lens from the lighthouse on the point"), so a
+lantern has a history, like the houses.
+
+**Spirits and light (first pass):**
+
+| | Warm lantern | Torch beam | Foxfire | Flare |
+| --- | --- | --- | --- | --- |
+| Remnant | drawn gently; calms faster in it (its need *light* already exists) | flinches; loses calm | indifferent | scatters; loses calm |
+| Hedge-spirit | plays in it | pushed out of the beam | indifferent | stunned a turn |
+| Lamp | drawn to it; lures its bearer harder the brighter it is | its lure breaks while lit | cannot see it | blinded 2 turns |
+| Hollow | drinks it (fuel drains in its reach) | shown in full, unharmed | indifferent | draws back a turn |
+
+### 38.13 Wards, rethought
+
+Today (`haunt.ts`): 2 wards a clearing, a square of radius 2 that halves a
+Hollow's dread and shields from hedges and lamps. The user: wards "are a
+cool idea they just need to be thought through more and improved."
+
+**Wards become the team's way of shaping the ground**: they are placed
+things, each with a shape, a rule and a limit, and carried from home, so
+choosing them is part of the loadout.
+
+| Ward | Shape | Rule | Limit |
+| --- | --- | --- | --- |
+| Set-down lantern | circle (the light's radius) | light as §38.12; Nerve holds inside | uses that lantern's fuel; bearer is dark |
+| Salt or iron line | a line between two points (free geometry makes this possible) | hedges and lamps cannot cross it; lures stop at it | iron offends the Folk: a Folk companion loses heart, and in Folk country standing drops |
+| Rowan or hawthorn ring | small circle | Nerve cannot fall below 2 inside; resting there restores 1 a turn | wood from the woodlot or a Folk gift; a Hollow withers it over 3 turns |
+| Bell or wind chime | circle | a spirit entering it rings: it is revealed (an echo, §38.14) wherever the team is | tells, does not stop |
+| Hearthstone (from the home fire) | large circle | the team's rally point: nothing takes a person inside it; withdrawal starts here | one a mission; placed on arrival, cannot move |
+
+Rules common to all:
+- a ward is visible as a shape on the ground and previewed before placing;
+- strong spirits wear wards down (a Hollow erodes any ward in its reach
+  each turn);
+- wards left behind after a clearing stay in the district as small works
+  (a salt line becomes a low wall of stones), so the land keeps a record.
+
+**Carrying:** each person carries their lantern and 2 slots (wards,
+offerings, tools, spare fuel). A strong or practical person might carry 3.
+Packing is decided at home before setting out.
+
+### 38.14 Finding spirits: signs, Sight and sounding
+
+The user: "finding the entities on the map needs to be more nuanced …
+maybe some kind of almost sonar system for the seers."
+
+Today a spirit's reading is a fixed function of Sight against the spirit's
+depth within 10 tiles (none / chill / luminous / coherent), and spirits are
+effectively shown when read. Proposed: **spirits are never shown as plain
+markers until perceived, and perception comes in layers.**
+
+1. **Signs** (anyone, in light):
+   - physical traces: frost on a window, a door that won't stay shut,
+     a toy set upright, the smell of bread in an empty kitchen, cold spots;
+   - they hint at kind and need, and point toward the spirit;
+   - they are found by walking the lit ground.
+2. **Sight** (passive, each person): within a small radius (about 3, more
+   with high Sight), a person senses spirits at their reading level each
+   turn, without acting.
+3. **Sounding** (the seers' sonar; an action):
+   - a person with Sight above a threshold *sounds the Veil*;
+   - a ring visibly expands from them across the map;
+   - where it meets a spirit it returns an **echo**, as good as their
+     reading of it:
+     - *coherent*: an exact position and kind;
+     - *luminous*: a circle it is somewhere inside;
+     - *chill*: a direction and rough distance only (an arc);
+   - echoes stay on the map as fading ghosts of *last known position*; they
+     age each turn and become less certain;
+   - **triangulation:** two seers sounding from different places narrow
+     arcs to a point, so pairs and positioning matter;
+   - **the catch:** a sounding is heard. Spirits within its reach notice
+     the seer: lamps come toward it, Hollows turn, remnants may hide
+     deeper (raising their depth).
+   - Two strengths:
+     - *listen*: short range, silent;
+     - *call out*: long range, loud.
+   - A Folk elder's sounding is always coherent.
+4. **Tools for those without Sight** (salvage, the old world's
+   instruments):
+   - a **radio** hissing louder near spirits (a Geiger counter for the
+     Veil);
+   - a **compass** whose needle drifts toward the nearest;
+   - a **dowsing rod** (Folk-taught).
+
+   Each takes a carrying slot.
+
+**From home:** a seer at the district's edge, or a watchtower, can sound
+into the murk before a mission. Echoes are left on the home map, and the
+mission offer shows what is known and what is not ("two echoes, one deep;
+something large near the old school").
+
+**This makes Sight the seers' identity.** Anchors (low Sight) are sturdy
+and steady others. Seers find, but are found. That is a natural tension
+inside a small team.
+
+### 38.15 Updated step 1 (what "make one mission good" now includes)
+
+1. Free movement with two rings and previews (§38.10).
+2. The dark: light radius, remembered ground, the murk on the home map
+   (§38.11).
+3. Lanterns: raised / shuttered / set down, fuel, the tin lantern and
+   torch first; foxfire, flare and mirror after (§38.12).
+4. Wards: set-down lantern, salt/iron line, rowan ring and bell first;
+   hearthstone after (§38.13).
+5. Signs, passive Sight and sounding with echoes and triangulation; the
+   radio as the first tool (§38.14).
+6. Carrying slots and a packing screen before setting out.
+7. The spirit × light table implemented and tuned, then played by the user.
+
+Open questions for §38.10–38.14:
+- How dark? Should remembered ground stay visible (greyed) or be lost
+  again when the light moves on?
+- Should echoes on the home map be enough to choose missions, or should
+  some districts show nothing until someone walks in?
+- Is iron offending the Folk a good tension, or too punishing while the
+  Folk are also companions?
+- Carrying: 2 slots each plus the lantern, or a shared team pack?
+
+### 38.16 The user's answers (after §38.15)
+
+1. **The dark returns.** Until a district is cleared, ground goes back to
+   murk soon after the light leaves it (within about a turn). Nothing is
+   remembered as visible; the team knows only what their lights show now,
+   plus echoes (§38.14), which also fade. Once a district is cleared, it
+   stays visible.
+2. **Two carrying slots per person** (plus the lantern). Agreed for now.
+3. **Echoes from home** (explained; the user's answer pending). The
+   question is how much the player knows before choosing a mission:
+   - (a) *scouted*: a seer or watchtower can sound into the murk from the
+     village edge, and the mission offer shows what that found ("two
+     echoes, one deep, near the old school"); XCOM-style briefing, so
+     choosing a mission and packing for it are informed decisions;
+   - (b) *blind*: nothing is known until the team walks in;
+   - (c) *mixed*: soundings from home give only vague echoes (direction and
+     count, never kind), so a mission is chosen with partial knowledge.
+4. **Iron and the Folk** (explained; the user's answer pending). In
+   folklore, cold iron repels the fair folk. The game already uses this at
+   home: iron over a door keeps the Wee Folk's mischief out (§25.5,
+   `sim/fae.ts`). In missions, an iron line would be the strongest barrier
+   against hedges and lamps, but:
+   - a Folk companion near it loses heart (their Nerve drops);
+   - laid in Folk country, it lowers standing;
+   - a salt line does the same job without offence but is weaker and washes
+     away in rain.
+
+   Choosing iron would be choosing effectiveness over the relationship.
+5. **Characters need much more work.** The user: "we're definitely going to
+   have to do a lot of work on character graphics and animation. We could
+   get away with lower fidelity when it was the town building." Missions put
+   the camera close and the player's attention on a few people. Needed
+   (to be coordinated with the user's character branch; this branch does not
+   touch `render/characters.ts`, `render/people.ts`, `scripts/blender/` or
+   `assets/people/`):
+   - **a closer mission camera**, and a figure readable at that distance:
+     a face or clear head shape, distinct silhouettes per person (hair,
+     coat, hat, build), and clothing colours that are theirs;
+   - **held props:** the lantern in hand (with its light attached to the
+     hand bone), a torch, a bell, a satchel showing the two slots;
+   - **animations:**
+     - idle, walk, dash;
+     - move shuttered (hunched, lantern closed under a coat);
+     - raise lantern;
+     - kneel and set something down (a ward, an offering);
+     - draw a line (salt or iron);
+     - listen (head bowed) and sound the Veil (arm out, a visible ring);
+     - offer with both hands;
+     - steady someone (a hand on a shoulder);
+     - flinch, shaken, and breaking (sinking down);
+     - being lured (walking slack toward a light);
+     - being taken (fading into light);
+     - a greeting, and grief, for debriefs and home;
+   - **marks** as attachments or tints (a grey streak, a scar, a Folk gift
+     that glows), so change shows on the figure (§38.4.4);
+   - **spirit figures** of the same fidelity: remnants as the people they
+     were, hedges, lamps, the Hollow.
+
+### 38.17 Settled (the user agreed to the proposals in §38.16)
+
+1. **Knowledge before a mission: mixed, improvable.**
+   - By default, soundings from home give vague echoes: how many, and
+     roughly where, never what kind. A mission is chosen and packed for with
+     partial knowledge, and the rest is found inside.
+   - A better watchtower, or a strong seer sounding from the district's
+     edge, moves a district toward a full briefing (kind and position of
+     what was sounded). This gives buildings and seers a use before a
+     mission.
+   - Echoes seen from home fade over days, as they fade over turns inside.
+2. **Iron offends the Folk,** as proposed:
+   - an iron line is the strongest barrier against hedges and lamps;
+   - a Folk companion near it loses Nerve;
+   - laid in Folk country, it lowers standing;
+   - a salt line is the gentler alternative: weaker, and washes away in rain.
+
+   If playtests show it makes iron useless whenever a Folk companion comes,
+   fall back to the milder rule: iron offends only in Folk country or when a
+   companion sees it laid.
+3. **Characters:** mission mechanics start with the existing figures and a
+   camera no closer than now. The close camera, held props, the animation
+   set and marks (§38.16.5) follow as the user's character branch provides
+   them. This branch still does not touch `render/characters.ts`,
+   `render/people.ts`, `scripts/blender/` or `assets/people/`.
+
+Still open from §38.9: death (taken vs. real death vs. taken-lost-for-good),
+direct control at home, cast size, time between missions, the Veil's
+Influence cost.

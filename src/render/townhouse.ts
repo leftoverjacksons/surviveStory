@@ -12,7 +12,8 @@
 import * as THREE from 'three';
 import type { Colony } from '../sim/colony';
 import { alive } from '../sim/community';
-import { knowes, type Knowe } from '../sim/townhouse';
+import { folkRuins, knowes, type Knowe } from '../sim/townhouse';
+import type { Ruin } from '../sim/oldworld';
 import { heightAt } from '../sim/world';
 import { worldUniforms } from './util';
 
@@ -48,7 +49,8 @@ export class TownhouseView {
   sync() {
     const f = this.col.folk;
     const dead = this.col.community.survivors.filter((s) => !s.alive && !s.departed && !s.taken).length;
-    const key = `${knowes(f).map((k) => `${k.id}${k.kind}`).join(',')}|${Math.min(12, dead)}`;
+    const ruins = folkRuins(this.col);
+    const key = `${knowes(f).map((k) => `${k.id}${k.kind}`).join(',')}|${Math.min(12, dead)}|${ruins.map((r) => r.id).join(',')}`;
     if (key === this.key) return;
     this.key = key;
     for (const g of [this.top, this.under]) for (const c of [...g.children]) { g.remove(c); c.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); }
@@ -78,6 +80,9 @@ export class TownhouseView {
       const curve = new THREE.QuadraticBezierCurve3(at, mid, hall);
       this.under.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 20, 0.12, 6), this.mat(this.underMats, '#9ff2e0', 0.14, false)));
     }
+    // The Folk living in the old buildings of districts given to them (DESIGN §26): the house as they see it,
+    // whole and lit, standing in the ruin.
+    for (const q of ruins) this.top.add(this.ruinHome(q));
     // The door's passage down to the hall.
     const dx = m.x + Math.cos(m.door) * m.r * 0.8, dz = m.z + Math.sin(m.door) * m.r * 0.8;
     const door = new THREE.Vector3(dx, heightAt(w, dx, dz) + 0.3, dz);
@@ -87,6 +92,34 @@ export class TownhouseView {
     passage.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), hall.clone().sub(door).normalize());
     this.under.add(passage);
     for (const o of this.under.children) o.renderOrder = 5;
+  }
+
+  /** A ruin as the Folk keep it: its walls whole again in light, a pale roof, warm windows and a lit door. */
+  private ruinHome(q: Ruin): THREE.Group {
+    const w = this.col.world;
+    const g = new THREE.Group();
+    const pale = this.mat(this.topMats, '#bff7ea', 0.18), warm = this.mat(this.topMats, '#ffd9a0', 0.6);
+    g.position.set(q.x, heightAt(w, q.x, q.z), q.z);
+    g.rotation.y = q.yaw;
+    const h = Math.max(1.6, Math.min(q.h, 4));
+    const walls = new THREE.Mesh(new THREE.BoxGeometry(q.w + 0.1, h, q.d + 0.1), pale);
+    walls.position.y = h / 2;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(q.w, q.d) * 0.55, Math.min(q.w, q.d) * 0.5, 4, 1, true), pale);
+    roof.rotation.y = Math.PI / 4;
+    roof.scale.set(q.w / Math.hypot(q.w, q.d) * 1.4, 1, q.d / Math.hypot(q.w, q.d) * 1.4);
+    roof.position.y = h + Math.min(q.w, q.d) * 0.25;
+    g.add(walls, roof);
+    // Windows along the front, and the door.
+    const n = Math.max(1, Math.min(4, Math.floor(q.w / 1.6)));
+    for (let i = 0; i < n; i++) {
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.4), warm);
+      win.position.set((i - (n - 1) / 2) * (q.w / (n + 0.5)), h * 0.62, q.d / 2 + 0.07);
+      g.add(win);
+    }
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.85), warm);
+    door.position.set(0, 0.43, q.d / 2 + 0.07);
+    g.add(door);
+    return g;
   }
 
   /** The hearth-hall on the Great Hill's crown: seven sides, a conical roof, the fire's light through the smoke-hole. */

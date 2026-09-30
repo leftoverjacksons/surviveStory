@@ -127,6 +127,10 @@ export const worldUniforms = {
   uZone: { value: 0 },
   /** Season look, 0..1 each. */
   uSnow: { value: 0 },
+  /** Snow on roofs and other tops (DESIGN §35): catches and holds a little more than the ground. */
+  uRoofSnow: { value: 0 },
+  /** Footprints pressed into the snow (render/footprints.ts), 4 texels a tile. */
+  uFootTex: { value: null as THREE.Texture | null },
   uAutumn: { value: 0 },
   uBare: { value: 0 },
   uBlossom: { value: 0 },
@@ -135,6 +139,10 @@ export const worldUniforms = {
   uVeil: { value: 0 },
   /** See-through woods: 0 full, 1 canopies stippled on the Folk's Wild, 2 stippled everywhere. */
   uThin: { value: 1 },
+  /** Graphics panel (ui/gfx.ts): strength of the pixel-scale surface patterns, 0..1. */
+  uSurface: { value: 1 },
+  /** Graphics panel: grass painted into the turf (0 off .. 1), an alternative to tufts of geometry. */
+  uGrassPaint: { value: 0 },
 };
 /** Back-compat alias used by older call sites. */
 export const windUniforms = worldUniforms;
@@ -316,6 +324,36 @@ const SURFACE_GLSL = `
     }
     return mix(col, col * k + tint, fade);
   }
+
+  // Grass painted into the turf (graphics panel): each small cell may hold a clump, a lit tip above a
+  // shaded foot, fading as it goes sub-pixel. Only on green, near-level ground.
+  vec3 grassPaint(vec3 col, vec3 wp, vec3 wn) {
+    if (uGrassPaint <= 0.0 || wn.y < 0.8) return col;
+    if (!(col.g > col.r * 1.05 && col.g > col.b * 1.1)) return col;
+    // Clumps on an irregular grid (jittered, thinned by a slow patchiness), three blades each: lit tips
+    // over a shaded foot, each clump its own shade of green. "Up" on screen is -z in world.
+    float S = 1.25;
+    float patchy = sh21(floor(wp.xz * 0.18)) * 0.5 + sh21(floor(wp.xz * 0.45) + 9.0) * 0.5;
+    float lod = lodk(S * 1.6);
+    float light = 0.0, shade = 0.0, hueK = 0.0;
+    for (int oy = -1; oy <= 0; oy++) for (int ox = -1; ox <= 0; ox++) {
+      vec2 c = floor(wp.xz * S) + vec2(float(ox), float(oy));
+      if (sh21(c) > 0.25 + 0.5 * patchy) continue;
+      vec2 o = c + vec2(0.15 + 0.7 * sh21(c + 1.7), 0.15 + 0.7 * sh21(c + 3.1));
+      vec2 d = wp.xz * S - o;
+      for (int b = 0; b < 3; b++) {
+        float fb = float(b) - 1.0;
+        float bx = d.x - fb * 0.11 - d.y * fb * 0.35;
+        float hgt = 0.3 + 0.14 * sh21(c + fb * 5.3);
+        float blade = step(abs(bx), 0.045 * (1.0 + d.y * 1.5)) * step(-hgt, d.y) * step(d.y, 0.0);
+        if (blade > 0.0) { light = max(light, 0.5 - d.y / hgt * 0.5); hueK = sh21(c + 7.7); }
+      }
+      shade = max(shade, step(abs(d.x), 0.2) * step(0.0, d.y) * step(d.y, 0.08));
+    }
+    vec3 tipCol = col * (1.12 + 0.22 * light) + vec3(0.02, 0.03, -0.01) * (hueK - 0.5);
+    col = mix(col, tipCol, step(0.001, light) * uGrassPaint * lod);
+    return col * (1.0 - 0.2 * shade * uGrassPaint * lod);
+  }
 `;
 
 
@@ -420,10 +458,11 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       `#include <common>
       uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform sampler2D uZoneTex; uniform float uVeil;
       uniform float uFogSize; uniform float uTime; uniform float uZone;
-      uniform float uSnow; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
+      uniform float uSnow; uniform float uRoofSnow; uniform sampler2D uFootTex; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
       varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
       ${thin ? 'varying float vThin;' : ''}
-      ${surfaceKind ? SURFACE_GLSL : ''}`,
+      ${surfaceKind ? `uniform float uSurface; uniform float uGrassPaint;
+${SURFACE_GLSL}` : ''}`,
     );
     if (thin === 'solid') {
       fs = fs.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
@@ -444,17 +483,21 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
     }
     if (surfaceKind) {
       fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
-        diffuseColor.rgb = surfaceTex(diffuseColor.rgb, vWP, vWN, ${surfaceKind});`);
+        diffuseColor.rgb = mix(diffuseColor.rgb, surfaceTex(diffuseColor.rgb, vWP, vWN, ${surfaceKind}), uSurface);
+        ${surfaceKind === 2 ? 'diffuseColor.rgb = grassPaint(diffuseColor.rgb, vWP, vWN);' : ''}`);
     }
     if (season !== 'none') {
       fs = fs.replace(
         '#include <color_fragment>',
         `#include <color_fragment>
         {
-          float snowK = uSnow * smoothstep(0.35, 0.8, vUp) * (0.85 + 0.15 * vHash);
+          float snowK = ${season === 'ground' || season === 'grass' ? 'uSnow' : 'uRoofSnow'} * smoothstep(0.35, 0.8, vUp) * (0.85 + 0.15 * vHash);
           ${season === 'ground' ? '// Paths people keep are kept clear of snow (DESIGN §23.7).\n          snowK *= 1.0 - 0.8 * smoothstep(0.2, 0.6, texture2D(uWearTex, (vWP.xz + uFogSize * 0.5) / uFogSize).r);' : ''}
           ${SEASON_GLSL[season]}
           diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.94, 0.98), snowK);
+          ${season === 'ground' ? `// Footprints (DESIGN §35): pressed-in snow, shaded blue-grey, fading as the print fills in.
+          { float fp = texture2D(uFootTex, (vWP.xz + uFogSize * 0.5) / uFogSize).r * smoothstep(0.12, 0.4, snowK);
+            diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.57, 0.7), fp * 0.85); }` : ''}
           ${shade > 0 ? 'diffuseColor.rgb *= mix(0.7, 1.1, vShade * vShade * (3.0 - 2.0 * vShade));' : ''}
         }`,
       );

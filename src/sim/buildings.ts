@@ -24,8 +24,8 @@ export type FisheryKind = 'jetty' | 'fishhut' | 'netshed' | 'boat';
 export type TradeKind = 'toolshop' | 'tailor' | 'smokehouse' | 'tavern';
 export const TRADE_KINDS: TradeKind[] = ['toolshop', 'tailor', 'smokehouse', 'tavern'];
 const isTradeKind = (k: string): k is TradeKind => (TRADE_KINDS as string[]).includes(k);
-export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | TradeKind | FisheryKind | PowerKind;
-export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | TradeKind | 'upgrade' | FisheryKind | PowerKind;
+export type BuildingKind = 'store' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'hearth' | 'hall' | TradeKind | FisheryKind | PowerKind;
+export type ProjectKind = 'restore' | 'clear_store' | 'patch_roof' | 'annex' | 'hut' | 'home' | 'garden' | 'dome' | 'workshop' | 'kitchen' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'hearth' | 'hall' | TradeKind | 'upgrade' | FisheryKind | PowerKind;
 export const FISHERY_KINDS: FisheryKind[] = ['jetty', 'fishhut', 'netshed', 'boat'];
 export type Tier = 0 | 1;
 
@@ -41,6 +41,10 @@ export interface Footprint { tx: number; tz: number; w: number; d: number }
 
 export interface Building {
   id: number;
+  /** Someone has lived here (a restored house takes its first family's name, DESIGN §37). */
+  lived?: boolean;
+  /** The found shelter, pulled down (DESIGN §29): its record stays as the village's stores, the building is gone. */
+  gone?: boolean;
   kind: BuildingKind;
   tier: Tier;
   foot: Footprint;
@@ -137,6 +141,9 @@ export interface Village {
   lastRestore?: number;
   /** Highest tier of needs met (see trades.ts), updated daily. */
   needTier?: number;
+  /** Build-menu entries that have opened (unlocks.ts), and those not yet seen in the menu. */
+  unlocked?: string[];
+  fresh?: string[];
   /** Autopilot (DESIGN §22.2): also lays out fields, woodlots and Home ground, as an absent player would. */
   autopilot?: boolean;
   /** Firewood set aside for winter (colony.ts#winterReserve), refreshed when planning. */
@@ -181,6 +188,8 @@ export const DEFS: Record<Exclude<ProjectKind, 'restore' | 'upgrade' | 'clear_st
   windmill:   { name: ['Windmill', 'Windmill'], w: 3, d: 3, cost: [c(34, 6), c(34, 6)], work: [1100, 1100] },
   solar:      { name: ['Solar array', 'Solar array'], w: 4, d: 3, cost: [c(8, 8, 0, { glass: 6, copper: 2 }), c(8, 8, 0, { glass: 6, copper: 2 })], work: [600, 600] },
   sawpit:     { name: ['Saw pit', 'Saw pit'], w: 3, d: 2, cost: [c(12, 4), c(12, 4)], work: [420, 420] },
+  hearth:     { name: ['Hamlet fire', 'Hamlet fire'], w: 2, d: 2, cost: [c(6, 2), c(6, 2)], work: [90, 90] },
+  hall:       { name: ['Commons hall', 'Commons hall'], w: 6, d: 4, cost: [c(36, 14), c(36, 14)], work: [1400, 1400] },
   turbine:    { name: ['Wind turbine', 'Wind turbine'], w: 2, d: 2, cost: [c(10, 10, 0, { steel: 3, copper: 3 }), c(10, 10, 0, { steel: 3, copper: 3 })], work: [800, 800] },
 };
 
@@ -211,6 +220,16 @@ function footOfRect(w: World, x0: number, z0: number, wid: number, dep: number):
 }
 
 export const store = (v: Village) => v.buildings.find((b) => b.kind === 'store')!;
+/**
+ * Where the hall is (DESIGN §29): a commons hall built for it, or the found
+ * shelter made into one (if it still stands). None, if neither.
+ */
+export function hallOf(v: Village): Building | undefined {
+  const built = v.buildings.find((b) => b.kind === 'hall');
+  if (built) return built;
+  const st = store(v);
+  return st && st.level >= 3 && !st.gone ? st : undefined;
+}
 /** Beds anyone could sleep in: shared beds, plus homes up to their household's size (and empty homes). */
 export const bedsTotal = (v: Village) => v.buildings.reduce((n, b) => {
   if (b.kind !== 'home' || !b.household) return n + b.beds;
@@ -337,7 +356,7 @@ export function storageCapacity(v: Village): number {
     + v.buildings.filter((b) => b.kind === 'fishhut').length * 50;
 }
 
-export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | TradeKind | PowerKind;
+export type SiteKind = 'hut' | 'garden' | 'dome' | 'workshop' | 'lantern' | 'cellar' | 'shrine' | 'sawpit' | 'kitchen' | 'hearth' | 'hall' | TradeKind | PowerKind;
 
 /** Score candidate sites around the fire and return the best one. */
 export function findSite(w: World, v: Village, kind: SiteKind, rng: Rng): { foot: Footprint; facing: number; trees: number[] } | null {
@@ -434,14 +453,14 @@ export function plan(w: World, v: Village, com: Community, rng: Rng, lead: strin
   const traits = new Set(alive(com).flatMap((s) => s.traits));
   const wants: (() => Project | null)[] = [];
 
-  if (st.level === 0 && !has('clear_store')) {
+  if (st.level === 0 && !st.gone && !has('clear_store')) {
     wants.push(() => newProject(v, {
       kind: 'clear_store', tier: 0, name: v.site.clear.name, foot: st.foot, facing: 0,
       cost: zero(), workNeeded: 480, target: st.id, clearTrees: [],
     }));
   }
   const shelter = () => {
-    if (st.level === 1 && !has('patch_roof')) {
+    if (st.level === 1 && !st.gone && !has('patch_roof')) {
       return newProject(v, {
         kind: 'patch_roof', tier: 0, name: v.site.patch.name, foot: st.foot, facing: 0,
         cost: c(v.site.patch.wood, v.site.patch.scrap), workNeeded: 360, target: st.id, clearTrees: [],
@@ -606,6 +625,8 @@ export const PLACEABLE: { kind: SiteKind; blurb: string }[] = [
   { kind: 'smokehouse', blurb: 'At the back of a household\'s yard: one of them puts up food in smoke and jars. Preserves never spoil.' },
   { kind: 'tavern', blurb: 'Somewhere to go of an evening: company, a fiddle, something to drink.' },
   { kind: 'dome', blurb: 'A geodesic greenhouse: food all year, even in winter. Glass and steel from a cleared district.' },
+  { kind: 'hall', blurb: 'A new commons hall: a long room for suppers on cold nights and talk of an evening, built where you choose. For a village that has pulled down (or moved on from) the building it started in.' },
+  { kind: 'hearth', blurb: 'A second fire, for a district the village has resettled: the households who live near it gather there of an evening instead of walking back to the old fire. Only in a cleared district that is the village\'s (or shared), well away from other fires.' },
   { kind: 'sawpit', blurb: 'A pit and a trestle for a two-man saw (joiners build it). Logs are sawn into boards faster than they are split at the block, and less is wasted.' },
   { kind: 'windmill', blurb: 'Wooden sails on a timber tower (joiners build it). It grinds the grain, so every harvest goes a fifth further, and turns a small dynamo for the lights.' },
   { kind: 'solar', blurb: 'Salvaged panels on a timber rack (someone must know wiring). Power for the lights and the homes; most in summer.' },
@@ -631,6 +652,8 @@ export function placeProject(w: World, v: Village, com: Community, kind: SiteKin
   if (!free.ok) return free.why ?? 'It won\'t fit there.';
   const def = DEFS[kind];
   const tier = tierFor(v, com, kind);
+  // The kitchen, moved (DESIGN §27): it stands where it's placed now, out in the open.
+  if (kind === 'kitchen') { v.site.kitchen = footCenter(w, foot); v.site.kitchenCovered = false; }
   const p = newProject(v, {
     kind, tier, name: def.name[tier], foot, facing, cost: { ...def.cost[tier] }, workNeeded: def.work[tier], target: 0, clearTrees: free.trees,
   });
@@ -724,6 +747,8 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
         // A home again: a plot and yard around it; a household waiting for a home moves in (homes.ts).
         const plot = plotForRuin(w, v, r, def.beds ?? 3);
         b.plot = plot.id; b.household = 0; b.yaw = r.yaw;
+        // Just a house now, like any other: it takes the name of whoever moves in (DESIGN §37).
+        b.name = 'An empty house';
       }
       v.buildings.push(b);
       // Someone who came home from the Veil to this very house moves back in.
@@ -757,8 +782,13 @@ export function completeProject(w: World, v: Village, com: Community, p: Project
         inside: cen, beds: def.beds ? def.beds[p.tier] : 0, level: 0, tended: 0, growth: 0.1, name: p.household ? p.name : def.name[p.tier], clad: p.clad,
         plot: p.plot, household: p.household,
       };
+      // A hamlet's fire takes the name of its district (DESIGN §28).
+      if (kind === 'hearth') {
+        const d = [...w.districts].sort((x, y) => Math.hypot(x.x - cen.x, x.z - cen.z) - Math.hypot(y.x - cen.x, y.z - cen.z))[0];
+        if (d) b.name = `The fire at ${d.name}`;
+      }
       v.buildings.push(b);
-      if (kind !== 'kitchen' && kind !== 'garden' && kind !== 'dome') block(p.foot); // gardens and domes are walked into
+      if (kind !== 'kitchen' && kind !== 'garden' && kind !== 'dome' && kind !== 'hearth') block(p.foot); // gardens, domes and fires are walked into
       log(com, `${def.name[p.tier]} finished.`, 'good');
     }
   }
