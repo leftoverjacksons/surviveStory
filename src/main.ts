@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { createColony, hourOf, replan, syncAgents, tick } from './sim/colony';
 import { alive, createCommunity, killSurvivor, log, recruit, setRole } from './sim/community';
-import { SITE_KINDS, type SiteKind } from './sim/sites';
+import { SITE_KINDS, seatSpot, type SiteKind } from './sim/sites';
 import { generateWorld, siteKindFor } from './sim/worldgen';
-import { Zone, heightAt, paintZone, reveal, tileX, tileZ, toTileX, toTileZ } from './sim/world';
+import { Zone, heightAt, idx, paintZone, reveal, tileX, tileZ, toTileX, toTileZ } from './sim/world';
 import { createField, deleteField, fieldAtPoint } from './sim/fields';
-import { daylightHours, seasonLook } from './sim/calendar';
+import { daylightHours, seasonLook, snowCold } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
 import { FogTexture, WearTexture, ZoneTexture, buildTerrain } from './render/terrain';
 import { FieldsView, Precipitation } from './render/land';
@@ -26,9 +26,13 @@ import { PlacementView } from './render/placement';
 import { DEFS, canPlace, completeProject, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
 import { FOLK_WORKS, addFae, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
-import { claimPlot, outlinePlot, plotFailAt } from './sim/homes';
+import { claimPlot, homeForAsker, outlinePlot, plotFailAt } from './sim/homes';
+import { DraftTiles } from './render/drafttiles';
+import { Footprints } from './render/footprints';
 import { KeepOut } from './render/keepout';
 import { Tray } from './ui/tray';
+import { GfxPanel } from './ui/gfx';
+import { dropAnsweredHomes } from './sim/requests';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
 import { playTurn } from './sim/clearbot';
@@ -37,12 +41,13 @@ import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
 import { scheduleGathering } from './sim/gatherings';
-import { raiseKnowe, settleFolk } from './sim/townhouse';
+import { KNOWE_R, placeKnowe, raiseKnowe, settleFolk, whyNotKnowe } from './sim/townhouse';
+import { atFire, atStockpile, fireFor, fires, moveFire, moveStockpile, stockpileAt, whyNotFire, whyNotHamletFire, whyNotStockpile } from './sim/hearth';
 import { MyceliumView } from './render/mycelium';
 import { myceliumDaily } from './sim/mycelium';
 import { powered, whyLocked } from './sim/power';
-import { markHeap, razeRuin, razeYield, whyNotRaze } from './sim/salvage';
-import { cancelProject, keepStanding, placeKindOf, takeDown } from './sim/dismantle';
+import { markHeap, razeRuin, razeYield, stopTow, towHeap, whyNotRaze, whyNotTow, yardSpot } from './sim/salvage';
+import { cancelProject, keepStanding, placeKindOf, pullDownShelter, takeDown } from './sim/dismantle';
 import { markDepave } from './sim/depave';
 import { TownhouseView } from './render/townhouse';
 import { GatheringView } from './render/gathering';
@@ -124,7 +129,44 @@ const iso = new IsoCamera(view.clientWidth / view.clientHeight);
 iso.bounds = world.w / 2 - 8;
 if (saved?.camera && loaded) { iso.target.x = saved.camera.x; iso.target.z = saved.camera.z; iso.zoom = iso.zoomGoal = saved.camera.zoom; iso.yaw = iso.yawGoal = saved.camera.yaw; }
 const sky = new Sky(scene);
-const { composer, bloom, grade, syncXray } = createComposer(renderer, scene, iso.camera, view.clientWidth, view.clientHeight);
+const { composer, bloom, grade, outline, syncXray } = createComposer(renderer, scene, iso.camera, view.clientWidth, view.clientHeight);
+/**
+ * Keep the composer's buffers the renderer's size: its pixel ratio follows the renderer's, and its
+ * size is given in CSS pixels. (It was built round a render target, so it took that target's width as
+ * its own: setting only the ratio would scale the buffers down a second time.)
+ */
+function sizeComposer() {
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(view.clientWidth, view.clientHeight);
+}
+/** The pixel look's parts, adjusted live (ui/gfx.ts, key G; DESIGN §34). */
+let pixelScale = PIXEL || 1;
+const gfx = new GfxPanel({
+  pixel: !!PIXEL,
+  defaults: { px: PIXEL || 1, outline: true, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
+  apply(s, changed) {
+    if (PIXEL && (changed === null || changed === 'px')) {
+      pixelScale = s.px;
+      renderer.setPixelRatio(1 / s.px);
+      sizeComposer();
+      renderer.domElement.style.imageRendering = s.px > 1 ? 'pixelated' : 'auto';
+      iso.snapRows = Math.round(view.clientHeight / s.px);
+    }
+    if (outline) outline.enabled = s.outline;
+    if (PIXEL) grade.uniforms.uSteps.value = s.steps;
+    worldUniforms.uSurface.value = s.surface;
+    worldUniforms.uGrassPaint.value = s.grassPaint;
+    renderer.toneMappingExposure = s.exposure;
+    if (changed === null || changed === 'shadows') {
+      if (renderer.shadowMap.enabled !== s.shadows) {
+        renderer.shadowMap.enabled = s.shadows;
+        scene.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
+      }
+    }
+    const tufts = scene.getObjectByName('tufts');
+    if (tufts) tufts.visible = s.tufts;
+  },
+});
 renderer.localClippingEnabled = true;
 const roofs = new RoofControl();
 
@@ -134,6 +176,10 @@ const zoneTex = new ZoneTexture(world);
 worldUniforms.uZoneTex.value = zoneTex.texture;
 const wear = new WearTexture(world);
 worldUniforms.uWearTex.value = wear.texture;
+/** Footprints in the snow, and how deep the snow lies (DESIGN §35). */
+const footprints = new Footprints(world);
+worldUniforms.uFootTex.value = footprints.texture;
+let snowCover = -1, roofSnow = -1, lastSnowMinute = -1;
 const resonance = new ResonanceTexture(colony);
 worldUniforms.uResTex.value = resonance.texture;
 worldUniforms.uFogSize.value = world.w;
@@ -142,6 +188,7 @@ const terrainGroup = buildTerrain(world);
 let lastGround = 0;
 terrainGroup.name = 'terrain';
 scene.add(terrainGroup);
+gfx.refresh();
 const station = buildSite(world.site);
 // The site's static parts, baked; roofs, the fallen section, door and lamps stay separate.
 mergeStatic(station.group, new Set<THREE.Object3D>([...station.roofs, station.store.fallen, station.store.door, ...station.store.glow]), true);
@@ -156,6 +203,22 @@ for (const r of station.roofs) if (r !== station.store.fallen) roofs.addRoof(r);
 roofs.addRoof(vines.roofs);
 for (const m of station.cutMaterials) roofs.addCutMaterial(m);
 roofs.addCutMaterial(vines.walls.material as THREE.Material);
+/** Where people sit round every fire: one seat per person who gathers there (sim: colony.ts#seatOf). */
+function fireSeats(col: typeof colony) {
+  const out: { x: number; z: number }[] = [];
+  for (const f of fires(col)) {
+    const n = col.agents.filter((a) => fireFor(col, a.id).id === f.id).length;
+    // Exactly the sim's ring when anyone gathers there; a few seats waiting at an unused fire.
+    const k = n > 0 ? n : 3;
+    for (let i = 0; i < k; i++) out.push(seatSpot(f, i, k));
+  }
+  return out;
+}
+/** The found shelter pulled down (DESIGN §29): the site's old buildings leave the scene. */
+const siteGone = () => !!colony.village.buildings.find((b) => b.kind === 'store')?.gone;
+function syncSiteGone() {
+  if (siteGone() && station.group.parent) scene.remove(station.group, vines.walls, vines.roofs);
+}
 const trees = new TreeField(world);
 trees.group.name = 'trees';
 scene.add(trees.group);
@@ -246,6 +309,7 @@ function syncScene() {
   people.sync(community.survivors, colony.agents);
   camp.sync(community, colony.items, colony.beds);
   villageView.sync();
+  syncSiteGone();
   plotsView.sync(seasonIndex(colony.community.day));
   heaps.sync();
   fields.sync();
@@ -323,12 +387,36 @@ const hud = new Hud(colony, {
     if (!b) return;
     const why = takeDown(colony, b, moving);
     if (why) return;
-    // Moving: place the same kind again straight away (its materials come back when it's down).
+    // Moving: place the same kind again straight away (its materials come back when it's down);
+    // a home: draw the family a new plot (they are first in line for it).
     const kind = moving ? placeKindOf(b) : null;
     if (kind) setBuild({ kind: 'place', site: kind, turn: 0 });
+    else if (moving && b.kind === 'home') setBuild({ kind: 'plot' }, 'Draw the family a new plot: their home goes up there.');
     hud.render();
   },
   onKeep(id) { keepStanding(colony, id); hud.render(); },
+  onMoveCamp(which) { setBuild({ kind: which }); },
+  onRuin(id, what) {
+    const r = world.ruins[id];
+    if (!r) return;
+    const res = what === 'restore' ? requestRestore(colony, id) : razeRuin(colony, r);
+    if (typeof res === 'string') log(community, `${r.name}: ${res}`, 'info');
+    syncScene();
+    hud.inspect({ ruin: id });
+  },
+  onHeap(id, what) {
+    const h = world.heaps[id];
+    if (!h) return;
+    if (what === 'strip' || what === 'unstrip') markHeap(colony, h, what === 'strip');
+    else if (what === 'stoptow') stopTow(colony, h);
+    else if (what === 'tow') { setBuild({ kind: 'tow', heap: id }); return; }
+    else if (what === 'yard') {
+      const at = yardSpot(colony, h);
+      const why = at ? towHeap(colony, h, at.x, at.z) : 'There is no room beside the stockpile for it.';
+      if (why) { hud.note(why); return; }
+    }
+    hud.render();
+  },
   onCallOff(id) {
     const p = colony.village.projects.find((x) => x.id === id);
     if (p && !cancelProject(colony, p)) { hud.inspect(null); syncScene(); }
@@ -409,7 +497,10 @@ draftLine.frustumCulled = false;
 const draftDots = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: '#ffd080', size: 6, sizeAttenuation: false, depthTest: false }));
 draftDots.renderOrder = 10;
 draftDots.frustumCulled = false;
+draftLine.visible = false; draftDots.visible = false; // replaced by lit ground tiles (drafttiles.ts)
 scene.add(draftLine, draftDots);
+const draftTiles = new DraftTiles(world);
+scene.add(draftTiles.group);
 /** Where a drawn plot can't go, tinted around the cursor while drawing one. */
 const keepOut = new KeepOut(world, colony.village);
 scene.add(keepOut.group);
@@ -420,11 +511,8 @@ function groundAt(clientX: number, clientY: number): THREE.Vector3 | null {
   return raycaster.ray.intersectPlane(groundPlane, hitPoint) ? hitPoint.clone() : null;
 }
 function drawDraft(cursor?: THREE.Vector3 | null) {
-  const pts = draft.map((p) => new THREE.Vector3(p.x, heightAt(world, p.x, p.z) + 0.15, p.z));
-  // Fresh geometry each time: setFromPoints reuses (and will not grow) an existing buffer.
-  draftDots.geometry.dispose(); draftDots.geometry = new THREE.BufferGeometry().setFromPoints(pts);
-  if (cursor && draft.length) pts.push(new THREE.Vector3(cursor.x, heightAt(world, cursor.x, cursor.z) + 0.15, cursor.z));
-  draftLine.geometry.dispose(); draftLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  // On the ground's grid (DESIGN §34): the cursor tile, the corners, and every tile the outline runs through.
+  draftTiles.update(draft, drafting() ? cursor ?? null : null);
 }
 function clearDraft() { draft.length = 0; drawDraft(); }
 function closeDraft() {
@@ -434,8 +522,12 @@ function closeDraft() {
       const plan = outlinePlot(world, colony.village, draft.slice(), rng);
       if (typeof plan === 'string') { keepOut.markFail(plotFailAt); buildPanel.hint(`${plan} (Marked in yellow.) Keep clicking corners, or Esc to start again.`); return; }
       const plot = claimPlot(colony, plan, rng);
-      log(community, `A plot is pegged out: ${plot.tiles.length} squares, the house to stand near the front. It waits for a household.`, 'good');
+      // Drawn in answer to a household's ask: it is theirs, and their ask is answered.
+      const why = plotFor ? homeForAsker(colony, plotFor, plot) : 'none';
+      if (why) log(community, `A plot is pegged out: ${plot.tiles.length} squares, the house to stand near the front. It waits for a household.`, 'good');
       replan(colony);
+      dropAnsweredHomes(colony);
+      tray.render();
     }
     clearDraft();
     setBuild(null);
@@ -477,7 +569,8 @@ function fieldClick(clientX: number, clientY: number) {
     }
   }
   if (draft.length >= 3 && Math.hypot(g.x - draft[0].x, g.z - draft[0].z) < 1.2) { closeDraft(); return; }
-  draft.push({ x: g.x, z: g.z });
+  // Corners go on the grid, at the centre of the tile clicked.
+  draft.push(draftTiles.snap(g));
   drawDraft(g);
 }
 
@@ -491,14 +584,18 @@ scene.add(placement.group);
 const buildPanel = new BuildPanel(colony, (tool) => setBuild(tool));
 /** The request tray: everyday asks, answered whenever (DESIGN §23.4). */
 const tray = new Tray(colony, {
-  drawPlot: (q) => setBuild({ kind: 'plot' }, q.text),
+  drawPlot: (q) => { setBuild({ kind: 'plot' }, q.text); plotFor = q.household ?? 0; },
   place: (q) => { iso.target.x = q.x; iso.target.z = q.z; setBuild({ kind: 'place', site: q.kind as PlaceKind, turn: 0 }, q.text); },
+  placeKnowe: () => { const m = world.folk.mound; iso.target.x = m.x; iso.target.z = m.z; setBuild({ kind: 'knowe' }); },
   show: (q) => { select(q.by); const a = colony.agents.find((x) => x.id === q.by); if (a) { iso.target.x = a.x; iso.target.z = a.z; } },
   changed: () => hud.render(),
 });
 /** Drawing an outline: a field, or a plot for a home. */
 function drafting() { return zoneTool === 'field' || build?.kind === 'plot'; }
+/** The household a plot is being drawn for (from their ask in the tray), or 0. */
+let plotFor = 0;
 function setBuild(tool: BuildTool | null, why = '') {
+  plotFor = 0;
   if (tool) { setZoneTool(null); setOmen(false); hud.inspect(null); }
   else if (resumeAfterBuild) { resumeAfterBuild = false; resumeAfterCouncil(); }
   build = tool;
@@ -511,6 +608,10 @@ function setBuild(tool: BuildTool | null, why = '') {
     : (why ? `${why} ` : '') + (tool.kind === 'plot' ? 'Click the corners of the plot; click the first corner (or press Enter) to close it. The side nearest a path becomes the front. Esc to stop.'
     : tool.kind === 'restore' ? 'Click a ruin in a cleared district to restore it. Esc to stop.'
     : tool.kind === 'salvage' ? 'Click a wrecked car or junk heap to strip and clear it, or a ruin in a cleared district of yours to pull it down. Esc to stop.'
+    : tool.kind === 'tow' ? 'Choose where to push the wreck: open ground, clear of plots, fields and trees, within 60 of where it stands. Esc to stop.'
+    : tool.kind === 'fire' ? 'Choose where the fire goes: open ground, clear of buildings and the stockpile, with room round it for the seats and bedrolls. Esc to stop.'
+    : tool.kind === 'stockpile' ? 'Choose where the stockpile goes: open ground, clear of the fire and buildings. Esc to stop.'
+    : tool.kind === 'knowe' ? 'Choose where the new knowe rises: open ground round the Great Hill, in the Wild or on unclaimed land. Trees there are taken into the hill. Esc to stop.'
     : tool.kind === 'folk' ? `Ask the Folk for a ${FOLK_WORKS[tool.work].name.toLowerCase()}: click a spot in the Wild. They build it at night. Esc to stop.`
     : isBackyard(tool.site) ? `Click a household's plot to give them the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: it goes at the back of their yard, and one of them works it. Esc to stop.`
     : `Place the ${DEFS[tool.site].name[tierFor(colony.village, community, tool.site)].toLowerCase()}: click to place, right-click or T to turn it. Esc to stop.`));
@@ -532,6 +633,7 @@ function setAutopilot(on: boolean) {
   hud.render();
 }
 document.getElementById('autopilot-btn')!.addEventListener('click', () => setAutopilot(!autopilot));
+document.getElementById('gfx-btn')?.addEventListener('click', () => gfx.toggle());
 document.getElementById('autopilot-btn')!.setAttribute('aria-pressed', String(autopilot));
 document.getElementById('council')!.addEventListener('pointermove', () => { if (autopilot) councilAutoAt = performance.now() + COUNCIL_AUTO_MS; });
 /** Each frame: under autopilot, count down an unanswered council and settle it on the favourite. */
@@ -603,6 +705,31 @@ function placeHover(cx: number, cy: number) {
     buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (r ? (why ? `${r.name}: ${why}` : `${r.name}: becomes ${RESTORE[r.kind]!.name(r)}. Click to restore it.`) : 'Click a ruin in a cleared district to restore it. Esc to stop.'));
     return;
   }
+  if (build.kind === 'tow') {
+    const h = world.heaps[build.heap];
+    const why = h ? whyNotTow(colony, h, g.x, g.z) : 'It is gone.';
+    placement.showFoot({ tx: toTileX(world, g.x) - (h?.kind === 'car' ? 1 : 0), tz: toTileZ(world, g.z) - (h?.kind === 'car' ? 1 : 0), w: h?.kind === 'car' ? 3 : 1, d: h?.kind === 'car' ? 3 : 1 }, 0, 0.6, !why);
+    buildPanel.hint(why ?? 'Click to push it here. Esc to stop.');
+    return;
+  }
+  if (build.kind === 'fire' || build.kind === 'stockpile') {
+    const fire = build.kind === 'fire';
+    const why = fire ? whyNotFire(colony, g.x, g.z) : whyNotStockpile(colony, g.x, g.z);
+    if (fire) placement.showFoot({ tx: toTileX(world, g.x) - 2, tz: toTileZ(world, g.z) - 2, w: 5, d: 5 }, 0, 0.8, !why);
+    else {
+      const r = stockpileAt(colony, g.x, g.z);
+      placement.showFoot({ tx: toTileX(world, r.x0), tz: toTileZ(world, r.z0), w: Math.max(1, Math.round(r.x1 - r.x0)), d: Math.max(1, Math.round(r.z1 - r.z0)) }, 0, 1.2, !why);
+    }
+    buildPanel.hint(why ?? `Click to move the ${fire ? 'fire' : 'stockpile'} here. Esc to stop.`);
+    return;
+  }
+  if (build.kind === 'knowe') {
+    const why = colony.folk.pendingKnowe ? whyNotKnowe(colony, g.x, g.z) : 'No knowe is waiting to be raised.';
+    const R = Math.ceil(KNOWE_R);
+    placement.showFoot({ tx: toTileX(world, g.x) - R, tz: toTileZ(world, g.z) - R, w: R * 2 + 1, d: R * 2 + 1 }, 0, 1.8, !why);
+    buildPanel.hint(why ?? 'Click to raise the knowe here. Esc to stop.');
+    return;
+  }
   if (build.kind === 'folk') {
     const tx = toTileX(world, g.x), tz = toTileZ(world, g.z);
     const why = whyNotFolkWork(colony, tileX(world, tx), tileZ(world, tz));
@@ -620,6 +747,9 @@ function placeHover(cx: number, cy: number) {
     return;
   }
   const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
+  // A hamlet fire goes only in a resettled district, away from other fires (DESIGN §28).
+  const hamlet = build.site === 'hearth' ? whyNotHamletFire(colony, g.x, g.z) : null;
+  if (hamlet) { placement.showFoot(foot, facing, 0.8, false); buildPanel.hint(`${hamlet} Esc to stop.`); return; }
   const fit = canPlace(world, colony.village, build.site, foot);
   placement.showFoot(foot, facing, build.site === 'lantern' ? 2.6 : 2.4, fit.ok);
   buildPanel.hint((buildWhy ? `${buildWhy} ` : '') + (fit.ok ? `Click to place. ${fit.trees.length ? `${fit.trees.length} tree${fit.trees.length > 1 ? 's' : ''} will come down.` : ''} Right-click or T to turn.` : `${fit.why ?? 'It won\'t fit there.'} Right-click or T to turn; Esc to stop.`));
@@ -646,6 +776,17 @@ function placeClick(cx: number, cy: number) {
     if (!r) return;
     const res = requestRestore(colony, r.id);
     if (typeof res === 'string') { buildPanel.hint(`${r.name}: ${res}`); return; }
+  } else if (build.kind === 'tow') {
+    const h = world.heaps[build.heap];
+    const why = h ? towHeap(colony, h, g.x, g.z) : 'It is gone.';
+    if (why) { buildPanel.hint(why); return; }
+  } else if (build.kind === 'fire' || build.kind === 'stockpile') {
+    const why = build.kind === 'fire' ? moveFire(colony, g.x, g.z) : moveStockpile(colony, g.x, g.z);
+    if (why) { buildPanel.hint(why); return; }
+  } else if (build.kind === 'knowe') {
+    const res = placeKnowe(colony, g.x, g.z);
+    if (typeof res === 'string') { buildPanel.hint(res); return; }
+    log(community, `The village chose the place, and the Folk agreed: overnight ${res.name} rose beside ${world.folk.mound.name}.`, 'strange');
   } else if (build.kind === 'folk') {
     const res = orderFolkWork(colony, build.work, tileX(world, toTileX(world, g.x)), tileZ(world, toTileZ(world, g.z)));
     if (typeof res === 'string') { buildPanel.hint(res); return; }
@@ -656,7 +797,7 @@ function placeClick(cx: number, cy: number) {
     if (colony.village.priority === build.site) colony.village.priority = undefined;
   } else {
     // Power wants know-how (power.ts): joiners for a windmill, someone who knows wiring for panels and turbines.
-    const locked = whyLocked(colony, build.site);
+    const locked = whyLocked(colony, build.site) ?? (build.site === 'hearth' ? whyNotHamletFire(colony, g.x, g.z) : null);
     if (locked) { buildPanel.hint(locked); return; }
     const { foot, facing } = footAt(build.site, toTileX(world, g.x), toTileZ(world, g.z), build.turn);
     const res = placeProject(world, colony.village, community, build.site, foot, facing);
@@ -878,6 +1019,39 @@ function inspectBuildingAt(clientX: number, clientY: number): boolean {
   hud.inspect(q.userData.buildingId !== undefined ? { building: q.userData.buildingId } : { project: q.userData.projectId });
   return true;
 }
+/** The fire or the stockpile under the pointer (right-click: their card, to move them). */
+function inspectCampAt(clientX: number, clientY: number): boolean {
+  const g = groundAt(clientX, clientY);
+  if (!g) return false;
+  if (atFire(colony, g.x, g.z)) { hud.inspect({ camp: 'fire' }); return true; }
+  if (atStockpile(colony, g.x, g.z)) { hud.inspect({ camp: 'stockpile' }); return true; }
+  return false;
+}
+/**
+ * A building of the old world under the pointer (DESIGN §37): a restored one opens as the building it now is
+ * (a home shows its household); one still standing empty opens its own card, to restore or pull down.
+ */
+function inspectRuinAt(clientX: number, clientY: number): boolean {
+  const r = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, iso.camera);
+  const hit = raycaster.intersectObjects([oldWorld], true)[0];
+  const p = hit?.point ?? groundAt(clientX, clientY);
+  if (!p) return false;
+  const ruin = ruinAtPoint(p.x, p.z);
+  if (!ruin || !world.pois.some((q) => q.kind === 'ruin' && q.name === world.districts[ruin.district]?.name && q.discovered)) return false;
+  const b = colony.village.buildings.find((x) => x.ruin === ruin.id);
+  hud.inspect(b ? { building: b.id } : { ruin: ruin.id });
+  return true;
+}
+/** A wreck or junk heap under the pointer (right-click: its card, DESIGN §30). */
+function inspectHeapAt(clientX: number, clientY: number): boolean {
+  const g = groundAt(clientX, clientY);
+  const h = g ? heapAtPoint(g.x, g.z) : null;
+  if (!h) return false;
+  hud.inspect({ heap: h.id });
+  return true;
+}
 canvas.addEventListener('pointerdown', (e) => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, sx: e.clientX, sy: e.clientY });
@@ -890,7 +1064,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 canvas.addEventListener('pointermove', (e) => {
   lastPointer.x = e.clientX; lastPointer.y = e.clientY;
-  if (drafting() && draft.length) drawDraft(groundAt(e.clientX, e.clientY));
+  if (drafting()) drawDraft(groundAt(e.clientX, e.clientY));
   if (build?.kind === 'plot') keepOut.show(groundAt(e.clientX, e.clientY));
   if (build && build.kind !== 'plot' && !pointers.size) placeHover(e.clientX, e.clientY);
   if (veil) { const g = groundAt(e.clientX, e.clientY); veil.hover = g ? { tx: toTileX(world, g.x), tz: toTileZ(world, g.z) } : null; if (!pointers.size) veilHover(e.clientX, e.clientY); }
@@ -946,7 +1120,7 @@ canvas.addEventListener('pointerup', (e) => {
   }
   if (!p || Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 6) return;
   // A right-click on a building opens its card, where it can be taken down or moved (DESIGN §24.13).
-  if (p.button === 2) { inspectBuildingAt(e.clientX, e.clientY); return; }
+  if (p.button === 2) { if (!inspectBuildingAt(e.clientX, e.clientY) && !inspectCampAt(e.clientX, e.clientY) && !inspectHeapAt(e.clientX, e.clientY)) inspectRuinAt(e.clientX, e.clientY); return; }
   if (p.button !== 0) return;
   // A click: try to select a survivor.
   const r = canvas.getBoundingClientRect();
@@ -961,13 +1135,15 @@ canvas.addEventListener('pointerup', (e) => {
   if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
     const m = world.folk.mound;
     if (Math.hypot(hitPoint.x - m.x, hitPoint.z - m.z) < m.r + 1) { hud.inspect({ folk: true }); return; }
+    // A building of the old world (restored: the building it is now), before its district (DESIGN §37)?
+    if (inspectRuinAt(e.clientX, e.clientY)) return;
     // A district of the old world?
     const d = world.districts.find((x) => Math.hypot(hitPoint.x - x.x, hitPoint.z - x.z) < 20
       && world.pois.some((q) => q.kind === 'ruin' && q.name === x.name && q.discovered));
     if (d) { hud.inspect({ district: d.id }); return; }
   }
   // Not a person: a building?
-  const bh = raycaster.intersectObjects([villageView.group, plotsView.group, station.group], true)[0];
+  const bh = raycaster.intersectObjects(siteGone() ? [villageView.group, plotsView.group] : [villageView.group, plotsView.group, station.group], true)[0];
   let q: THREE.Object3D | null = bh?.object ?? null;
   while (q && q.userData.buildingId === undefined && q.userData.projectId === undefined && q.userData.plotId === undefined) q = q.parent;
   if (q?.userData.plotId !== undefined) {
@@ -984,7 +1160,7 @@ canvas.addEventListener('pointerup', (e) => {
     const S = world.site.shelter, K = world.site.kitchen;
     const st = colony.village.buildings.find((b) => b.kind === 'store')!;
     const kitchen = colony.village.buildings.find((b) => b.kind === 'kitchen');
-    if (Math.abs(p.x - S.x) < S.w / 2 + 0.4 && Math.abs(p.z - S.z) < S.d / 2 + 0.6) { hud.inspect({ building: st.id }); return; }
+    if (!st.gone && Math.abs(p.x - S.x) < S.w / 2 + 0.4 && Math.abs(p.z - S.z) < S.d / 2 + 0.6) { hud.inspect({ building: st.id }); return; }
     if (kitchen && Math.abs(p.x - K.x) < 5.6 && Math.abs(p.z - K.z) < 3.6) { hud.inspect({ building: kitchen.id }); return; }
   }
   hud.inspect(null);
@@ -1010,6 +1186,7 @@ window.addEventListener('keydown', (e) => {
     if (speed === 0) setSpeed(lastSpeed); else { lastSpeed = speed; setSpeed(0); }
   } else if (k === '1' || k === '2' || k === '3') setSpeed(Number(k));
   else if (k === 'r') cycleRoofs();
+  else if (k === 'g') gfx.toggle();
   else if (k === 'o') setWoods((worldUniforms.uThin.value + 1) % 3);
   else if (k === 'b' && !veil) buildPanel.toggle();
   else if (k === 't' && build?.kind === 'place') { build.turn = (build.turn + 1) % 4; placeHover(lastPointer.x, lastPointer.y); }
@@ -1025,12 +1202,11 @@ window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 window.addEventListener('resize', () => {
   const w = view.clientWidth, h = view.clientHeight;
   renderer.setSize(w, h);
-  composer.setSize(w, h);
-  bloom.setSize(w, h);
+  sizeComposer(); // (bloom is sized with it)
   iso.resize(w / h);
-  if (PIXEL) iso.snapRows = Math.round(h / PIXEL);
+  if (PIXEL) iso.snapRows = Math.round(h / pixelScale);
 });
-if (PIXEL) iso.snapRows = Math.round(view.clientHeight / PIXEL);
+if (PIXEL) iso.snapRows = Math.round(view.clientHeight / pixelScale);
 
 // ---------- loop ----------
 const vignette = document.getElementById('vignette')!;
@@ -1052,7 +1228,7 @@ function adaptQuality(dt: number) {
   if (perfStep === 1) {
     if (PIXEL) return; // already drawing at a fraction of the screen
     renderer.setPixelRatio(1);
-    composer.setPixelRatio(1);
+    sizeComposer();
   } else {
     renderer.shadowMap.type = THREE.PCFShadowMap;
     sky.sun.shadow.mapSize.set(1024, 1024);
@@ -1122,7 +1298,7 @@ function frame() {
   }
   iso.update(dt);
   // Pixel art: shift the enlarged image by what the camera snap took away, so panning stays smooth.
-  if (PIXEL) renderer.domElement.style.transform = `translate(${(iso.residual.x * PIXEL).toFixed(2)}px, ${(-iso.residual.y * PIXEL).toFixed(2)}px)`;
+  if (PIXEL) renderer.domElement.style.transform = `translate(${(iso.residual.x * pixelScale).toFixed(2)}px, ${(-iso.residual.y * pixelScale).toFixed(2)}px)`;
   iso.target.y = heightAt(world, iso.target.x, iso.target.z) * 0.6;
 
   // World.
@@ -1130,14 +1306,32 @@ function frame() {
   const dayFrac = colony.minute / 1440 + 1;
   const weather = colony.weather;
   const look = seasonLook(dayFrac, weather === 'snow');
-  worldUniforms.uSnow.value = look.snow;
+  // Snow builds up while it falls and melts when it's warm enough (DESIGN §35); roofs catch it a little faster.
+  {
+    const dm = lastSnowMinute < 0 ? 0 : Math.max(0, Math.min(240, colony.minute - lastSnowMinute));
+    lastSnowMinute = colony.minute;
+    if (snowCover < 0) { snowCover = look.snow; roofSnow = look.snow; } // a loaded game starts as the season looks
+    const cold = snowCold(dayFrac);
+    if (weather === 'snow') {
+      snowCover = Math.min(1, snowCover + dm / (60 * 7));
+      roofSnow = Math.min(1, roofSnow + dm / (60 * 4.5));
+    } else {
+      const melt = (1 - cold) * dm / (1440 * 1.2) + (weather === 'rain' ? dm / (1440 * 0.5) : 0);
+      snowCover = Math.max(0, snowCover - melt);
+      roofSnow = Math.max(0, roofSnow - melt * 1.3); // a heated roof sheds it sooner
+    }
+  }
+  worldUniforms.uSnow.value = snowCover;
+  worldUniforms.uRoofSnow.value = roofSnow;
+  footprints.update(colony.minute, snowCover, weather === 'snow',
+    [...colony.agents.filter((a) => !a.indoors && !a.afloat).map((a) => ({ id: `a${a.id}`, x: a.x, z: a.z })), ...herds.positions()], t);
   worldUniforms.uAutumn.value = look.autumn;
   worldUniforms.uBare.value = look.bare;
   worldUniforms.uBlossom.value = look.blossom;
   const gloom = weather === 'rain' ? 1 : weather === 'snow' ? 0.7 : weather === 'overcast' ? 0.6 : weather === 'fog' ? 0.4 : 0;
   sky.follow(iso.target);
-  sky.setHour(veil ? 20.75 : hour, daylightHours(dayFrac), veil ? 0 : gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, look.snow);
-  precip.update(dt, t, iso.target, weather === 'rain' ? 'rain' : weather === 'snow' ? 'snow' : null);
+  sky.setHour(veil ? 20.75 : hour, daylightHours(dayFrac), veil ? 0 : gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, Math.max(snowCover, weather === 'snow' ? 0.5 : 0));
+  precip.update(dt, t, iso.target, weather === 'rain' ? 'rain' : weather === 'snow' ? 'snow' : null, weather === 'snow' ? 0.45 + 0.55 * snowCover : 1);
   // Seeing through their eyes: a selected survivor's Sight tints the world and reveals the Veil.
   const viewer = people.selected ? community.survivors.find((s) => s.id === people.selected) : undefined;
   const sightK = viewer ? viewer.sight / 100 : 0;
@@ -1205,7 +1399,7 @@ function frame() {
     return { x: a.x, z: a.z, facing: a.facing, boatId: f?.boat ?? 0 };
   }));
   mushroomGlow.color.setRGB(0.5, 1.2, 1.0).multiplyScalar(0.4 + sky.night * 1.6);
-  bloom.strength = 0.45 + sky.night * 0.5;
+  bloom.strength = (0.45 + sky.night * 0.5) * gfx.s.bloom;
 
   syncXray();
   const tDraw = performance.now();
@@ -1220,7 +1414,9 @@ function frame() {
     uiTimer = 0;
     people.sync(community.survivors, colony.agents);
     camp.sync(community, colony.items, colony.beds);
+    camp.seats(fireSeats(colony));
     villageView.sync();
+    syncSiteGone();
     plotsView.sync(seasonIndex(colony.community.day));
     heaps.sync();
     fields.sync(t);
@@ -1230,7 +1426,9 @@ function frame() {
     trees.syncPlanted();
     lightPeopleLayer(scene);
     hud.render();
+    dropAnsweredHomes(colony);
     tray.render();
+    buildPanel.badge();
     chronicle.render();
   }
   hud.updateClock(iso.headingDeg);
@@ -1380,6 +1578,54 @@ const veilDebug = {
     return r;
   },
   /** Clear the nearest district with a house, restore the house and finish it (DESIGN §24.16). Returns the ruin. */
+  /** Set how deep the snow lies, ground and roofs, 0..1 (DESIGN §35; it then builds up or melts from there). */
+  snow(v: number) { snowCover = roofSnow = Math.max(0, Math.min(1, v)); },
+  footprints: () => footprints,
+  /** Tow the wreck nearest the fire to the yard (DESIGN §30); returns its id, and opens its card. */
+  towNearest() {
+    const c = world.campfire;
+    const h = world.heaps.filter((x) => x.kind === 'car' && x.scrap > 0 && !x.tow).sort((a, b) => Math.hypot(tileX(world, a.tx) - c.x, tileZ(world, a.tz) - c.z) - Math.hypot(tileX(world, b.tx) - c.x, tileZ(world, b.tz) - c.z))[0];
+    if (!h) return null;
+    const at = yardSpot(colony, h);
+    if (at) towHeap(colony, h, at.x, at.z);
+    hud.inspect({ heap: h.id });
+    return h.id;
+  },
+  /** Pull the found shelter down at once, and (with a point) raise a commons hall near it, built (DESIGN §29). */
+  pullDown(x?: number, z?: number) {
+    const st = colony.village.buildings.find((b) => b.kind === 'store')!;
+    if (!st.gone) pullDownShelter(colony, st);
+    if (x !== undefined && z !== undefined) {
+      const w = world, v = colony.village;
+      for (let r = 0; r < 14; r++) for (let a = 0; a < 16; a++) {
+        const { foot, facing } = footAt('hall', toTileX(w, x + Math.cos(a) * r), toTileZ(w, z + Math.sin(a) * r), 0);
+        if (!canPlace(w, v, 'hall', foot).ok) continue;
+        const p = placeProject(w, v, community, 'hall', foot, facing);
+        if (typeof p === 'string') continue;
+        completeProject(w, v, community, p);
+        syncScene();
+        return p.foot;
+      }
+    }
+    syncScene();
+    return null;
+  },
+  /** Light a hamlet fire beside a point, built at once (DESIGN §28). Returns where, or null. */
+  hamlet(x: number, z: number) {
+    const w = world, v = colony.village;
+    for (let r = 3; r < 14; r++) for (let a = 0; a < 16; a++) {
+      const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r;
+      if (whyNotHamletFire(colony, px, pz)) continue;
+      const { foot, facing } = footAt('hearth', toTileX(w, px), toTileZ(w, pz), 0);
+      if (!canPlace(w, v, 'hearth', foot).ok) continue;
+      const p = placeProject(w, v, community, 'hearth', foot, facing);
+      if (typeof p === 'string') continue;
+      completeProject(w, v, community, p);
+      syncScene();
+      return { x: px, z: pz };
+    }
+    return null;
+  },
   restoreHome() {
     const w = world, v = colony.village;
     const houses = w.ruins.filter((r) => RESTORE[r.kind]?.as === 'home').sort((a, b) => Math.hypot(a.x - w.campfire.x, a.z - w.campfire.z) - Math.hypot(b.x - w.campfire.x, b.z - w.campfire.z));
@@ -1392,6 +1638,12 @@ const veilDebug = {
       if (!h.owner) giveDistrict(colony, d.id, 'village');
       const p = requestRestore(colony, r.id);
       if (typeof p === 'string') continue;
+      // Done at once: the trees on its plot come down too, as the restorers would fell them (DESIGN §37).
+      for (const id of p.clearTrees) {
+        const tr = w.trees[id];
+        tr.felled = true; w.treeAt[idx(w, tr.tx, tr.tz)] = -1;
+        colony.events.push({ type: 'felled', tree: id, dirX: 1, dirZ: 0 });
+      }
       completeProject(w, v, colony.community, p);
       syncScene();
       return r;
@@ -1415,6 +1667,11 @@ const veilDebug = {
   },
   /** Mark paving to be broken up (DESIGN §24.12). */
   depave: (x: number, z: number, r: number) => markDepave(world, x, z, r, true),
+  /** Clear a district and give it away (DESIGN §26): 'village', 'folk' or 'shared'. */
+  give(district: number, to: 'village' | 'folk' | 'shared') { const h = colony.haunts.find((x) => x.district === district); if (!h) return; h.state = 'cleared'; h.owner = null; const d = world.districts[district]; reveal(world, d.x, d.z, 22); giveDistrict(colony, district, to); syncScene(); hud.render(); },
+  /** Move the fire or the stockpile (DESIGN §27); returns why not. */
+  moveFire: (x: number, z: number) => { const r = moveFire(colony, x, z); syncScene(); return r; },
+  moveStockpile: (x: number, z: number) => { const r = moveStockpile(colony, x, z); syncScene(); return r; },
   /** Grow the mycelium n days (and set the Folk's standing, if given). */
   spread(n = 10, standing?: number) { if (standing !== undefined) colony.folk.standing = standing; for (let i = 0; i < n; i++) myceliumDaily(colony); },
   /** Grow the hill n times, each raising a knowe (DESIGN §25.3). */
@@ -1446,7 +1703,7 @@ const veilDebug = {
     return toScreen(x, heightAt(world, x, z) + 1.1, z);
   },
 };
-Object.assign(window, { __game: { ...veilDebug, stats, addModel, setWoods, flicker, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
+Object.assign(window, { __game: { ...veilDebug, stats, addModel, setWoods, flicker, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean; camp?: 'fire' | 'stockpile' }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
   place: (k: PlaceKind, x: number, z: number, turn = 0) => { const { foot, facing } = footAt(k, toTileX(world, x), toTileZ(world, z), turn); return placeProject(world, colony.village, community, k, foot, facing); },
   folkOrder: (k: never, x: number, z: number) => orderFolkWork(colony, k, x, z), folkWhy: (x: number, z: number) => whyNotFolkWork(colony, x, z),
   save: () => saveNow('manual'),

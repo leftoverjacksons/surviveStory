@@ -271,6 +271,7 @@ function bladeGeometry(): THREE.BufferGeometry {
 /** Grass in 32×32-tile chunks so off-screen chunks are culled. */
 function buildGrass(w: World): THREE.Group {
   const group = new THREE.Group();
+  group.name = 'tufts'; // the graphics panel can hide them (ui/gfx.ts)
   const rand = makeRand(21);
   const geo = bladeGeometry();
   const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, vertexColors: SOFT }), { wind: 0.35, season: 'grass', upLit: SOFT });

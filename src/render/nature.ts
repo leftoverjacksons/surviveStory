@@ -195,7 +195,11 @@ class Deer {
     mergeDirect(this.root);
     for (const hip of this.legs) mergeDirect(hip);
     mergeDirect(this.neck);
-    this.root.position.copy(home).add(new THREE.Vector3((rand() - 0.5) * 8, 0, (rand() - 0.5) * 8));
+    this.root.position.copy(home);
+    for (let i = 0; i < 12; i++) {
+      const x = home.x + (rand() - 0.5) * 8, z = home.z + (rand() - 0.5) * 8;
+      if (this.walkable(x, z)) { this.root.position.set(x, 0, z); break; }
+    }
     this.phase = rand() * 10;
     this.pickTarget();
     this.timer = rand() * 5;
@@ -205,18 +209,44 @@ class Deer {
     const w = this.world;
     const tx = toTileX(w, x), tz = toTileZ(w, z);
     if (!passable(w, tx, tz)) return false;
-    const g = w.ground[idx(w, tx, tz)];
-    return g !== Ground.Asphalt || this.rand() < 0.2;
+    const i = idx(w, tx, tz);
+    // Tree trunks are solid to a deer (people squeeze past them; a deer's body won't).
+    if (w.treeAt[i] >= 0) return false;
+    return w.ground[i] !== Ground.Asphalt || this.rand() < 0.2;
   }
 
-  private pickTarget() {
-    for (let i = 0; i < 20; i++) {
-      const x = this.home.x + (this.rand() - 0.5) * 26, z = this.home.z + (this.rand() - 0.5) * 26;
-      if (this.walkable(x, z)) { this.target.set(x, 0, z); return; }
+  /** Can it walk straight from a to b? (Sampled every half unit: no trees, rocks, walls or water.) */
+  private clearLine(ax: number, az: number, bx: number, bz: number) {
+    const L = Math.hypot(bx - ax, bz - az), n = Math.ceil(L / 0.5);
+    for (let k = 1; k <= n; k++) {
+      const x = ax + ((bx - ax) * k) / n, z = az + ((bz - az) * k) / n;
+      const w = this.world, tx = toTileX(w, x), tz = toTileZ(w, z);
+      if (!passable(w, tx, tz) || w.treeAt[idx(w, tx, tz)] >= 0) return false;
     }
+    return true;
   }
 
-  update(dt: number, agents: Agent[]) {
+  /** A grazing spot it can walk straight to (DESIGN §34: deer used to walk into things and stick). */
+  private pickTarget(away?: { x: number; z: number }) {
+    const pos = this.root.position;
+    for (let i = 0; i < 24; i++) {
+      let x = this.home.x + (this.rand() - 0.5) * 26, z = this.home.z + (this.rand() - 0.5) * 26;
+      if (away) { const a = Math.atan2(pos.z - away.z, pos.x - away.x) + (this.rand() - 0.5) * 1.6, r = 6 + this.rand() * 8; x = pos.x + Math.cos(a) * r; z = pos.z + Math.sin(a) * r; }
+      if (this.walkable(x, z) && this.clearLine(pos.x, pos.z, x, z)) { this.target.set(x, 0, z); this.faceTarget(); return true; }
+    }
+    this.target.copy(pos);
+    return false;
+  }
+
+  private faceTarget() {
+    const pos = this.root.position;
+    if (Math.hypot(this.target.x - pos.x, this.target.z - pos.z) > 0.3) this.heading = Math.atan2(-(this.target.z - pos.z), this.target.x - pos.x);
+  }
+
+  private stuck = 0;
+  private last = new THREE.Vector3();
+
+  update(dt: number, agents: Agent[], herd: Deer[]) {
     this.timer -= dt;
     const pos = this.root.position;
     // Keep a wary distance from people.
@@ -225,15 +255,23 @@ class Deer {
     if (near && this.state !== 'flee') {
       this.state = 'flee';
       this.timer = 3;
-      const dx = pos.x - near.x, dz = pos.z - near.z, d = Math.hypot(dx, dz) || 1;
-      const tx = pos.x + (dx / d) * 12, tz = pos.z + (dz / d) * 12;
-      if (this.walkable(tx, tz)) this.target.set(tx, 0, tz);
+      this.pickTarget({ x: near.x, z: near.z });
     }
     if (this.timer <= 0) {
       const roll = this.rand();
       this.state = roll < 0.45 ? 'walk' : roll < 0.85 ? 'graze' : 'alert';
       this.timer = this.state === 'walk' ? 4 + this.rand() * 6 : 3 + this.rand() * 5;
       if (this.state === 'walk') this.pickTarget();
+    }
+    // Herd-mates keep a body's length apart instead of standing in each other.
+    for (const o of herd) {
+      if (o === this) continue;
+      const q = o.root.position, dx = pos.x - q.x, dz = pos.z - q.z, d = Math.hypot(dx, dz);
+      if (d < 1.4 && d > 1e-3) {
+        const push = (1.4 - d) * Math.min(1, dt * 2);
+        const nx = pos.x + (dx / d) * push, nz = pos.z + (dz / d) * push;
+        if (this.walkable(nx, nz)) { pos.x = nx; pos.z = nz; }
+      }
     }
     let neckTarget = 0;
     if (this.state === 'walk' || this.state === 'flee') {
@@ -246,7 +284,13 @@ class Deer {
       this.heading += diff * Math.min(1, dt * 3);
       const speed = this.state === 'flee' ? 3.2 : 1.1;
       const nx = pos.x + Math.cos(this.heading) * speed * dt, nz = pos.z - Math.sin(this.heading) * speed * dt;
-      if (this.walkable(nx, nz)) { pos.x = nx; pos.z = nz; } else this.pickTarget();
+      // Check where the nose will be, not just the middle of the body.
+      const hx = nx + Math.cos(this.heading) * 0.7, hz = nz - Math.sin(this.heading) * 0.7;
+      if (this.walkable(nx, nz) && this.walkable(hx, hz)) { pos.x = nx; pos.z = nz; }
+      else if (!this.pickTarget()) this.state = 'graze';
+      // Not getting anywhere for a couple of seconds: give up on that spot.
+      this.stuck = pos.distanceTo(this.last) < speed * dt * 0.2 ? this.stuck + dt : 0;
+      if (this.stuck > 2) { this.stuck = 0; if (!this.pickTarget()) this.state = 'graze'; }
       this.phase += dt * (this.state === 'flee' ? 12 : 7);
       this.legs.forEach((l, i) => { l.rotation.z = Math.sin(this.phase + (i % 3 === 0 ? 0 : Math.PI)) * 0.45; });
     } else {
@@ -255,6 +299,7 @@ class Deer {
     }
     this.neck.rotation.z += (neckTarget - this.neck.rotation.z) * Math.min(1, dt * 3);
     this.root.rotation.y = this.heading;
+    this.last.copy(pos);
     pos.y = heightAt(this.world, pos.x, pos.z);
     this.root.visible = isExplored(this.world, toTileX(this.world, pos.x), toTileZ(this.world, pos.z));
     if (this.body && this.root.visible) {
@@ -275,6 +320,7 @@ class Deer {
 export class Herds {
   group = new THREE.Group();
   private deer: Deer[] = [];
+  private herdOf = new Map<Deer, Deer[]>();
   constructor(world: World) {
     const rand = makeRand(41);
     const homes: THREE.Vector3[] = [];
@@ -290,15 +336,22 @@ export class Herds {
     }
     for (const h of homes) {
       const n = 2 + Math.floor(rand() * 3);
+      const herd: Deer[] = [];
       for (let i = 0; i < n; i++) {
         const d = new Deer(world, rand, h);
         this.deer.push(d);
+        herd.push(d);
+        this.herdOf.set(d, herd);
         this.group.add(d.root);
       }
     }
   }
+  /** Where each deer is standing (for footprints in the snow). */
+  positions(): { id: string; x: number; z: number; hoofed: boolean }[] {
+    return this.deer.filter((d) => d.root.visible).map((d, i) => ({ id: `d${i}`, x: d.root.position.x, z: d.root.position.z, hoofed: true }));
+  }
   update(dt: number, agents: Agent[]) {
-    for (const d of this.deer) d.update(dt, agents);
+    for (const d of this.deer) d.update(dt, agents, this.herdOf.get(d)!);
   }
 
   /** Models arrived: the first of each herd is a stag, the rest does and young. */

@@ -11,7 +11,7 @@
  * - The player guides what they give their nights to: the woods, the
  *   village (night chores), or their own home (the mound grows).
  */
-import { KNOWES, housing, knoweCount, raiseKnowe, settleFolk, townhouseDaily, homeOf, type Knowe } from './townhouse';
+import { KNOWES, KNOWE_WAIT, roomFor, inFolkCountry, knoweCount, knoweDue, letFolkChoose, lookingToward, settleFolk, townhouseDaily, homeOf, type Knowe, type KnoweKind } from './townhouse';
 import { HAUNT_RADIUS } from './haunt';
 import { faeDaily, feel, gentryFeel, gentryView, isGentry, opinionOf, restlessTick, sway, visitTarget, weeVisit, type Restless } from './fae';
 import type { Colony } from './colony';
@@ -54,12 +54,14 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
   // If nothing fits every wish, the good ground farthest from the old districts.
   let fallback: { x: number; z: number; far: number } | null = null;
   for (let k = 0; k < 400; k++) {
-    const a = ringA + rng.range(-0.6, 0.6) * (k < 120 ? 1 : k < 260 ? 2 : 3), d = ringD + rng.range(17, 25);
+    // Well out beyond the Ring (DESIGN §29): a buffer of open land between the village and the Wild, for the player to close or keep.
+    const a = ringA + rng.range(-0.6, 0.6) * (k < 120 ? 1 : k < 260 ? 2 : 3), d = ringD + rng.range(26, 34);
     const x = Math.cos(a) * d, z = Math.sin(a) * d;
     if (segmentDist(x, z, w.fairyRing.x, w.fairyRing.z) < 17) continue;
     const tx = toTileX(w, x), tz = toTileZ(w, z);
     if (!inBounds(w, tx, tz)) continue;
-    if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 18) continue;
+    if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 26) continue;
+    if (Math.hypot(x, z) < 44) continue;
     const far = Math.min(99, ...w.districts.map((q) => Math.hypot(x - q.x, z - q.z)));
     let ok = true, forest = 0;
     for (let dz = -9; dz <= 9 && ok; dz++) for (let dx = -9; dx <= 9; dx++) {
@@ -74,7 +76,26 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
     const score = forest + rng.range(0, 12);
     if (!best || score > best.score) best = { x, z, score };
   }
-  const at = best ?? fallback ?? { x: w.fairyRing.x * 1.7, z: w.fairyRing.z * 1.7 };
+  // Still nothing: any bearing, the same buffer, only the hill's own footing asked for.
+  if (!best && !fallback) {
+    for (let k = 0; k < 600; k++) {
+      const a = ringA + rng.range(-Math.PI, Math.PI), d = rng.range(46, 62);
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      const tx = toTileX(w, x), tz = toTileZ(w, z);
+      if (!inBounds(w, tx - 9, tz - 9) || !inBounds(w, tx + 9, tz + 9)) continue;
+      if (Math.hypot(x - w.fairyRing.x, z - w.fairyRing.z) < 20) continue;
+      let ok = true, forest = 0;
+      for (let dz = -9; dz <= 9 && ok; dz++) for (let dx = -9; dx <= 9; dx++) {
+        const i = idx(w, tx + dx, tz + dz), g = w.ground[i];
+        if (Math.hypot(dx, dz) <= GREAT_HILL_R + 0.5 && (g === Ground.Water || g === Ground.Asphalt || g === Ground.Concrete || w.blocked[i])) { ok = false; break; }
+        if (g === Ground.Forest) forest++;
+      }
+      if (!ok) continue;
+      const score = forest - Math.abs(a - ringA) * 20 + rng.range(0, 12);
+      if (!best || score > best.score) best = { x, z, score };
+    }
+  }
+  const at = best ?? fallback ?? { x: w.fairyRing.x * 2.4, z: w.fairyRing.z * 2.4 };
   const mound: Mound = {
     x: at.x, z: at.z, r: GREAT_HILL_R, name: MOUND_NAMES[Math.abs(seed) % MOUND_NAMES.length],
     // The door looks toward the Ring.
@@ -100,7 +121,7 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
   const path = new Uint8Array(w.w * w.h);
   const paths: Point[][] = [];
   const doorPt = { x: mound.x + Math.cos(mound.door) * (mound.r + 0.6), z: mound.z + Math.sin(mound.door) * (mound.r + 0.6) };
-  const lay = (from: Point, to: Point, bend: number) => {
+  const curve = (from: Point, to: Point, bend: number) => {
     const pts: Point[] = [];
     const mx = (from.x + to.x) / 2, mz = (from.z + to.z) / 2;
     const len = Math.hypot(to.x - from.x, to.z - from.z) || 1;
@@ -111,16 +132,34 @@ export function layFolkLand(w: World, flatDist: Float32Array, seed: number, rng:
       const t = s / n, u = 1 - t;
       pts.push({ x: u * u * from.x + 2 * u * t * cx + t * t * to.x, z: u * u * from.z + 2 * u * t * cz + t * t * to.z });
     }
+    return pts;
+  };
+  const tilesOf = (pts: Point[]) => {
+    const out = new Set<number>();
     for (let s = 0; s < pts.length - 1; s++) {
       const a = pts[s], b = pts[s + 1];
       const l = Math.hypot(b.x - a.x, b.z - a.z);
       for (let d = 0; d <= l; d += 0.4) {
         const x = a.x + ((b.x - a.x) * d) / l, z = a.z + ((b.z - a.z) * d) / l;
         const tx = toTileX(w, x), tz = toTileZ(w, z);
-        if (inBounds(w, tx, tz) && w.ground[idx(w, tx, tz)] !== Ground.Water) path[idx(w, tx, tz)] = 1;
+        if (inBounds(w, tx, tz) && w.ground[idx(w, tx, tz)] !== Ground.Water) out.add(idx(w, tx, tz));
       }
     }
-    paths.push(pts);
+    return out;
+  };
+  // A path never runs through a building of the old world (or rubble): the bend asked for if it's clear,
+  // else the nearest bend that is, else the one that crosses least (DESIGN §34).
+  const lay = (from: Point, to: Point, bend: number) => {
+    let best: { pts: Point[]; tiles: Set<number>; hits: number } | null = null;
+    for (const b of [bend, ...[4, -4, 8, -8, 12, -12, 16, -16, 22, -22].map((k) => bend + k)]) {
+      const pts = curve(from, to, b), tiles = tilesOf(pts);
+      let hits = 0;
+      for (const i of tiles) if (w.blocked[i]) hits++;
+      if (!best || hits < best.hits) best = { pts, tiles, hits };
+      if (hits === 0) break;
+    }
+    for (const i of best!.tiles) path[i] = 1;
+    paths.push(best!.pts);
   };
   const ring = w.fairyRing;
   const toRing = Math.atan2(ring.z - doorPt.z, ring.x - doorPt.x);
@@ -271,6 +310,8 @@ export interface FolkSociety {
   song: number;
   nextId: number;
   version: number;
+  /** A knowe the hill's growth has earned, waiting for the village to choose its place (DESIGN §25.6). */
+  pendingKnowe?: { kind: KnoweKind; since: number };
   /** The knowes raised round the Great Hill (townhouse.ts, DESIGN §25.3). */
   knowes?: Knowe[];
   nextKnowe?: number;
@@ -470,6 +511,11 @@ export function folkDaily(col: Colony) {
   // Their land keeps the Veil thin around the hill.
   nurture(col, m.x, m.z, 0.012, 2);
   townhouseDaily(col);
+  // A knowe nobody chose a place for: after a few days the Folk choose for themselves.
+  if (f.pendingKnowe && col.community.day - f.pendingKnowe.since >= KNOWE_WAIT) {
+    const k = letFolkChoose(col);
+    news(col, k ? `The Folk of ${m.name} stopped waiting and chose for themselves: overnight ${k.name} rose ${inFolkCountry(col, k.x, k.z) ? 'in their country beyond the hill' : 'beside the hill'}.` : `The Folk of ${m.name} could find no room for another knowe.${lookingToward(col) ? ` Their lights hang at the edge of ${lookingToward(col)} at night.` : ''}`, 'strange');
+  }
 
   withRng(col.community, (rng) => {
     // Growth: a friendly, healthy hill with room to spare grows. Without more land, it can't.
@@ -492,11 +538,12 @@ export function folkDaily(col: Colony) {
         f.level++;
         const kind: FaeKind = rng.pick(['hob', 'sprite', 'piper', 'hob']);
         const fae = addFae(f, w, kind, f.level);
-        const k = raiseKnowe(col);
+        const k = knoweDue(col);
         settleFolk(f);
-        news(col, !f.met ? `There are more lights around ${m.name} at dusk than there used to be${k ? ', and the ground beside it has risen into a new green hill' : ''}.`
+        if (f.pendingKnowe) news(col, `${f.met ? fae.name : 'Someone new'} has come to live at ${m.name}, and the Folk mean to raise a new knowe: ${KNOWES[f.pendingKnowe.kind].name.toLowerCase()}. Where should it rise? (Asks tray: choose, or let them.)`, 'good');
+        else news(col, !f.met ? `There are more lights around ${m.name} at dusk than there used to be${k ? ', and the ground beside it has risen into a new green hill' : ''}.`
           : k ? `${fae.name} has come to live at ${m.name}. Overnight a new hill rose beside it: ${k.name}, ${KNOWES[k.kind].name.toLowerCase()}. The Folk are growing.`
-          : `${fae.name} has come to live at ${m.name}. There is no room left round the hill for another knowe.`, 'good');
+          : `${fae.name} has come to live at ${m.name}, but there is no room left round the hill for another knowe.${lookingToward(col) ? ` At dusk their lights drift toward ${lookingToward(col)}, and hang at its edge.` : ''}`, 'good');
         addWork(col, rng);
       }
     }
@@ -590,7 +637,7 @@ export function folkNeeds(col: Colony): FolkNeed[] {
   const n = (k: FolkWorkKind) => done.filter((x) => x.kind === k).length;
   return [
     { id: 'room', label: 'Room', met: f.land >= landWanted(f), hint: 'Land left to the Wild around the hill.', gate: false },
-    { id: 'rest', label: 'Rest', met: housing(f) + n('bower') * 2 >= f.beings.length + 1, hint: 'Room in the hall and the knowes (or a bower for every two more), and one spare for whoever comes next.', gate: true },
+    { id: 'rest', label: 'Rest', met: roomFor(col) + n('bower') * 2 >= f.beings.length + 1, hint: 'Room in the hall, the knowes and the ruins of their districts (or a bower for every two more), and one spare for whoever comes next.', gate: true },
     { id: 'dance', label: 'Dance', met: n('ring') >= 1 + Math.floor(f.level / 3), hint: 'A dancing ring (another every third growth).', gate: true },
     { id: 'light', label: 'Light', met: n('lantern') >= 1 + Math.floor(f.level / 2), hint: 'Glow-lanterns along their paths, more as the hill grows.', gate: true },
     { id: 'gifts', label: 'Gifts', met: col.community.day - f.offeredDay <= 3, hint: 'An offering at the door in the last three days.', gate: false },

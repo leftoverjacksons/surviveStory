@@ -12,6 +12,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { enhance, type EnhanceOptions } from './util';
+import { cutMaterialFor } from './roofs';
+
+/** The cut height set on this object or an ancestor below `root` (ruins, DESIGN §33), if any. */
+function cutAtOf(o: THREE.Object3D, root: THREE.Object3D): number | undefined {
+  for (let q: THREE.Object3D | null = o; q && q !== root; q = q.parent) if (q.userData.cutAt !== undefined) return q.userData.cutAt as number;
+  return undefined;
+}
 
 /** Is this object (or an ancestor below `root`) a roof? */
 function isRoof(o: THREE.Object3D, root: THREE.Object3D): boolean {
@@ -136,7 +143,10 @@ export function mergeStatic(root: THREE.Object3D, live: Set<THREE.Object3D> = ne
     const own = m.material as THREE.Material;
     const roof = isRoof(m, root);
     const flat = colourable(own);
-    const mat = flat ? sharedMaterial(own.userData.enhance, cut && !noCut(m, root)) : own;
+    let mat: THREE.Material = flat ? sharedMaterial(own.userData.enhance, cut && !noCut(m, root)) : own;
+    // Parts that carry their own cut height get a copy of the material that cuts there, and merge only with their like.
+    const cutAt = cut && mat.userData.cutShared ? cutAtOf(m, root) : undefined;
+    if (cutAt !== undefined) mat = cutMaterialFor(mat, cutAt);
     const key = `${mat.uuid}|${roof ? 'r' : 'w'}|${m.castShadow ? 1 : 0}`;
     let b = buckets.get(key);
     if (!b) { b = { mat, roof, geos: [], cast: m.castShadow }; buckets.set(key, b); }

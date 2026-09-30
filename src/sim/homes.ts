@@ -304,6 +304,13 @@ export function householdsDaily(col: Colony) {
       log(c, `${firstName(s)} wants a place of their own, even a small one.`, 'info');
     }
   }
+  // Restored houses from before DESIGN §37 still carry the old world's name: an empty house, or the family's.
+  for (const b of v.buildings) {
+    if (b.kind !== 'home' || b.ruin === undefined || b.lived) continue;
+    const hh = b.household ? v.households.find((x) => x.id === b.household) : undefined;
+    if (hh) { const nm = householdName(c, hh); b.name = hh.members.length > 1 ? `${nm}'s house` : `${nm}'s cottage`; b.lived = true; }
+    else b.name = 'An empty house';
+  }
   // Empty homes go to whoever is waiting and fits.
   for (const b of v.buildings) {
     if (b.kind !== 'home' || b.household) continue;
@@ -321,6 +328,16 @@ function moveIn(col: Colony, h: Household, b: Building, second: boolean) {
   const plot = v.plots.find((p) => p.id === b.plot);
   if (plot) plot.household = h.id;
   const name = householdName(c, h);
+  // A house of the old world, patched up and never lived in since: it becomes theirs, name and all (DESIGN §37).
+  if (b.ruin !== undefined && !b.lived) {
+    const was = col.world.ruins[b.ruin]?.name;
+    b.name = h.members.length > 1 ? `${name}'s house` : `${name}'s cottage`;
+    b.lived = true;
+    log(c, `${name} moved into the old house${was ? ` that was ${was}` : ''}, and made it theirs.`, 'good');
+    for (const id of h.members) { const s = c.survivors.find((x) => x.id === id); if (s) remember(s, c.day, 'Made an old house our home.'); }
+    return;
+  }
+  b.lived = true;
   if (second) {
     log(c, `${name} moved into the empty house. They kept the old name over the door.`, 'good');
   } else {
@@ -333,12 +350,24 @@ function moveIn(col: Colony, h: Household, b: Building, second: boolean) {
   }
 }
 
+/** Yard features that would stand on a rock (or anything else blocking) are left out: the rock stays in the yard (DESIGN §34). */
+function clearOfRocks(w: World, plot: Plot, items: YardItem[]): YardItem[] {
+  return items.filter((y) => {
+    for (const du of [-0.5, 0, 0.5]) for (const dv of [-0.5, 0, 0.5]) {
+      const q = plotPoint(plot, y.u + du * y.w, y.v + dv * y.d);
+      const tx = toTileX(w, q.x), tz = toTileZ(w, q.z);
+      if (inBounds(w, tx, tz) && w.blocked[idx(w, tx, tz)] && w.treeAt[idx(w, tx, tz)] < 0) return false;
+    }
+    return true;
+  });
+}
+
 /** A finished home: the household moves in and plans its yard. */
 export function onHomeBuilt(col: Colony, b: Building) {
   const v = col.village;
   const h = v.households.find((x) => x.id === b.household);
   const plot = v.plots.find((p) => p.id === b.plot);
-  if (plot && !plot.yard.length) plot.yard = planYard(plot, h ? traitsOf(col.community, h) : new Set());
+  if (plot && !plot.yard.length) plot.yard = clearOfRocks(col.world, plot, planYard(plot, h ? traitsOf(col.community, h) : new Set()));
   if (h) moveIn(col, h, b, false);
   else b.household = 0;
 }
@@ -833,11 +862,20 @@ export function plotTileWhy(w: World, v: Village, tx: number, tz: number, others
   if (w.zone[i] === 6 /* Zone.Wild */ || w.folk?.path[i]) return { why: 'That is the Folk\'s land.', kind: 'folk' };
   if (w.fieldAt?.[i] > 0) return { why: 'That runs over a field.', kind: 'hard' };
   if (v.plotAt[i]) return { why: 'That overlaps another plot.', kind: 'hard' };
-  if (w.blocked[i] && w.treeAt[i] < 0) return { why: 'Something is in the way there (rubble, a wall or a rock).', kind: 'hard' };
+  // A rock may lie in a yard (the house is fitted round it); rubble and walls may not (DESIGN §34).
+  if (w.blocked[i] && w.treeAt[i] < 0 && !rockAt(w, i)) return { why: 'Something is in the way there (rubble or a wall).', kind: 'hard' };
   if (Math.hypot(p.x - CAMP.x, p.z - CAMP.z) < 4.5) return { why: 'Too close to the fire.', kind: 'hard' };
   if (p.x > sp.x0 - 1 && p.x < sp.x1 + 1 && p.z > sp.z0 - 1 && p.z < sp.z1 + 1) return { why: 'That runs over the stockpile.', kind: 'hard' };
   for (const f of others) if (tx >= f.tx && tx < f.tx + f.w && tz >= f.tz && tz < f.tz + f.d) return { why: 'That runs over a building.', kind: 'hard' };
   return null;
+}
+
+/** Tiles with a rock on them (cached per world). */
+const rockTiles = new WeakMap<World, { n: number; set: Set<number> }>();
+function rockAt(w: World, i: number): boolean {
+  let c = rockTiles.get(w);
+  if (!c || c.n !== w.rocks.length) { c = { n: w.rocks.length, set: new Set(w.rocks.map((r) => idx(w, r.tx, r.tz))) }; rockTiles.set(w, c); }
+  return c.set.has(i);
 }
 
 /** Where the last refused drawn plot first failed (for the overlay to mark), or null. */
@@ -947,6 +985,23 @@ function startHomeOn(col: Colony, h: Household, plot: Plot, houseTiles: number[]
   return proj;
 }
 
+/**
+ * A plot the player drew in answer to a household's ask: it is theirs at
+ * once, and the house is started (whatever else is being built). Returns
+ * why not, or null.
+ */
+export function homeForAsker(col: Colony, householdId: number, plot: Plot): string | null {
+  const v = col.village, c = col.community;
+  const h = v.households.find((x) => x.id === householdId);
+  if (!h || h.home || v.plots.some((p) => p.household === h.id)) return 'They already have a place.';
+  if (plot.household) return 'That plot is taken.';
+  const site = houseSite(col.world, plot, new Set(plot.tiles));
+  if (!site) return 'There is no room for a house on that plot.';
+  startHomeOn(col, h, plot, site.houseTiles, site.trees);
+  log(c, `${householdName(c, h)} walked the plot you pegged out for them, and liked it. They start on the house tomorrow.`, 'good');
+  return null;
+}
+
 /** With the player planning: a waiting household takes an empty plot that was drawn for them. */
 function homeOnDrawnPlot(col: Colony): Project | null {
   const v = col.village, c = col.community, w = col.world;
@@ -979,7 +1034,8 @@ function homeOnDrawnPlot(col: Colony): Project | null {
  * the household gets beds, a bench, a fence and the lights. Tiles already
  * in another plot, water, and other ruins' walls are left out.
  */
-export function plotForRuin(w: World, v: Village, r: { x: number; z: number; w: number; d: number; h: number; yaw: number }, beds: number): Plot {
+/** The plot a restored house gets (its front strip, the house, a yard behind): origin, axes and corners. */
+export function ruinPlotShape(r: { x: number; z: number; w: number; d: number; yaw: number }) {
   const cs = Math.cos(r.yaw), sn = Math.sin(r.yaw);
   const world = (lx: number, lz: number): Point => ({ x: r.x + lx * cs + lz * sn, z: r.z - lx * sn + lz * cs });
   const FRONT = 1.5, YARD = 7, SIDE = 1.5;
@@ -988,6 +1044,18 @@ export function plotForRuin(w: World, v: Village, r: { x: number; z: number; w: 
   const t = { x: cs, z: -sn }, n = { x: -sn, z: -cs };
   const W = r.w + SIDE * 2, D = FRONT + r.d + YARD;
   const corners = [add(origin, t, -W / 2), add(origin, t, W / 2), add(add(origin, t, W / 2), n, D), add(add(origin, t, -W / 2), n, D)];
+  return { origin, t, n, corners };
+}
+
+/** Trees standing on the plot a restored house will get: the restorers fell them first (DESIGN §37). */
+export function treesOnRuinPlot(w: World, r: { x: number; z: number; w: number; d: number; yaw: number }): number[] {
+  const { corners } = ruinPlotShape(r);
+  return w.trees.filter((tr) => !tr.felled && !tr.protected && pointInPoly({ x: tileX(w, tr.tx), z: tileZ(w, tr.tz) }, corners)).map((tr) => tr.id);
+}
+
+export function plotForRuin(w: World, v: Village, r: { x: number; z: number; w: number; d: number; h: number; yaw: number }, beds: number): Plot {
+  const cs = Math.cos(r.yaw), sn = Math.sin(r.yaw);
+  const { origin, t, n, corners } = ruinPlotShape(r);
   const inRuin = (p: Point) => {
     const dx = p.x - r.x, dz = p.z - r.z;
     const lx = dx * cs - dz * sn, lz = dx * sn + dz * cs;

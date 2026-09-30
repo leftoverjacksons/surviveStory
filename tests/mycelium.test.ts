@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createCommunity } from '../src/sim/community';
 import { createColony } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
-import { REACH, blessingAt, blessingGrowth, cellAt, myceliumDaily, reachCells } from '../src/sim/mycelium';
+import { REACH, blessingAt, blessingGrowth, cellAt, createMycelium, myceliumDaily, reachCells } from '../src/sim/mycelium';
 import { Crop, idx, toTileX, toTileZ } from '../src/sim/world';
 
 const fresh = (seed = 3) => createColony(generateWorld(seed), createCommunity(seed));
@@ -10,6 +10,8 @@ const fresh = (seed = 3) => createColony(generateWorld(seed), createCommunity(se
 describe('the mycelium (DESIGN §24.10)', () => {
   it('grows out from the hill day by day, and stops', () => {
     const col = fresh();
+    // From nothing (a new village's network comes already grown, DESIGN §25.6).
+    col.mycelium = createMycelium(col.world);
     const counts: number[] = [];
     for (let d = 0; d < 40; d++) { myceliumDaily(col); counts.push(reachCells(col)); }
     expect(counts[5]).toBeGreaterThan(counts[0]);

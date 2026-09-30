@@ -17,12 +17,14 @@ import { Zone, idx, paintZone, reveal, toTileX, toTileZ, type Point } from './wo
 import { WILD_RADIUS, changeStanding } from './folk';
 import { applyDilemma, dilemmaAffinity, dilemmaDue, type Commitment, type Question } from './dilemmas';
 import { scheduleGathering } from './gatherings';
+import { shelterToHall } from './dismantle';
 
 export type ProposalKind =
   | 'build' | 'festival' | 'wild_ring' | 'rest_day' | 'open_gates' | 'close_gates' | 'offering' | 'grove' | 'home' | 'commons'
   | 'folk_festival' | 'folk_land' | 'folk_amends'
   // Answers to a dilemma (dilemmas.ts)
-  | 'take_all' | 'take_one' | 'send_on' | 'land_elsewhere' | 'land_refuse' | 'all_hands' | 'ration' | 'trust' | 'side_a' | 'side_b' | 'mend' | 'not_now';
+  | 'take_all' | 'take_one' | 'send_on' | 'land_elsewhere' | 'land_refuse' | 'all_hands' | 'ration' | 'trust' | 'side_a' | 'side_b' | 'mend' | 'not_now'
+  | 'district_village' | 'district_folk' | 'district_shared';
 
 export interface Proposal {
   id: number;
@@ -130,7 +132,7 @@ function candidates(col: Colony, rng: Rng, taken: Set<number>): Candidate[] {
   const st = store(v);
   const housed = living.filter((s) => householdOf(v, s.id)?.home).length;
   const unhoused = pop - housed;
-  if (st.level === 2 && housed / pop >= 0.5 && sharedBeds(v) - (st.beds - 2) >= unhoused) {
+  if (st.level === 2 && !st.gone && housed / pop >= 0.5 && sharedBeds(v) - (st.beds - 2) >= unhoused) {
     out.push({
       score: 2,
       make: () => ({
@@ -480,16 +482,9 @@ function applyProposal(col: Colony, p: Proposal) {
     case 'home':
       if (p.household && !col.village.homeQueue.includes(p.household)) col.village.homeQueue.push(p.household);
       break;
-    case 'commons': {
-      const st = store(col.village);
-      st.level = 3;
-      st.beds = 2;
-      st.name = col.village.site.hallName;
-      col.village.bedsDirty = true;
-      log(c, `The cots came out of ${col.village.site.shelterName} and a long table went in. ${col.village.site.hallName.charAt(0).toUpperCase() + col.village.site.hallName.slice(1)}: supper on cold nights, and a place to talk.`, 'good');
-      for (const s of living) s.morale = Math.min(100, s.morale + 4);
+    case 'commons':
+      if (!store(col.village).gone) shelterToHall(col);
       break;
-    }
   }
 }
 

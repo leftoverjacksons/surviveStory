@@ -120,6 +120,32 @@ export function tradeMesh(kind: string, W: number, D: number, tier: number, p: n
       }
       break;
     }
+    case 'hall': {
+      // The commons hall (DESIGN §29): a long salvage-clad hall with a porch, the village's table inside.
+      g.add(body(W, D - 0.6, Math.max(1, tier), p, seed, clad, glow, { wall: 2.5, porch: true, pitch: 0.5, chimney: 1 }));
+      if (k > 0) {
+        const front = (D - 0.6) / 2 + 0.3;
+        for (const x of [-W / 2 + 0.9, W / 2 - 0.9]) {
+          g.add(box(1.3, 0.08, 0.3, wood, x, 0.42, front + 0.55));
+          for (const dx of [-0.5, 0.5]) g.add(box(0.08, 0.4, 0.26, dark, x + dx, 0.2, front + 0.55));
+        }
+        // Inside: the long table down its length, benches both sides, a stove at the far end (seen in the cutaway).
+        const len = W - 2;
+        g.add(box(len, 0.08, 0.9, wood, 0, 0.74, 0));
+        for (const dx of [-len / 2 + 0.3, 0, len / 2 - 0.3]) for (const dz of [-0.3, 0.3]) g.add(box(0.08, 0.72, 0.08, dark, dx, 0.36, dz));
+        for (const sz of [-1, 1]) {
+          g.add(box(len - 0.2, 0.07, 0.3, wood, 0, 0.42, sz * 0.72));
+          for (const dx of [-len / 2 + 0.4, len / 2 - 0.4]) g.add(box(0.07, 0.4, 0.26, dark, dx, 0.2, sz * 0.72));
+        }
+        for (let i = 0; i < Math.floor(len / 0.9); i++) g.add(cyl(0.09, 0.14, mat(['#b0603a', '#c8b890', '#6f8a6a'][i % 3]), -len / 2 + 0.6 + i * 0.9, 0.85, i % 2 ? 0.15 : -0.15, 7));
+        g.add(cyl(0.38, 0.85, iron, -W / 2 + 0.55, 0.43, -(D - 0.6) / 2 + 0.55, 10));
+        // A noticeboard by the door, and a bell on a post.
+        g.add(box(0.9, 0.6, 0.05, mat('#8a7a5a'), 0.9, 1.3, front + 0.05));
+        g.add(box(0.1, 2.4, 0.1, dark, W / 2 + 0.3, 1.2, front + 0.3));
+        g.add(cyl(0.14, 0.22, iron, W / 2 + 0.3, 2.2, front + 0.3, 8));
+      }
+      break;
+    }
   }
   return g;
 }

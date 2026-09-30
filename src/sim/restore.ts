@@ -13,6 +13,7 @@ import { bedsTotal, storageCapacity, storageWanted, type BuildingKind, type Cost
 import type { Ruin, RuinKind } from './oldworld';
 import { inBounds, passable, toTileX, toTileZ, type Point, type World } from './world';
 import { findPath } from './path';
+import { treesOnRuinPlot } from './homes';
 
 export interface RestoreDef {
   as: Extract<BuildingKind, 'home' | 'hut' | 'workshop' | 'cellar' | 'shrine' | 'garden'>;
@@ -152,7 +153,8 @@ export function requestRestore(col: Colony, ruinId: number): Project | string {
   const p: Project = {
     id: v.nextId++, kind: 'restore', tier: 0, name: cap(def.name(r)), foot: { tx: toTileX(w, door.x), tz: toTileZ(w, door.z), w: 1, d: 1 }, facing: 0,
     cost: { ...def.cost }, delivered: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 }, incoming: { wood: 0, scrap: 0, glimmer: 0, glass: 0, copper: 0, steel: 0 },
-    work: 0, workNeeded: def.work, target: 0, clearTrees: [], done: false, ruin: r.id, door, inside: { x: r.x, z: r.z },
+    // A house gets its plot and yard back: the trees grown up in it are felled first (DESIGN §37).
+    work: 0, workNeeded: def.work, target: 0, clearTrees: def.as === 'home' ? treesOnRuinPlot(w, r) : [], done: false, ruin: r.id, door, inside: { x: r.x, z: r.z },
   };
   v.projects.push(p);
   log(col.community, `They'll make ${r.name} good again: ${def.name(r)}.`, 'good');

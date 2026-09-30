@@ -15,8 +15,7 @@ import {
 } from './calendar';
 import {
   assignBeds, bedsTotal, completeProject, heatNeed, storageCapacity, STORE_PER_HEAD, createVillage, footCenter, hasBuilt, materialsReady,
-  outstanding, plan, store, MAX_ACTIVE, newProject, GARDEN_YIELD, MATERIALS, type Building, type Material, type Project, type Village,
-} from './buildings';
+  outstanding, plan, store, MAX_ACTIVE, newProject, GARDEN_YIELD, MATERIALS, type Building, type Material, type Project, type Village, hallOf } from './buildings';
 import {
   SITE_CREW, YARD, homeComfort, homeOf, householdName, householdOf, householdsDaily, onHomeBuilt, planHome, plotPoint,
   type Plot,
@@ -27,8 +26,10 @@ import { SKILLED, aspirationsDaily, knowhowDaily, knows, learn, skill, type Craf
 import { catchRate, fishingDaily, fishingSpot, onFisheryBuilt, planFishery, pondOf } from './fishing';
 import { highwayZ } from './worldgen';
 import { FENCE_WORK_PER_UNIT, alongPerimeter, fenceWood, perimeter, wantsFence } from './fields';
-import { breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, maybeLeadAway, type FolkSociety } from './folk';
+import { addFae, breakRule, createFolk, endLed, folkDaily, folkTick, leaveOffering, maybeLeadAway, type FolkSociety } from './folk';
 import { saucersAtDusk } from './fae';
+import { foundSettlement } from './townhouse';
+import { fireFor, nearestFire } from './hearth';
 import { planRestore, ruinDoor } from './restore';
 import { rareDaily, ruinToStrip, strip } from './rare';
 import { autopilotDaily } from './autopilot';
@@ -44,11 +45,12 @@ import {
 import { councilDaily, createCouncil, maybeConvene, type Council } from './council';
 import { findPath } from './path';
 import { finishTakedown } from './dismantle';
-import { finishRaze } from './salvage';
+import { unlocksDaily } from './unlocks';
+import { clearHeap, finishRaze, finishTow, heapPos } from './salvage';
 import { learnWiring, millFactor, powerDaily } from './power';
 import { APPRENTICE_AGE, TODDLER_AGE, ageWork, isAdult, isChild, lineageDaily, oldAge, settleLineage } from './lineage';
 import { DEPAVE_WORK, finishDepave, nearestDepave } from './depave';
-import { blessingGrowth, createMycelium, myceliumDaily, sever, type Mycelium } from './mycelium';
+import { blessingGrowth, createMycelium, myceliumDaily, sever, type Mycelium, growMycelium } from './mycelium';
 import { activeGathering, courtshipDaily, gatherSpot, gatheringsTick, joined, type Gathering } from './gatherings';
 import {
   Crop, Ground, LANE_WEAR, PATH_WEAR, Zone, findNearest, idx, isExplored, passable, reveal, tileX, tileZ, toTileX, toTileZ,
@@ -76,6 +78,7 @@ export type Task =
   | { kind: 'sleep'; stage: 'go' | 'sleep' }
   | { kind: 'social'; stage: 'go' | 'sit'; place: 'fire' | 'home' | 'hall' | 'bench' | 'tavern' | 'water'; building: number }
   | { kind: 'dismantle'; building: number; stage: 'go' | 'work' }
+  | { kind: 'tow'; heap: number; stage: 'go' | 'work' }
   | { kind: 'split'; stage: 'go' | 'work'; t: number; done: number }
   | { kind: 'raze'; ruin: number; stage: 'go' | 'work' }
   | { kind: 'depave'; tile: number; stage: 'go' | 'work'; t: number }
@@ -222,6 +225,10 @@ export function createColony(world: World, community: Community): Colony {
   };
   for (const s of community.survivors) settleLineage(community, s);
   woodyard(world); // chosen now, before any tree is felled
+  // The Folk were here first (DESIGN §25.6): two knowes round the Great Hill with a Wee band in them,
+  // and their network already grown through the Wild and out to the Ring.
+  foundSettlement(col, () => { addFae(col.folk, world, 'hob', 0); addFae(col.folk, world, 'sprite', 0); });
+  growMycelium(col, 40);
   // The first line of the story names where it starts.
   const opening = community.log.find((l) => l.day === 1 && l.tone === 'info');
   if (opening && community.day === 1) opening.text = world.site.intro;
@@ -629,7 +636,8 @@ function workSpot(col: Colony, a: Agent, p: Project): Point {
 }
 
 function buildable(col: Colony, p: Project) {
-  return !p.done && materialsReady(p) && p.clearTrees.every((id) => col.world.trees[id].felled);
+  // (A tree nobody can reach doesn't hold the work up for ever.)
+  return !p.done && materialsReady(p) && p.clearTrees.every((id) => col.world.trees[id].felled || col.unreachable.has(`t${id}`));
 }
 
 function pickBuild(col: Colony, a: Agent): Task | null {
@@ -666,7 +674,7 @@ function pickSalvage(col: Colony, a: Agent): Task | null {
     const w = col.world;
     let mk: Heap | null = null, md = Infinity;
     for (const h of w.heaps) {
-      if (!h.marked || h.scrap <= 0 || h.reserved || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
+      if (!h.marked || h.scrap <= 0 || h.reserved || h.tow || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
       const d = Math.hypot(tileX(w, h.tx) - a.x, tileZ(w, h.tz) - a.z);
       if (d < md) { mk = h; md = d; }
     }
@@ -678,7 +686,7 @@ function pickSalvage(col: Colony, a: Agent): Task | null {
   const w = col.world;
   let best = null, bestD = Infinity;
   for (const h of w.heaps) {
-    if (h.scrap <= 0 || h.reserved || !isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`)) continue;
+    if (h.scrap <= 0 || h.reserved || h.tow || !isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`)) continue;
     if (heapHaunted(col, h.tx, h.tz)) continue; // nobody will go that close to what lives there
     const d = Math.hypot(tileX(w, h.tx) - a.x, tileZ(w, h.tz) - a.z);
     if (d < bestD && d < 95) { best = h; bestD = d; }
@@ -687,7 +695,7 @@ function pickSalvage(col: Colony, a: Agent): Task | null {
   if (!best) {
     const c = w.campfire;
     for (const h of w.heaps) {
-      if (h.scrap <= 0 || h.reserved || isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
+      if (h.scrap <= 0 || h.reserved || h.tow || isExplored(w, h.tx, h.tz) || col.unreachable.has(`h${h.id}`) || heapHaunted(col, h.tx, h.tz)) continue;
       const d = Math.hypot(tileX(w, h.tx) - c.x, tileZ(w, h.tz) - c.z);
       if (d < bestD && d < 45) { best = h; bestD = d; }
     }
@@ -858,20 +866,20 @@ function goInside(a: Agent, b: Building) {
 }
 
 const plotById = (col: Colony, id: number | undefined) => col.village.plots.find((p) => p.id === id);
-const hallOpen = (col: Colony) => store(col.village).level >= 3;
+const hallOpen = (col: Colony) => !!hallOf(col.village);
 
 /** Where to eat: supper at home for those who have one, else the hall, the kitchen, or the fire. */
 function mealPlace(col: Colony, a: Agent, s: Survivor): { place: MealPlace; building: number; spot: Point } {
   const v = col.village;
   const h = hourOf(col);
   const home = homeOf(v, s.id);
-  const st = store(v);
   const supper = h >= 16 || h < 9;
   if (home && (supper || habit(col, s.id) < 30)) {
     const sociable = s.traits.includes('storyteller') || a.needs.social < 35;
     if (!(hallOpen(col) && sociable && habit(col, s.id + 7) < 50)) return { place: 'home', building: home.id, spot: home.door };
   }
-  if (hallOpen(col) && supper) return { place: 'hall', building: st.id, spot: st.door };
+  const hall = hallOf(v);
+  if (hall && supper) return { place: 'hall', building: hall.id, spot: hall.door };
   // Fishers out at the pond eat smoked fish by the hut rather than walk home.
   if (s.role === 'fisher') {
     for (const f of v.fisheries) {
@@ -910,8 +918,8 @@ function eveningPlace(col: Colony, a: Agent, s: Survivor): { place: 'fire' | 'ho
   // The tavern: most evenings, for whoever isn't home with their own.
   const tavern = v.buildings.find((b) => b.kind === 'tavern');
   if (tavern && habit(col, s.id * 11 + 5) < 55) return { place: 'tavern', building: tavern.id, spot: tavern.door };
-  const st = store(v);
-  if (hallOpen(col) && (season === 'winter' || col.weather === 'rain' || col.weather === 'snow')) return { place: 'hall', building: st.id, spot: st.door };
+  const hall = hallOf(v);
+  if (hall && (season === 'winter' || col.weather === 'rain' || col.weather === 'snow')) return { place: 'hall', building: hall.id, spot: hall.door };
   return { place: 'fire', building: 0, spot: seatOf(col, a) };
 }
 
@@ -944,8 +952,20 @@ function pickDismantle(col: Colony, a: Agent): Task | null {
   for (const t of col.village.takedowns ?? []) {
     const b = buildingById(col, t.building);
     if (!b) continue;
-    if (col.agents.filter((o) => o !== a && o.task?.kind === 'dismantle' && o.task.building === b.id).length >= 2) continue;
+    if (col.agents.filter((o) => o !== a && o.task?.kind === 'dismantle' && o.task.building === b.id).length >= (b.kind === 'store' ? 4 : 2)) continue;
     if (setDest(col, a, b.door.x, b.door.z, true)) return { kind: 'dismantle', building: b.id, stage: 'go' };
+  }
+  return null;
+}
+
+/** Push a wreck the player asked to be towed (salvage.ts): up to three to a wreck. */
+function pickTow(col: Colony, a: Agent): Task | null {
+  const w = col.world;
+  for (const h of w.heaps) {
+    if (!h.tow || h.scrap <= 0) continue;
+    if (col.agents.filter((o) => o !== a && o.task?.kind === 'tow' && o.task.heap === h.id).length >= 3) continue;
+    const p = heapPos(w, h);
+    if (setDest(col, a, p.x, p.z, true)) return { kind: 'tow', heap: h.id, stage: 'go' };
   }
   return null;
 }
@@ -1080,8 +1100,8 @@ function pickLeisure(col: Colony, a: Agent, s: Survivor): Task | null {
       }
     }
   }
-  const st = store(col.village);
-  const spot = hallOpen(col) && (season === 'winter' || col.weather === 'rain') ? st.door : seatOf(col, a);
+  const hall = hallOf(col.village);
+  const spot = hall && (season === 'winter' || col.weather === 'rain') ? hall.door : seatOf(col, a);
   return setDest(col, a, spot.x, spot.z) ? { kind: 'leisure', what: 'cards', stage: 'go', t: 0 } : null;
 }
 
@@ -1140,8 +1160,10 @@ function pickOffering(col: Colony, a: Agent, s: Survivor): Task | null {
 }
 
 function seatOf(col: Colony, a: Agent): Point {
-  const living = col.agents;
-  return seatSpot(col.world.campfire, living.indexOf(a), living.length);
+  // At the fire nearest their home: the old fire, or a hamlet's (DESIGN §28).
+  const f = fireFor(col, a.id);
+  const ring = col.agents.filter((o) => fireFor(col, o.id).id === f.id);
+  return seatSpot(f, Math.max(0, ring.indexOf(a)), ring.length);
 }
 
 function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
@@ -1180,6 +1202,11 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
     if (setDest(col, a, m.spot.x, m.spot.z)) return { kind: 'eat', stage: 'go', t: 0, place: m.place, building: m.building };
   }
   if (a.needs.rest < 12 || isNight(h) || s.hp < s.maxHp * 0.25) {
+    // A night's sleep costs about 40 food: anyone who wouldn't last till morning eats before turning in.
+    if (a.needs.food < 45 && res.food >= 1) {
+      const m = mealPlace(col, a, s);
+      if (setDest(col, a, m.spot.x, m.spot.z)) return { kind: 'eat', stage: 'go', t: 0, place: m.place, building: m.building };
+    }
     const b = col.beds.get(s.id);
     const bed = b !== undefined ? buildingById(col, b)!.door : bedSpot(col.world.campfire, s.id);
     if (setDest(col, a, bed.x, bed.z)) return { kind: 'sleep', stage: 'go' };
@@ -1227,12 +1254,18 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
       return t;
     }
   }
+  // A wreck the player asked to be pushed: whoever's free lends a shoulder, up to three to a wreck (DESIGN §30).
+  if (s.role !== 'rest' && col.world.heaps.some((x) => x.tow)) {
+    const tw = pickTow(col, a);
+    if (tw) return tw;
+  }
   switch (s.role) {
     case 'builder':
       // All hands to the woodpile: no building for now (a council commitment).
       if (committed(col, 'all_hands')) { t = pickTree(col, a) ?? pickForage(col, a) ?? pickHaul(col, a); break; }
+      // A wreck the player asked to be pushed comes before new building: it is a short, explicit order (DESIGN §30).
       t = pickHaul(col, a) ?? pickSplit(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
-        ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickBuild(col, a)
+        ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickTow(col, a) ?? pickBuild(col, a)
         ?? pickDismantle(col, a) ?? pickRaze(col, a) ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
     case 'farmer':
@@ -1286,7 +1319,7 @@ function deliver(col: Colony, a: Agent): boolean {
   return setDest(col, a, spot.x, spot.z);
 }
 
-function endTask(col: Colony, a: Agent) {
+export function endTask(col: Colony, a: Agent) {
   const t = a.task;
   if (t?.kind === 'depave' && col.claims.get(t.tile) === a.id) col.claims.delete(t.tile);
   if (t?.kind === 'supply') {
@@ -1424,7 +1457,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         return;
       }
       const rations = rationing(col);
-      if (t.place === 'fire') face(a, w.campfire); else if (t.place === 'kitchen') a.facing = 0;
+      if (t.place === 'fire') face(a, nearestFire(col, a.x, a.z)); else if (t.place === 'kitchen') a.facing = 0;
       a.anim = 'eat';
       let company = 0;
       if (t.place === 'home' || t.place === 'hall') {
@@ -1479,7 +1512,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       }
       a.anim = 'sit';
       if (t.place === 'fire') {
-        face(a, w.campfire);
+        face(a, nearestFire(col, a.x, a.z));
         a.activity = 'Talking by the fire';
         a.needs.social = Math.min(100, a.needs.social + dt * (25 / 60));
       } else if (t.place === 'water') {
@@ -1518,6 +1551,27 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       td.work += dt * workRate(s, 'builder', col);
       a.activity = `${td.moving ? 'Taking apart' : 'Taking down'} ${b.name.toLowerCase()} · ${Math.min(99, Math.round((td.work / td.need) * 100))}%`;
       if (td.work >= td.need) { finishTakedown(col, td); endTask(col, a); }
+      return;
+    }
+    case 'tow': {
+      const h = w.heaps[t.heap];
+      if (!h?.tow || h.scrap <= 0) return endTask(col, a);
+      if (t.stage === 'go') {
+        a.anim = 'walk'; a.activity = h.kind === 'car' ? 'Going to push a wreck' : 'Going to shift a junk heap';
+        if (walk(col, a, dt)) t.stage = 'work';
+        return;
+      }
+      // Pushing: they move along with it.
+      h.tow.work += dt * workRate(s, 'builder', col);
+      const p = heapPos(w, h), to = { x: tileX(w, h.tow.tx), z: tileZ(w, h.tow.tz) };
+      const dx = to.x - p.x, dz = to.z - p.z, L = Math.hypot(dx, dz) || 1;
+      const side = ((a.id % 3) - 1) * 0.7;
+      a.x = p.x - (dx / L) * (h.kind === 'car' ? 2.4 : 1.2) - (dz / L) * side;
+      a.z = p.z - (dz / L) * (h.kind === 'car' ? 2.4 : 1.2) + (dx / L) * side;
+      face(a, p);
+      a.anim = 'build';
+      a.activity = `${h.kind === 'car' ? 'Pushing a wreck' : 'Shifting a junk heap'} · ${Math.min(99, Math.round((h.tow.work / h.tow.need) * 100))}%`;
+      if (h.tow.work >= h.tow.need) { finishTow(col, h); endTask(col, a); }
       return;
     }
     case 'split': {
@@ -1630,7 +1684,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         a.activity = { fish: 'Off to the pond with a line', herbs: 'Wandering out into the meadow', cards: 'Looking for someone to play cards with', play: 'Running about' }[t.what];
         if (walk(col, a, dt)) {
           t.stage = 'do';
-          if (t.what === 'cards' && hallOpen(col) && Math.hypot(a.x - store(col.village).door.x, a.z - store(col.village).door.z) < 1.5) goInside(a, store(col.village));
+          { const hall = hallOf(col.village); if (t.what === 'cards' && hall && Math.hypot(a.x - hall.door.x, a.z - hall.door.z) < 1.5) goInside(a, hall); }
         }
         return;
       }
@@ -1660,7 +1714,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
       } else {
         a.anim = 'sit';
         const others = col.agents.filter((o) => o !== a && o.task?.kind === 'leisure' && o.task.what === 'cards' && o.task.stage === 'do' && Math.hypot(o.x - a.x, o.z - a.z) < 4);
-        if (!a.indoors) face(a, w.campfire);
+        if (!a.indoors) face(a, nearestFire(col, a.x, a.z));
         a.activity = others.length ? `Playing cards with ${others.slice(0, 2).map((o) => first(survivorOf(col, o.id))).join(' and ')}` : 'Laying out a hand of patience';
         a.needs.social = Math.min(100, a.needs.social + dt * ((others.length ? 18 : 3) / 60));
         if (others.length && habit(col, a.id + Math.floor(col.minute / 30)) < 2) adjustBond(col.community, a.id, others[0].id, 1);
@@ -1876,7 +1930,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
         if (walk(col, a, dt)) t.stage = 'sit';
         return;
       }
-      face(a, w.campfire);
+      face(a, nearestFire(col, a.x, a.z));
       a.anim = 'sit';
       a.activity = s.role === 'rest' ? 'Resting by the fire' : 'Tending the fire';
       t.t += dt;
@@ -2036,6 +2090,7 @@ function runTask(col: Colony, a: Agent, s: Survivor, dt: number) {
           const take = Math.min(6, h.scrap);
           h.scrap -= take;
           noteSalvage(col, s, h, take);
+          if (h.scrap <= 0) clearHeap(col, h); // the last of it goes, shell and all
           disturb(col, tileX(w, h.tx), tileZ(w, h.tz), 0.015);
           h.reserved = 0;
           a.carry = { kind: 'scrap', amount: take };
@@ -2400,6 +2455,7 @@ function daily(col: Colony) {
   tradesDaily(col);
   rareDaily(col);
   col.village.needTier = needTier(col);
+  unlocksDaily(col);
   departures(col);
   dailyRollover(c);
   householdsDaily(col);
