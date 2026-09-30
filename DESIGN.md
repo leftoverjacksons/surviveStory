@@ -4176,3 +4176,256 @@ captured here.
        can now be restored (right-click one)";
      - an ask in the tray when a household is waiting for a home and a
        restorable house stands empty.
+
+### §37. Restored houses are ordinary homes (in progress; not published)
+
+The user, after restoring a cleared house: "I don't see its plot around it,
+I can't see who lives there … all I get is its old neighbourhood
+designation … right-clicking it should bring that up, to restore, and then
+it becomes just like any other house."
+
+Built (commit a86dcad):
+- right-click (or click) a ruin → a ruin card (`hud.ts#ruinCard`) with
+  *Restore* / *Pull down*, and the reason when a button is disabled;
+- a restored ruin opens its building card, not the district card
+  (`main.ts#inspectRuinAt`);
+- a restored house is named after the family that moves in (`homes.ts#moveIn`,
+  with a daily migration for older saves); before that it is "An empty house";
+- the restorers fell the trees standing on its plot (`homes.ts#treesOnRuinPlot`,
+  `restore.ts#requestRestore`).
+
+Open:
+- in screenshots the plot still looks overgrown although the sim reports no
+  tree on it (overhanging trees just outside the plot, or felled trees not
+  redrawn: not yet found);
+- the plot's stakes are faint until its fence is built.
+
+## 38. The centre moves: short missions, a small cast, lives that remember (the user's direction after v46; design only, not started)
+
+### 38.1 What the user said
+
+Asked to zoom out (spirit, hook, what works, what doesn't), the user
+restated the original vision:
+
+> "My original vision was something more like XCOM and Wildermyth, where
+> short tactical missions played out, and there was base building in
+> between. I think if I want it to be character driven, things need to stay
+> low and intimate a lot, and those encounters where I have direct control
+> over the inhabitants have the most chance for bonding with the characters
+> and creating experiences. This would also be a good source of relationship
+> building. I'm thinking of Crusader Kings also a bit with regard to how
+> those relationships affect life back at home."
+
+### 38.2 Diagnosis (what the assessment found)
+
+- The project's effort has gone mostly into a Banished-scale village
+  (up to `MAX_POP` 24 autonomous workers, chained resources, logistics).
+  The part the user cares about most, direct control in short missions, is
+  a proof of concept: about 1,400 lines (`sim/haunt.ts`, `ui/clearing.ts`,
+  `render/clearing.ts`), one mission type, four spirit kinds, and little
+  that follows the characters home.
+- Measured weaknesses (§22.11 and later soaks):
+  - about 0.4 decisions a day;
+  - council choices barely change outcomes (except Folk standing);
+  - the need ladder is done by about day 40 and nothing is striven for
+    after (no second act);
+  - many parallel systems in their smallest working form (fishing, power,
+    timber, trades, towing, hamlets), so the game is wide and shallow, and
+    features that exist are hard to find (§36.3).
+- Relationships exist in the simulation but are nearly invisible and
+  carry no history:
+  - one number a pair (`community.ts#Bond`, −100..100);
+  - a personal memory list (`Survivor` `Memory`);
+  - courtship, partners, lineage (§24.8, §24.15);
+  - Folk opinions (`sim/fae.ts`).
+
+  None of these says *why* two people feel as they do, and little of it
+  changes what anyone does.
+- Strongest assets to keep:
+  - the look and the sense of place;
+  - the Folk as a second society;
+  - salvage with provenance;
+  - clearing by relationship rather than combat (Nerve not HP; lay to rest,
+    convert, banish);
+  - full agency over plans.
+
+### 38.3 The spirit, restated
+
+A small band of survivors in an overgrown, haunted, hopeful land. You know
+every one of them by name. You lead a few of them at a time into the
+places between (haunted districts, the Folk's country, far ruins) in
+short turn-based missions. What happens out there follows them home: bonds,
+feuds, scars, marriages, grief, gifts from the Folk. At home, the village
+is where those lives play out and where the next venture is prepared.
+
+- **Home:** Wildermyth's between-chapters, XCOM's base and Crusader Kings'
+  court. Autonomous, readable, about people.
+- **Missions:** XCOM's and Wildermyth's tactical maps. Direct control,
+  short, intimate. Most characters' stories are made here.
+- **The Folk:** neither enemy nor backdrop. They give missions, join them,
+  contest the land, and make lasting ties with individuals.
+
+The tone stays: not combat-anxious; loss is real but uncanny (the taken,
+the Restless), not gore.
+
+### 38.4 Pillars
+
+1. **Missions are the heart.**
+   - A mission is 10–20 minutes, a team of 2–4 (plus at most one Folk
+     companion), on a small map.
+   - Every turn should offer several decent options (the XCOM test).
+2. **A small cast; everyone is a character.**
+   - The village holds about 8–14 people (proposal; replaces `MAX_POP` 24).
+   - Each has traits, a history, a face you recognise, and relationships
+     that remember their causes.
+   - Growth is by events, not head count: an arrival with a story, a birth,
+     someone returned from being taken, a stranger found on a mission.
+3. **Relationships remember why** (the Crusader Kings principle).
+   - A tie between two people (or a person and a Folk being) is a set of
+     remembered *reasons*, each with a weight and a slow decay, not a bare
+     number. Examples:
+     - "held the line while I was taken" +30;
+     - "left me in the Veil" −40;
+     - "talked the Hollow down together" +15;
+     - "married" +40;
+     - "took my place on the council" −10.
+   - The number shown is their sum; the reasons are shown on the card.
+   - Missions are the richest source; home adds slower ones (neighbours,
+     work, suppers, weddings, quarrels).
+4. **Missions change people** (the Wildermyth principle).
+   - Scars and marks (a grey streak after meeting a Hollow, a Folk-gift
+     that glows at night).
+   - Traits gained or lost; Sight opened.
+   - Folk bonds (§36.2).
+   - The taken come back different.
+   - Shown on the figure where possible (the character work on the other
+     branch should plan for marks and scars as attachments or tints).
+5. **Home is where consequences land.** Ties decide:
+   - who lives with whom, and who works beside whom;
+   - who speaks for or against whom in council;
+   - who courts, marries, feuds, mourns;
+   - who refuses to go out again with whom;
+   - who asks to go on the next mission, and who begs someone not to.
+6. **Buildings serve people and missions** (the XCOM base principle).
+   - Building remains, but its purpose is legible: "what do we need for the
+     next venture, and to live well between them".
+   - Examples:
+     - a hearth or infirmary restores Nerve and heals the shaken;
+     - a workshop turns salvage into kit (lanterns, wards, offerings,
+       charms);
+     - a watchtower or shrine gives a team's Sight a head start;
+     - a council hall allows larger teams or two missions a season;
+     - a garden or tavern hastens recovery and bonding.
+7. **Logistics is background.**
+   - Chores (wood, storage, towing, splitting, fields) run themselves.
+     Autopilot-style planning for chores becomes the default; the player
+     can still draw plots and place buildings.
+   - The many resource chains stay only where they feed a person's life or
+     a mission.
+
+### 38.5 The loop
+
+```
+Home (a few days at a time, real time with pause)
+  ├─ see what the last mission did: debrief, marks, ties, grief, news
+  ├─ life happens: suppers, quarrels, courtship, council (people argue
+  │    from their ties), the Folk visit their bonded
+  ├─ prepare: build and equip, rest the shaken, choose the next venture
+  └─ ventures on offer (a board, like XCOM's scan / Wildermyth's map)
+        │
+Mission (turn-based, direct control, 10–20 min)
+  ├─ choose the team (their ties matter: pairs steady each other,
+  │    rivals don't; a bonded Folk being may come)
+  ├─ play it
+  └─ outcome ladder: cleared / withdrew / someone taken / someone lost
+        │
+Debrief → back to Home
+```
+
+Pacing target (proposal): a mission offered every 2–4 days; the player
+chooses which, and when. Not every offer must be taken; offers expire, and
+leaving some undone has consequences (a Restless grows restless, a Folk
+request sours, a salvage cache is lost to the weather).
+
+### 38.6 Mission types (in order of building)
+
+1. **Clearing a haunted district** (exists, §19.10). To be deepened first
+   (§38.8).
+2. **Search for the led-astray or the taken** (the Folk have someone; the
+   team follows their trail into the Wild; exists only as a hook, §20.6).
+3. **Laying a particular Restless to rest** (a named spirit with a history
+   drawn from the old world's provenance: whose house, whose car).
+4. **Salvage run to far ruins** (off the home map; fixes the finite scrap
+   problem, §22.12 seed 6).
+5. **A Folk errand** (a Gentry asks for something fetched, returned or
+   witnessed; payment in favour or gifts).
+6. **Escort or meeting** (strangers, a neighbouring band; a source of
+   recruits and news).
+
+### 38.7 What each current system becomes
+
+| System | Becomes |
+| --- | --- |
+| Clearing (`haunt.ts`) | the heart; deepened first |
+| Bonds (`community.ts#Bond`) | ties with remembered reasons (38.4.3) |
+| Memories, lineage, gatherings | inputs and outputs of ties; shown on cards |
+| Council, dilemmas, request tray | people argue from their ties; fewer abstract choices |
+| Folk (hill, knowes, mycelium, Gentry/Wee) | mission givers, companions, contested land; bonds with individuals |
+| Nerve, Sight | per-person stats, used mostly on missions (partly already) |
+| Influence, Glimmer, Resonance | to be reduced: mission resources, or dropped (decide after step 1) |
+| Buildings and build menu | equip and restore people; the growing menu (§32) stays |
+| Logistics (wood, storage, towing, trades, power, timber) | background, autopiloted; kept where it feeds people or missions |
+| Population (`MAX_POP` 24) | a small cast, about 8–14 |
+
+Nothing is deleted before step 1 proves out; later steps are mostly
+retuning and presentation.
+
+### 38.8 Build order (proposal)
+
+1. **Make one mission good** (a clearing, about 15 minutes), then have the
+   user play it and iterate until it is worth replaying:
+   - map variety (a few hand-shaped templates per district kind, varied
+     by seed);
+   - spirits with distinct behaviour and tells that Sight reveals;
+   - verbs with real trade-offs (cost, risk, what each outcome gives
+     back to the village);
+   - a threat curve, with Nerve as the cost;
+   - pairs who steady each other;
+   - a debrief that says what happened to whom.
+2. **Ties that remember why:**
+   - reason records on each tie (people and Folk beings);
+   - produced mainly by missions;
+   - shown on the person card;
+   - `bondValue` becomes their sum, so existing behaviour keeps working.
+3. **Consequences at home:**
+   - marks, scars and traits from missions;
+   - the empty seat at supper, grief with names;
+   - courtship and feuds that follow ties;
+   - council voices that follow ties;
+   - the Folk visiting their bonded (§36.2).
+4. **Resize the village:**
+   - a small cast (about 8–14);
+   - buildings that equip and restore;
+   - chores on autopilot by default;
+   - a venture board.
+5. **More mission types**, in the order of §38.6.
+
+### 38.9 Open questions for the user
+
+1. **Death.** The vision (CLAUDE.md) says permadeath; clearings today only
+   *take* people (they return changed, §19.7). Options:
+   - (a) the taken as the heavy outcome, with death only from old age and
+     rare home events;
+   - (b) real death on missions as well, rare and signposted;
+   - (c) the taken can be lost for good if no one goes after them in time.
+   
+   (c) keeps the tone and makes rescue missions matter.
+2. **Direct control at home.** Wildermyth has none; XCOM only through menus.
+   Keep home autonomous (the player sets plans, councils and missions), or
+   allow some say over individuals there (assign a pair to live or work
+   together, ask someone to apologise)?
+3. **Cast size.** Is 8–14 right, or smaller still (Wildermyth's 5–10)?
+4. **Time between missions.** Real time with pause as now, or should home
+   advance in chunks between missions (Wildermyth's chapter breaks)?
+5. **The Veil's cost** (10 Influence, §21.9): keep, or replace with
+   preparation (kit, rest) as the gate?

@@ -255,6 +255,14 @@ reference: Tiny Glade.
     §36 PLAYTEST NOTES v46 (to do, captured): crisp desire paths (wear texture is 1 texel/tile, linear), Folk
     companions in a clearing leave a lasting bond with the team, RESTORE IS HARD TO FIND (only Build → The old
     world → Restore a ruin; add a right-click ruin card with Restore / Pull down, and say so after clearing).
+    §37 RESTORED HOUSES AS ORDINARY HOMES (a86dcad, in progress, not published): ruin card, family names,
+    plot trees felled; open: plot still looks overgrown in shots, stakes faint.
+    §38 THE CENTRE MOVES (user's direction after v46; DESIGN ONLY, NOT STARTED — wait for the user):
+    XCOM/Wildermyth short tactical missions are the heart, a small cast (~8–14) of real characters,
+    Crusader Kings-style ties that remember WHY (reason records) and shape home life; buildings equip
+    missions; logistics goes to the background. Build order §38.8: make one clearing mission good →
+    ties with reasons → consequences at home → resize the village → more mission types.
+    Open questions for the user in §38.9 (death, control at home, cast size, time between missions).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
