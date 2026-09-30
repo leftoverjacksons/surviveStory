@@ -99,3 +99,40 @@ export function findPath(
   }
   return null;
 }
+
+/**
+ * Pull a tile path taut (DESIGN §38.10, village): skip corners wherever the
+ * straight line crosses only open ground no dearer than the way A* chose, so
+ * people walk diagonals and gentle curves instead of staircases, but still go
+ * round fences, beds and trunks they went round before. The last point is kept.
+ */
+export function tautPath(w: World, from: { x: number; z: number }, pts: { x: number; z: number }[]): { x: number; z: number }[] {
+  if (pts.length < 2) return pts;
+  const all = [from, ...pts];
+  const costAt = (x: number, z: number) => {
+    const tx = Math.floor(x + w.w / 2), tz = Math.floor(z + w.h / 2);
+    return passable(w, tx, tz) ? tileCost(w, tx, tz) : Infinity;
+  };
+  // The dearest tile the chosen way crosses between two of its points.
+  const dearest = (i: number, j: number) => { let c = 0; for (let k = i; k <= j; k++) { const q = costAt(all[k].x, all[k].z); if (q < Infinity) c = Math.max(c, q); } return c; };
+  const clear = (a: { x: number; z: number }, b: { x: number; z: number }, limit: number) => {
+    const d = Math.hypot(b.x - a.x, b.z - a.z);
+    const n = Math.ceil(d / 0.2);
+    const nx = -(b.z - a.z) / (d || 1) * 0.22, nz = (b.x - a.x) / (d || 1) * 0.22;
+    for (let k = 1; k < n; k++) {
+      const x = a.x + ((b.x - a.x) * k) / n, z = a.z + ((b.z - a.z) * k) / n;
+      // A body's width either side, so nobody shaves a corner or a trunk.
+      if (costAt(x, z) > limit + 1e-6 || costAt(x + nx, z + nz) > limit + 1e-6 || costAt(x - nx, z - nz) > limit + 1e-6) return false;
+    }
+    return true;
+  };
+  const out: { x: number; z: number }[] = [];
+  let i = 0;
+  while (i < all.length - 1) {
+    let next = i + 1;
+    for (let j = Math.min(all.length - 1, i + 14); j > i + 1; j--) if (clear(all[i], all[j], dearest(i, j))) { next = j; break; }
+    out.push(all[next]);
+    i = next;
+  }
+  return out;
+}

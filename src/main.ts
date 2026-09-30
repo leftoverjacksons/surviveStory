@@ -36,7 +36,8 @@ import { dropAnsweredHomes } from './sim/requests';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
 import { playTurn } from './sim/clearbot';
-import { HAUNT_RADIUS, act as veilAct, endTurn, finish, giveDistrict, moveUnit, reachable, startClearing, teamReading, type Clearing } from './sim/haunt';
+import { HAUNT_RADIUS, THREAT_TEXT, act as veilAct, approachPoint, endTurn, finish, giveDistrict, gridOf, moveUnit, occupantsFor, reachOf, spiritAt, startClearing, teamReading, type Clearing } from './sim/haunt';
+import { cells as reachCells, standable } from './sim/veilmove';
 import { People } from './render/people';
 import { Camp } from './render/camp';
 import { HeapsView, VillageView, bedSlot, seatSlot } from './render/village';
@@ -839,7 +840,14 @@ function setFollow(on: boolean) {
 hud.render();
 
 // ---------- the Veil: clearing a haunted district ----------
-interface VeilMode { roofMode: RoofMode; follow: boolean; cl: Clearing; sel: number; saved: Map<number, { x: number; z: number }>; hover: { tx: number; tz: number } | null; camera: { x: number; z: number; zoom: number } }
+interface VeilMode {
+  roofMode: RoofMode; follow: boolean; cl: Clearing; sel: number; saved: Map<number, { x: number; z: number }>;
+  /** The point under the cursor (world units). */
+  hover: { x: number; z: number } | null;
+  camera: { x: number; z: number; zoom: number };
+  /** Each walker's progress along the way they last walked. */
+  walking: Map<number, { trail: { x: number; z: number }[]; i: number }>;
+}
 let veil: VeilMode | null = null;
 const veilPanel = new ClearingPanel(colony, {
   onSelect(id) { if (veil) { veil.sel = id; veil.follow = true; renderVeil(); } },
@@ -867,12 +875,12 @@ function enterVeil(cl: Clearing) {
   const saved = new Map<number, { x: number; z: number }>();
   for (const u of cl.units) {
     const a = colony.agents.find((x) => x.id === u.id);
-    if (a) { saved.set(u.id, { x: a.x, z: a.z }); a.x = tileX(world, u.tx); a.z = tileZ(world, u.tz); }
+    if (a) { saved.set(u.id, { x: a.x, z: a.z }); a.x = u.x; a.z = u.z; }
   }
   const d = world.districts[colony.haunts[cl.haunt].district];
   const roofMode = roofs.mode;
   setRoofs('cutaway');
-  veil = { roofMode, follow: true, cl, sel: cl.units[0]?.id ?? 0, saved, hover: null, camera: { x: iso.target.x, z: iso.target.z, zoom: iso.zoomGoal } };
+  veil = { roofMode, follow: true, cl, sel: cl.units[0]?.id ?? 0, saved, hover: null, camera: { x: iso.target.x, z: iso.target.z, zoom: iso.zoomGoal }, walking: new Map() };
   iso.target.x = d.x - (d.x / Math.hypot(d.x, d.z)) * 6; iso.target.z = d.z - (d.z / Math.hypot(d.x, d.z)) * 6;
   iso.zoomGoal = 1.9;
   renderVeil();
@@ -900,7 +908,7 @@ const veilMenu = new ClearingMenu(colony, {
   },
   onApproach(by, t) {
     if (!veil) return;
-    const err = moveUnit(colony, veil.cl, by, t.tx, t.tz);
+    const err = moveUnit(colony, veil.cl, by, t.x, t.z);
     if (err) veil.cl.log.push(err);
     afterVeilAction();
   },
@@ -921,7 +929,7 @@ function veilPick(cx: number, cy: number): { spirit: number } | { unit: number }
   for (const u of veil.cl.units) {
     if (u.state !== 'in') continue;
     const a = colony.agents.find((q) => q.id === u.id);
-    const x = a ? a.x : tileX(world, u.tx), z = a ? a.z : tileZ(world, u.tz);
+    const x = a ? a.x : u.x, z = a ? a.z : u.z;
     const p = toScreen(x, heightAt(world, x, z) + 0.8, z);
     const d = Math.hypot(p.x - cx, p.y - cy);
     if (d < 30 && d < bestD) { best = { unit: u.id }; bestD = d; }
@@ -936,19 +944,11 @@ function veilPick(cx: number, cy: number): { spirit: number } | { unit: number }
   return best;
 }
 
-/** The best tile this turn to walk to beside a target (or as near as possible). */
-function approachTile(target: { tx: number; tz: number }) {
+/** The best place this turn to walk to beside a target (or as near as it can get). */
+function approachTo(target: { x: number; z: number }) {
   if (!veil) return null;
   const u = veil.cl.units.find((x) => x.id === veil!.sel && x.state === 'in');
-  if (!u) return null;
-  let best: { tx: number; tz: number; d: number; steps: number } | null = null;
-  for (const [k, steps] of reachable(colony, veil.cl, u)) {
-    const [tx, tz] = k.split(',').map(Number);
-    const d = Math.max(Math.abs(tx - target.tx), Math.abs(tz - target.tz));
-    if (!best || d < best.d || (d === best.d && steps < best.steps)) best = { tx, tz, d, steps };
-  }
-  if (!best || best.d >= Math.max(Math.abs(u.tx - target.tx), Math.abs(u.tz - target.tz))) return null;
-  return { tx: best.tx, tz: best.tz, beside: best.d <= 1 };
+  return u ? approachPoint(colony, veil.cl, u, target) : null;
 }
 
 function veilClick(cx: number, cy: number, button: number) {
@@ -957,32 +957,39 @@ function veilClick(cx: number, cy: number, button: number) {
   const hit = veilPick(cx, cy);
   if (hit && 'spirit' in hit) {
     const s = colony.haunts[veil.cl.haunt].spirits.find((x) => x.id === hit.spirit)!;
-    veilMenu.open(cx, cy, veil.cl, veil.sel, hit, approachTile(s));
+    veilMenu.open(cx, cy, veil.cl, veil.sel, hit, approachTo(spiritAt(colony, s)));
     return;
   }
   if (hit && 'unit' in hit) {
     if (button === 0 && hit.unit !== veil.sel) { veil.sel = hit.unit; veil.follow = true; renderVeil(); return; }
     const u = veil.cl.units.find((x) => x.id === hit.unit)!;
-    veilMenu.open(cx, cy, veil.cl, veil.sel, hit.unit === veil.sel ? { self: true } : { ally: hit.unit }, approachTile(u));
+    veilMenu.open(cx, cy, veil.cl, veil.sel, hit.unit === veil.sel ? { self: true } : { ally: hit.unit }, approachTo(u));
     return;
   }
   if (button !== 0) return;
   const g = groundAt(cx, cy);
   if (!g) return;
-  const tx = toTileX(world, g.x), tz = toTileZ(world, g.z);
   const u = veil.cl.units.find((x) => x.id === veil!.sel && x.state === 'in');
-  if (u && reachable(colony, veil.cl, u).has(`${tx},${tz}`)) {
-    const err = moveUnit(colony, veil.cl, u.id, tx, tz);
-    if (err) veil.cl.log.push(err);
-    afterVeilAction();
-  }
+  if (!u) return;
+  const err = moveUnit(colony, veil.cl, u.id, g.x, g.z);
+  if (err) veilMenu.tip(cx, cy, err);
+  else afterVeilAction();
 }
 
 /** Hovering in the Veil: say what it is and that it can be clicked. */
 function veilHover(cx: number, cy: number) {
   if (!veil || veil.cl.outcome) { veilMenu.tip(0, 0, null); return; }
   const hit = veilPick(cx, cy);
-  if (!hit) { veilMenu.tip(0, 0, null); return; }
+  if (!hit) {
+    // Over the ground: what the walk would cost, and what would reach them there.
+    const p = clearingView.preview;
+    if (!p) { veilMenu.tip(0, 0, null); return; }
+    const u = veil.cl.units.find((x) => x.id === veil!.sel);
+    const cost = p.cost > 1 && (u?.ap ?? 0) > 1 ? 'Dash here: the whole turn' : 'Walk here: 1 action';
+    const within = p.threats.map((th) => `${spiritLabel(th.spirit, teamReading(colony, veil!.cl, th.spirit) === 'none' ? 'chill' : teamReading(colony, veil!.cl, th.spirit))} (${THREAT_TEXT[th.threat]})`);
+    veilMenu.tip(cx, cy, within.length ? `${cost} · within reach of ${within.join(', ')}` : cost);
+    return;
+  }
   if ('spirit' in hit) {
     const s = colony.haunts[veil.cl.haunt].spirits.find((x) => x.id === hit.spirit)!;
     veilMenu.tip(cx, cy, `${spiritLabel(s, teamReading(colony, veil.cl, s) === 'none' ? 'chill' : teamReading(colony, veil.cl, s))} · click for actions`);
@@ -1068,7 +1075,7 @@ canvas.addEventListener('pointermove', (e) => {
   if (drafting()) drawDraft(groundAt(e.clientX, e.clientY));
   if (build?.kind === 'plot') keepOut.show(groundAt(e.clientX, e.clientY));
   if (build && build.kind !== 'plot' && !pointers.size) placeHover(e.clientX, e.clientY);
-  if (veil) { const g = groundAt(e.clientX, e.clientY); veil.hover = g ? { tx: toTileX(world, g.x), tz: toTileZ(world, g.z) } : null; if (!pointers.size) veilHover(e.clientX, e.clientY); }
+  if (veil) { const g = groundAt(e.clientX, e.clientY); veil.hover = g ? { x: g.x, z: g.z } : null; if (!pointers.size) veilHover(e.clientX, e.clientY); }
   const p = pointers.get(e.pointerId);
   if (!p) return;
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -1346,21 +1353,24 @@ function frame() {
   keepOut.update();
   if (veil) {
     // The team stands where they stand in the Veil.
-    const w = world;
     for (const u of veil.cl.units) {
       const a = colony.agents.find((x) => x.id === u.id);
       if (!a) continue;
       if (u.state !== 'in') { const o = veil.saved.get(u.id)!; a.x = o.x; a.z = o.z; continue; }
-      const tx = tileX(w, u.tx), tz = tileZ(w, u.tz);
-      const dx = tx - a.x, dz = tz - a.z, d = Math.hypot(dx, dz);
-      if (d > 0.05) { const step = Math.min(d, dt * 6); a.x += (dx / d) * step; a.z += (dz / d) * step; a.facing = Math.atan2(dx, dz); a.anim = 'walk'; }
+      // Walk the way they chose, corner by corner; otherwise glide to where they stand.
+      let wk = veil.walking.get(u.id);
+      if (u.trail && wk?.trail !== u.trail) { wk = { trail: u.trail, i: 1 }; veil.walking.set(u.id, wk); }
+      const goal = wk && wk.i < wk.trail.length ? wk.trail[wk.i] : { x: u.x, z: u.z };
+      const dx = goal.x - a.x, dz = goal.z - a.z, d = Math.hypot(dx, dz);
+      if (d > 0.03) { const step = Math.min(d, dt * 4.5); a.x += (dx / d) * step; a.z += (dz / d) * step; a.facing = Math.atan2(dx, dz); a.anim = 'walk'; }
+      else if (wk && wk.i < wk.trail.length) wk.i++;
       else a.anim = 'idle';
       a.indoors = false; a.afloat = false;
     }
     // Keep the chosen one in view.
     const su = veil.cl.units.find((x) => x.id === veil!.sel && x.state === 'in');
     if (su && !pointers.size) {
-      const fx = tileX(w, su.tx), fz = tileZ(w, su.tz);
+      const fx = su.x, fz = su.z;
       if (veil.follow) {
         iso.target.x += (fx - iso.target.x) * Math.min(1, dt * 2.5);
         iso.target.z += (fz - iso.target.z) * Math.min(1, dt * 2.5);
@@ -1685,12 +1695,27 @@ const veilDebug = {
   },
   veilTurns(n: number) { for (let i = 0; i < n && veil && !veil.cl.outcome; i++) playTurn(colony, veil.cl); afterVeilAction(); },
   veil: () => veil,
+  /** Point the cursor at a place the chosen one could walk to, about `d` away (for screenshots of the walk preview). */
+  veilHoverAt(d: number, bearing = 0) {
+    if (!veil) return null;
+    const u = veil.cl.units.find((x) => x.id === veil!.sel && x.state === 'in');
+    const r = u && reachOf(colony, veil.cl, u);
+    if (!u || !r) return null;
+    let best: { x: number; z: number; e: number } | null = null;
+    const g = gridOf(colony, veil.cl), occ = occupantsFor(colony, veil.cl, u);
+    for (const c of reachCells(r.field)) {
+      const e = Math.abs(c.d - d) + Math.abs(Math.atan2(c.z - u.z, c.x - u.x) - bearing) * 0.5;
+      if ((!best || e < best.e) && standable(g, occ, c.x, c.z)) best = { x: c.x, z: c.z, e };
+    }
+    if (best) veil.hover = { x: best.x, z: best.z };
+    return best && clearingView.preview;
+  },
   /** Screen position of the nearest spirit the team perceives (for tests and screenshots). */
   veilSpiritScreen() {
     if (!veil) return null;
     const u = veil.cl.units.find((x) => x.id === veil!.sel) ?? veil.cl.units[0];
     const ss = colony.haunts[veil.cl.haunt].spirits.filter((s) => s.fate === 'present' && teamReading(colony, veil!.cl, s) !== 'none')
-      .sort((a, b) => Math.max(Math.abs(a.tx - u.tx), Math.abs(a.tz - u.tz)) - Math.max(Math.abs(b.tx - u.tx), Math.abs(b.tz - u.tz)));
+      .sort((a, b) => Math.hypot(tileX(world, a.tx) - u.x, tileZ(world, a.tz) - u.z) - Math.hypot(tileX(world, b.tx) - u.x, tileZ(world, b.tz) - u.z));
     const s = ss[0];
     if (!s) return null;
     const x = tileX(world, s.tx), z = tileZ(world, s.tz);

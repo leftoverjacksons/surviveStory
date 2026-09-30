@@ -4754,3 +4754,55 @@ Open questions for §38.10–38.14:
 Still open from §38.9: death (taken vs. real death vs. taken-lost-for-good),
 direct control at home, cast size, time between missions, the Veil's
 Influence cost.
+
+### 38.18 Step 1 built: free movement with two rings (not published)
+
+**The sim** (`sim/veilmove.ts`, `sim/haunt.ts`):
+- Team members stand at world coordinates (`Unit.x/z`); spirits still keep to
+  their tiles (`spiritAt`).
+- **The ground:** a `VeilGrid` of the district (built once per clearing)
+  says where people can walk and what blocks sight:
+  - walls, wrecks and trees block sight;
+  - trees are round obstacles, not whole tiles.
+- **Reach** (`reachField`): a distance flood over a fine grid (4 cells a
+  tile, 16 neighbours, no corner cutting), clear of other people (0.6) and
+  spirits (0.75). About 1 ms, and remembered per state (`reachOf`).
+- **Two rings:** one action walks up to `MOVE_PER_AP` 4.5 (scaled by a Folk
+  companion's stride); two actions (a dash, nothing after) twice that.
+  `walkCost` gives the cost of a walk and `moveUnit(x, z)` makes it.
+- **Paths** are pulled taut (`pathTo`) and kept on the unit as `trail`, so
+  they can be drawn walking it.
+- **Ranges are circles:**
+  - "beside" is `BESIDE` 1.6;
+  - every old "within n tiles" is now n + 0.6.
+- **`reaches(spirit, who)`** holds the end-of-turn rules in one place. Its
+  one new rule is concealment: **a lamp must see you to lure you** (line of
+  sight). `threatsAt` uses the same rules for the walk preview.
+- **The test bot** walks with `approachPoint`. Its suburb results are
+  unchanged: 6 of 6 cleared, 1 rattled, 0 taken.
+
+**The view** (`render/clearing.ts`):
+- The rings are drawn as soft contours from the reach field: a two-channel
+  texture (distance and reachability) under a shader. The inner area is
+  filled teal with an edge; the outer edge is amber and follows walls, trees
+  and wrecks.
+- Hovering the ground shows:
+  - the way, as dots (white for one action, amber for a dash);
+  - a ghost of the person standing there;
+  - orange rings on every perceived spirit that would reach them there.
+- The tip says "Walk here: 1 action" or "Dash here: the whole turn", and
+  which spirits reach that spot (with what: dread, grief, tricks or lure).
+- People walk their trail corner by corner. Clicks land anywhere, not on
+  tiles.
+
+**Step 1b, village paths** (`path.ts#tautPath`): after A*, a path is pulled
+straight wherever the line crosses only open ground no dearer than the
+chosen way (a body's width either side). People walk diagonals, but still
+go round fences, beds and trunks.
+- Soak, 4 villages for 1 year: no deaths and no flags.
+
+**Debug:** `__game.veilHoverAt(d, bearing)` points the cursor at a
+reachable spot about `d` away.
+
+**Not yet:** a closer camera; drawn roads and free plot corners in the
+village; smoothing the pixel look of the ring edges.
