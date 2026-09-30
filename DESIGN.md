@@ -4429,3 +4429,240 @@ retuning and presentation.
    advance in chunks between missions (Wildermyth's chapter breaks)?
 5. **The Veil's cost** (10 Influence, §21.9): keep, or replace with
    preparation (kit, rest) as the gate?
+
+### 38.10 Movement: free, with two rings (agreed)
+
+The user: "I'd rather just see a radius around where the character is and
+have them walk to that." They are content with the grid for building but
+dislike its blocky roads, and would like straight lines where wanted and
+fluid shapes elsewhere. They agreed to the two rings.
+
+**The principle:** the tile grid stays underneath as an invisible index
+(passability, cost, occupancy, ownership). What the player sees and
+controls becomes continuous.
+
+**In missions (built with step 1):**
+- Positions are world coordinates, not `tx/tz` integers.
+- Two rings round the selected person, drawn as soft contours (not lit
+  squares), shrunk round walls, ruins and brambles:
+  - **inner ring:** move and still act this turn;
+  - **outer ring:** dash; no action after.
+- Reach is a distance flood over a fine hidden grid (about 4 cells a tile)
+  with taut paths, then drawn as a contour. The Chebyshev range `cheb`
+  goes: every range becomes a circle (sight, listen, offer, ward reach).
+- Line of sight is a ray test against walls and heaps. A doorway, a car
+  or a hedge conceals.
+- Previews before committing:
+  - a ghost of the figure where it would stop;
+  - the path it would walk;
+  - which known spirits would notice it there;
+  - rings showing what its lantern would light and what its actions would
+    reach.
+- **Concealment, not cover.** Nothing shoots, so the tactical position is
+  about being *unseen* (dark, behind things, shuttered), *steadied* (near
+  a teammate or inside a ward) and *lit* (in your own light, or another's).
+
+**In the village (later, cheapest first):**
+1. Taut walking paths: A* then straight lines wherever clear, so people
+   walk diagonals and curves, and desire paths follow.
+2. Drawn roads: lanes stored as lines or curves (straight with angle
+   snapping, or curved), drawn as ribbons of ground and written into the
+   grid only as movement cost. A finer wear texture traced along walked
+   lines also fixes §36.1.
+3. Free plot and field corners: outlines no longer snap to tiles; the grid
+   keeps only which tiles belong to a plot.
+4. Buildings at any angle: large (footprints, cutaway, clearance, slopes,
+   merged meshes all assume axis alignment). Deferred; only if 1–3 still
+   look rigid.
+
+### 38.11 The dark: the murk over uncleared land
+
+The user: "by default the tactical missions start with less visibility …
+maybe even on the default map there's a dark cloudiness to the uncleared
+areas so we can't really see them in advance."
+
+**On the home map:**
+- A haunted district lies under a **murk**: a slow, dark, low cloud, darker
+  than the ordinary fog of the unexplored (`world.explored`). From home you
+  see only its outline, an occasional light moving in it, and whatever has
+  been learned (§38.14).
+- Soundings from the village's edge (a watchtower, a seer at the boundary)
+  thin the murk in patches and leave echoes. Missions push it back.
+- When the district is settled, the murk lifts for good. Given to the Folk,
+  it becomes their gentler glamour (§26), not murk.
+
+**In the mission:**
+- It is night in the Veil. The ground is visible only where **light**
+  falls, or faintly where it has been seen before (remembered, greyed).
+- Spirits are not visible by light alone. They are perceived by **Sight**
+  and **sounding** (§38.14). Light shows the physical world and the
+  *signs* spirits leave, and it changes how spirits behave (§38.12).
+- So there are two kinds of knowledge on the map: *what the lanterns show*
+  (ground, doors, objects, signs) and *what the seers sense* (spirits).
+
+### 38.12 Light: the lantern as the team's instrument
+
+Not a weapon: light is how the team sees, moves, reassures, lures and
+holds ground. Everyone carries a lantern. The lantern is personal: made at
+home, improved, named, carried in the debrief, lost if its bearer is taken,
+and inheritable.
+
+**Handling (free, part of moving):**
+- **Raised:** full radius; spirits notice the bearer sooner.
+- **Shuttered:** almost dark; the bearer moves unnoticed, sees only by
+  Sight, and their Nerve drains slowly (the dark is frightening).
+- **Set down:** leaves a pool of light where it stands (the simplest ward,
+  §38.13); the bearer goes on in the dark or shares a friend's light.
+
+**Fuel:** every light has fuel counted in turns. It comes from home:
+- candles and tallow from the smoke shed;
+- lamp oil (a later trade);
+- batteries charged from the power grid (§24.17).
+
+This is the first direct line from the village economy to the mission.
+
+**Going out:** a lantern gutters when its fuel runs out or a Hollow drinks
+it. In the dark, a person loses Nerve each turn and sees nothing physical.
+Relighting costs an action. Walking to a friend and sharing their light is
+free, and it is recorded as a tie reason (§38.4.3): "shared her light with
+me".
+
+**Kinds of light** (made at the workshop from salvage with provenance, and
+from know-how):
+
+| Light | How it lights | Good for | Cost / catch |
+| --- | --- | --- | --- |
+| Tin lantern (default) | warm pool, radius about 4 | comfort (Nerve holds in it); remnants drift toward warmth | small; lamps are drawn to it |
+| Electric torch | long narrow cone, aimed | seeing far down a street; pushes hedges back; breaks a lamp's lure while on it | batteries; harsh: a remnant in the beam loses calm |
+| Foxfire jar (Folk-made, from the mycelium) | cold, dim green, radius about 2 | unseen by spirits; shows traces and Veil-depth nearby | needs Folk standing or a bonded Folk being |
+| Magnesium flare (rare, one use) | floods a wide area for one turn | reveals everything lit; stuns hedges; blinds lamps for 2 turns; a Hollow draws back | remnants scatter and lose calm; wakes every spirit near |
+| Mirror lantern (glass, §21.7) | throws a pool of light at a distance, or a beam round a corner | lighting a place without walking into it | glass; heavy (takes a carrying slot) |
+
+**Tailoring (the upgrade path):** a lantern is assembled from parts, each
+chosen at the workshop:
+- **body:** tin → brass → glass dome (radius, and whether wind or a Hollow
+  can snuff it);
+- **fuel:** tallow → oil → battery (how long it lasts);
+- **lens or filter:** clear, red (dim and unnoticed), blue (Veil-leaning:
+  shows depth);
+- **a charm** (a Folk gift, a keepsake from a laid remnant: a small unique
+  effect).
+
+Parts carry provenance ("the lens from the lighthouse on the point"), so a
+lantern has a history, like the houses.
+
+**Spirits and light (first pass):**
+
+| | Warm lantern | Torch beam | Foxfire | Flare |
+| --- | --- | --- | --- | --- |
+| Remnant | drawn gently; calms faster in it (its need *light* already exists) | flinches; loses calm | indifferent | scatters; loses calm |
+| Hedge-spirit | plays in it | pushed out of the beam | indifferent | stunned a turn |
+| Lamp | drawn to it; lures its bearer harder the brighter it is | its lure breaks while lit | cannot see it | blinded 2 turns |
+| Hollow | drinks it (fuel drains in its reach) | shown in full, unharmed | indifferent | draws back a turn |
+
+### 38.13 Wards, rethought
+
+Today (`haunt.ts`): 2 wards a clearing, a square of radius 2 that halves a
+Hollow's dread and shields from hedges and lamps. The user: wards "are a
+cool idea they just need to be thought through more and improved."
+
+**Wards become the team's way of shaping the ground**: they are placed
+things, each with a shape, a rule and a limit, and carried from home, so
+choosing them is part of the loadout.
+
+| Ward | Shape | Rule | Limit |
+| --- | --- | --- | --- |
+| Set-down lantern | circle (the light's radius) | light as §38.12; Nerve holds inside | uses that lantern's fuel; bearer is dark |
+| Salt or iron line | a line between two points (free geometry makes this possible) | hedges and lamps cannot cross it; lures stop at it | iron offends the Folk: a Folk companion loses heart, and in Folk country standing drops |
+| Rowan or hawthorn ring | small circle | Nerve cannot fall below 2 inside; resting there restores 1 a turn | wood from the woodlot or a Folk gift; a Hollow withers it over 3 turns |
+| Bell or wind chime | circle | a spirit entering it rings: it is revealed (an echo, §38.14) wherever the team is | tells, does not stop |
+| Hearthstone (from the home fire) | large circle | the team's rally point: nothing takes a person inside it; withdrawal starts here | one a mission; placed on arrival, cannot move |
+
+Rules common to all:
+- a ward is visible as a shape on the ground and previewed before placing;
+- strong spirits wear wards down (a Hollow erodes any ward in its reach
+  each turn);
+- wards left behind after a clearing stay in the district as small works
+  (a salt line becomes a low wall of stones), so the land keeps a record.
+
+**Carrying:** each person carries their lantern and 2 slots (wards,
+offerings, tools, spare fuel). A strong or practical person might carry 3.
+Packing is decided at home before setting out.
+
+### 38.14 Finding spirits: signs, Sight and sounding
+
+The user: "finding the entities on the map needs to be more nuanced …
+maybe some kind of almost sonar system for the seers."
+
+Today a spirit's reading is a fixed function of Sight against the spirit's
+depth within 10 tiles (none / chill / luminous / coherent), and spirits are
+effectively shown when read. Proposed: **spirits are never shown as plain
+markers until perceived, and perception comes in layers.**
+
+1. **Signs** (anyone, in light):
+   - physical traces: frost on a window, a door that won't stay shut,
+     a toy set upright, the smell of bread in an empty kitchen, cold spots;
+   - they hint at kind and need, and point toward the spirit;
+   - they are found by walking the lit ground.
+2. **Sight** (passive, each person): within a small radius (about 3, more
+   with high Sight), a person senses spirits at their reading level each
+   turn, without acting.
+3. **Sounding** (the seers' sonar; an action):
+   - a person with Sight above a threshold *sounds the Veil*;
+   - a ring visibly expands from them across the map;
+   - where it meets a spirit it returns an **echo**, as good as their
+     reading of it:
+     - *coherent*: an exact position and kind;
+     - *luminous*: a circle it is somewhere inside;
+     - *chill*: a direction and rough distance only (an arc);
+   - echoes stay on the map as fading ghosts of *last known position*; they
+     age each turn and become less certain;
+   - **triangulation:** two seers sounding from different places narrow
+     arcs to a point, so pairs and positioning matter;
+   - **the catch:** a sounding is heard. Spirits within its reach notice
+     the seer: lamps come toward it, Hollows turn, remnants may hide
+     deeper (raising their depth).
+   - Two strengths:
+     - *listen*: short range, silent;
+     - *call out*: long range, loud.
+   - A Folk elder's sounding is always coherent.
+4. **Tools for those without Sight** (salvage, the old world's
+   instruments):
+   - a **radio** hissing louder near spirits (a Geiger counter for the
+     Veil);
+   - a **compass** whose needle drifts toward the nearest;
+   - a **dowsing rod** (Folk-taught).
+
+   Each takes a carrying slot.
+
+**From home:** a seer at the district's edge, or a watchtower, can sound
+into the murk before a mission. Echoes are left on the home map, and the
+mission offer shows what is known and what is not ("two echoes, one deep;
+something large near the old school").
+
+**This makes Sight the seers' identity.** Anchors (low Sight) are sturdy
+and steady others. Seers find, but are found. That is a natural tension
+inside a small team.
+
+### 38.15 Updated step 1 (what "make one mission good" now includes)
+
+1. Free movement with two rings and previews (§38.10).
+2. The dark: light radius, remembered ground, the murk on the home map
+   (§38.11).
+3. Lanterns: raised / shuttered / set down, fuel, the tin lantern and
+   torch first; foxfire, flare and mirror after (§38.12).
+4. Wards: set-down lantern, salt/iron line, rowan ring and bell first;
+   hearthstone after (§38.13).
+5. Signs, passive Sight and sounding with echoes and triangulation; the
+   radio as the first tool (§38.14).
+6. Carrying slots and a packing screen before setting out.
+7. The spirit × light table implemented and tuned, then played by the user.
+
+Open questions for §38.10–38.14:
+- How dark? Should remembered ground stay visible (greyed) or be lost
+  again when the light moves on?
+- Should echoes on the home map be enough to choose missions, or should
+  some districts show nothing until someone walks in?
+- Is iron offending the Folk a good tension, or too punishing while the
+  Folk are also companions?
+- Carrying: 2 slots each plus the lantern, or a shared team pack?

@@ -263,6 +263,11 @@ reference: Tiny Glade.
     missions; logistics goes to the background. Build order §38.8: make one clearing mission good →
     ties with reasons → consequences at home → resize the village → more mission types.
     Open questions for the user in §38.9 (death, control at home, cast size, time between missions).
+    §38.10–38.15 (user's mission mechanics, agreed: two rings, free movement): grid stays as an invisible index;
+    the MURK over haunted districts; LANTERNS (raised/shuttered/set down, fuel from home, kinds + tailored parts
+    with provenance, spirit × light table); WARDS as placed shapes (lantern pool, salt/iron line, rowan ring,
+    bell, hearthstone) with carrying slots; FINDING: signs, passive Sight, SOUNDING (seers' sonar: echoes,
+    triangulation, heard by spirits), radio/compass/rod for non-seers. Still design only.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
