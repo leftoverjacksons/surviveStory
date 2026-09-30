@@ -25,4 +25,13 @@ RECIPES = {
         palette={'skin': '#d9a57c', 'hair': '#1c1a22', 'hat_band': '#d8c070', 'cloth_shirt': '#e2d3ad',
                  'cloth_denim': '#3e5a7e', 'cloth_bandana': '#6f7f3a', 'strap_glove': '#4a4a48', 'boot': '#7a5234'},
     ),
+    # concepts/builder_ingame.png
+    'builder': dict(
+        build='stout', pool='man',
+        parts={'body': 'body.base', 'head': 'head.face', 'hair': 'hair.swept', 'beard': 'beard.full', 'top': 'top.shirt_rolled',
+               'vest': 'vest.waistcoat', 'straps': 'straps.suspenders', 'bottom': 'bottom.work', 'feet': 'feet.boots',
+               'waist': 'waist.tool_belt', 'held': 'held.mallet'},
+        palette={'skin': '#e0aa86', 'hair': '#c4bdb2', 'cloth_shirt': '#e6d6b0', 'cloth_vest': '#b0582c',
+                 'cloth_trousers': '#56604a', 'boot': '#6a4630'},
+    ),
 }

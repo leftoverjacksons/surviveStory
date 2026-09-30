@@ -1,7 +1,18 @@
 [
  {
+  "file": "man_builder.glb",
+  "added": "2026-09-30 20:49",
+  "name": "builder",
+  "body": "man",
+  "build": "stout",
+  "recipe": "builder",
+  "generator": "workshop (Blender, parts + recipe)",
+  "licence": "own work",
+  "triangles": 3548
+ },
+ {
   "file": "man_folk_scout.glb",
-  "added": "2026-09-30 20:14",
+  "added": "2026-09-30 20:49",
   "name": "folk scout",
   "body": "man",
   "build": "hero",
@@ -12,7 +23,7 @@
  },
  {
   "file": "woman_gardener.glb",
-  "added": "2026-09-30 20:14",
+  "added": "2026-09-30 20:49",
   "name": "gardener",
   "body": "woman",
   "build": "hero",

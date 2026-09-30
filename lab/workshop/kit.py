@@ -29,12 +29,15 @@ ADULT_HEAD_C, ADULT_HEAD_R = (0, -0.005, 1.555), (0.108, 0.117, 0.13)
 BUILDS = {
     # The game's current figures (DESIGN §24.14): head about 1:7.
     'adult': dict(spine=1, neck=1, upper_leg=1, lower_leg=1, foot=1, upper_arm=1, lower_arm=1, hand=1,
-                  head=1, head_lift=0, shoulder_x=1, shoulder_z=1, hip_x=1, limb=1, torso=1),
+                  head=1, head_lift=0, shoulder_x=1, shoulder_z=1, hip_x=1, limb=1, torso=1, belly=1),
     # The user's in-game references (lab/workshop/concepts/*_ingame.png), measured: head with hair
     # about 0.24 of the height, legs (crotch to sole) about 0.34, shoulders at about 0.67, hands
     # about 0.09, boots 0.13-0.16. Stocky and about four heads tall.
     'hero': dict(spine=1.09, neck=0.67, upper_leg=0.71, lower_leg=0.61, foot=1.3, upper_arm=0.9, lower_arm=0.9, hand=1.6,
-                 head=1.35, head_lift=0.03, shoulder_x=1.05, shoulder_z=0.8, hip_x=1.1, limb=1.3, torso=1.15),
+                 head=1.35, head_lift=0.03, shoulder_x=1.05, shoulder_z=0.8, hip_x=1.1, limb=1.3, torso=1.15, belly=1),
+    # Heavier: broad shoulders, thick limbs, a belly (the builder, concepts/builder_ingame.png).
+    'stout': dict(spine=1.09, neck=0.6, upper_leg=0.7, lower_leg=0.6, foot=1.3, upper_arm=0.9, lower_arm=0.9, hand=1.7,
+                  head=1.35, head_lift=0.03, shoulder_x=1.18, shoulder_z=0.8, hip_x=1.2, limb=1.45, torso=1.3, belly=1.45),
 }
 
 def derive(b):

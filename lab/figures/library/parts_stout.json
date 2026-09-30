@@ -1,5 +1,5 @@
 {
- "build": "hero",
+ "build": "stout",
  "parts": {
   "body.base": {
    "category": "body",
@@ -23,7 +23,7 @@
    "slots": [
     "hair"
    ],
-   "triangles": 749
+   "triangles": 751
   },
   "hair.bun": {
    "category": "hair",
@@ -31,7 +31,7 @@
     "hair",
     "hat_band"
    ],
-   "triangles": 315
+   "triangles": 317
   },
   "top.tunic": {
    "category": "top",
@@ -176,7 +176,7 @@
    "slots": [
     "hair"
    ],
-   "triangles": 99
+   "triangles": 101
   },
   "beard.full": {
    "category": "beard",

@@ -73,9 +73,23 @@ def torso_rings(c, z_bottom, z_top, flare=1.0):
     J, TT = c.J, c.TT
     zs = [z_bottom, lerp(J['pelvis'].z, J['waist'].z, 0.5), J['belly'].z, J['chest'].z, lerp(J['chest'].z, J['neck'].z, 0.6), z_top]
     hipr = J['hip'].x * 1.45
-    rs = [(hipr * flare, hipr * 0.72 * flare), (hipr * 0.97, hipr * 0.7), (J['shoulder'].x * 0.8, 0.105 * TT),
+    bel = c.k.B['belly']
+    rs = [(hipr * flare, hipr * 0.72 * flare), (hipr * 0.97 * bel, hipr * 0.7 * bel), (J['shoulder'].x * 0.8 * bel, 0.105 * TT * bel ** 1.5),
           (J['shoulder'].x * 0.87, 0.113 * TT), (J['shoulder'].x * 0.82, 0.103 * TT), (0.07 * TT, 0.066 * TT)]
-    return [(0, 0.004, z) for z in zs], rs
+    # A belly pushes forward (-y) as well as out.
+    ys = [0.004, 0.004 - 0.03 * (bel - 1), 0.004 - 0.06 * (bel - 1), 0.004, 0.004, 0.004]
+    return [(0, y, z) for y, z in zip(ys, zs)], rs
+
+def torso_at(c, z, margin=0.0):
+    """The torso's centre (y) and radii at height z (between the rings of torso_rings), plus a margin."""
+    pts, rs = torso_rings(c, c.J['pelvis'].z - 0.07, c.J['neck'].z + 0.01)
+    zs = [p[2] for p in pts]
+    z = min(max(z, zs[0]), zs[-1])
+    for i in range(len(zs) - 1):
+        if zs[i] <= z <= zs[i + 1]:
+            t = (z - zs[i]) / max(1e-6, zs[i + 1] - zs[i])
+            return lerp(pts[i][1], pts[i + 1][1], t), lerp(rs[i][0], rs[i + 1][0], t) + margin, lerp(rs[i][1], rs[i + 1][1], t) + margin
+    return pts[-1][1], rs[-1][0] + margin, rs[-1][1] + margin
 
 # ---------------------------------------------------------------- body (always present)
 @part('body.base', skin='#b27a50')
@@ -417,4 +431,120 @@ def held_trowel(k, pal):
     mid = grip_bot + Vector((0, -0.04 * s, -0.07 * s))
     c.add(k.sheet('blade', [[mid + Vector((-0.04 * s, 0, 0.02 * s)), mid + Vector((0, -0.006, 0.03 * s)), mid + Vector((0.04 * s, 0, 0.02 * s))],
                             [tip + Vector((-0.004, 0, 0)), tip, tip + Vector((0.004, 0, 0))]], c.m('pack_steel'), thickness=0.006), 'Wrist.L')
+    return c.out
+
+# ---------------------------------------------------------------- the builder's parts (concepts/builder_ingame.png)
+@part('hair.swept', hair='#9a958c')
+def hair_swept(k, pal, seed=3):
+    """Short hair swept back in ridges, short at the sides."""
+    c = Ctx(k, pal); rnd = random.Random(seed)
+    hair_cap(c, lambda x, y, z: z > 0.3 or (y > 0.0 and z > -0.45) or (abs(x) > 0.85 and -0.1 < z and y > -0.4), scale=(1.07, 1.07, 1.07), lift=0.05)
+    for i, x in enumerate((-0.55, -0.28, 0.0, 0.28, 0.55)):
+        base = c.H(x, -0.72, 0.72 + rnd.uniform(0, 0.08))
+        tip = c.H(x * 1.15, 0.6, 0.9 + rnd.uniform(0, 0.05))
+        c.add(k.spike(f'ridge{i}', base, tip, 0.24 * c.HR[0], c.m('hair'), segs=4, rot=0.8), 'Head')
+    return c.out
+
+@part('beard.full', hair='#9a958c')
+def beard_full(k, pal, seed=4):
+    """A full beard and moustache, and bushy brows over the face's own."""
+    c = Ctx(k, pal); rnd = random.Random(seed)
+    b = k.ico('beard', c.H(0, -0.5, -0.62), c.Hr(0.98, 0.72, 0.78), c.m('hair'), subdiv=3, keep=0.4)
+    bm = bmesh.new(); bm.from_mesh(b.data)
+    rel = lambda v: ((v.co.x - c.HC.x) / c.HR[0], (v.co.y - c.HC.y) / c.HR[1], (v.co.z - c.HC.z) / c.HR[2])
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not (rel(v)[2] < -0.22 + 0.4 * abs(rel(v)[0]) and rel(v)[1] < 0.35)], context='VERTS')
+    bm.to_mesh(b.data); bm.free()
+    c.add(b, 'Head')
+    for i in range(9):  # tufts round the edge
+        a = rnd.uniform(-2.3, 2.3)
+        p = c.H(math.sin(a) * 0.8, -0.45 - math.cos(a) * 0.4, -0.75 - abs(math.cos(a)) * 0.35)
+        c.add(k.uvs(f'tuft{i}', p, c.Hr(0.2, 0.18, 0.2), c.m('hair'), segs=5, rings=3), 'Head')
+    c.pair(lambda: k.uvs('moustache', c.H(0.2, -0.99, -0.34), c.Hr(0.3, 0.13, 0.13), c.m('hair'), segs=6, rings=3), 'Head')
+    c.pair(lambda: k.box('bushybrow', c.H(0.42, -0.93, 0.33), c.Hr(0.5, 0.15, 0.13), c.m('hair'), rot=(0, -0.15, 0.1), bevel=0.004), 'Head')
+    return c.out
+
+@part('vest.waistcoat', cloth_vest='#b0582c', strap_button='#3a2a20')
+def vest_waistcoat(k, pal):
+    """A waistcoat over the shirt, open at the front, with pockets."""
+    c = Ctx(k, pal); J = c.J
+    z0, z1 = J['pelvis'].z + 0.02, lerp(J['chest'].z, J['neck'].z, 0.75)
+    rows, cols, open_front = 6, 22, 0.32
+    grid = []
+    for i in range(rows):
+        z = lerp(z0, z1, i / (rows - 1))
+        yc, rx, ry = torso_at(c, z, margin=0.016)
+        of = open_front + (0.35 if i == rows - 1 else 0.15 if i == rows - 2 else 0)  # the V of the neckline
+        row = []
+        for j in range(cols):
+            phi = of + (2 * math.pi - 2 * of) * j / (cols - 1)
+            row.append((math.sin(phi) * rx, yc - math.cos(phi) * ry, z))
+        grid.append(row)
+    c.add(k.sheet('vest', grid, c.m('cloth_vest'), thickness=0.012), SPINE)
+    for s in (1, -1):
+        z = lerp(z0, z1, 0.25)
+        yc, rx, ry = torso_at(c, z, margin=0.028)
+        c.add(k.box('pocket', Vector((s * rx * 0.55, yc - ry * 0.86, z)), (rx * 0.42, 0.014, (z1 - z0) * 0.16), c.m('cloth_vest'), rot=(0, 0, -s * 0.45), bevel=0.004), ['Abdomen', 'Hips'])
+    for t in (0.25, 0.45, 0.65):
+        z = lerp(z0, z1, t)
+        yc, rx, ry = torso_at(c, z, margin=0.03)
+        c.add(k.uvs('button', Vector((math.sin(open_front) * rx, yc - math.cos(open_front) * ry, z)), (0.011, 0.007, 0.011), c.m('strap_button'), segs=6, rings=3), ['Abdomen', 'Torso'])
+    return c.out
+
+@part('straps.suspenders', strap='#3e2c20', strap_buckle='#b39d73')
+def straps_suspenders(k, pal):
+    """Braces: front up over the shoulders, crossing at the back."""
+    c = Ctx(k, pal); J, TT = c.J, c.TT
+    zb = lerp(J['pelvis'].z, J['waist'].z, 0.8)
+    def strap():
+        pts = []
+        for z, x, side in ((zb, 0.075, -1), (J['belly'].z, 0.085, -1), (J['chest'].z, 0.1, -1), (lerp(J['chest'].z, J['neck'].z, 0.8), 0.11, -1)):
+            yc, rx, ry = torso_at(c, z, margin=0.03)
+            pts.append(Vector((x, yc - ry * 0.93, z)))
+        pts.append(Vector((0.11, 0.0, J['neck'].z + 0.015)))
+        for z, x in ((lerp(J['chest'].z, J['neck'].z, 0.8), 0.1), (J['belly'].z, 0.02), (zb, -0.06)):
+            yc, rx, ry = torso_at(c, z, margin=0.03)
+            pts.append(Vector((x, yc + ry * 0.93, z)))
+        return k.tube('brace', pts, 0.013, c.m('strap'), segs=4)
+    c.pair(strap, ['Chest', 'Torso', 'Abdomen'])
+    def clip():
+        yc, rx, ry = torso_at(c, zb, margin=0.036)
+        return k.box('clip', Vector((0.075, yc - ry * 0.93, zb + 0.015)), (0.03, 0.01, 0.024), c.m('strap_buckle'))
+    c.pair(clip, 'Hips')
+    return c.out
+
+@part('waist.tool_belt', strap='#553823', strap_buckle='#b39d73', pack='#8a5a34', pack_wood='#c09060', pack_steel='#8f9294')
+def waist_tool_belt(k, pal):
+    """A heavy belt with a tool pouch on the right hip, handles sticking out."""
+    c = Ctx(k, pal); J, T = c.J, c.T
+    z = lerp(J['pelvis'].z, J['waist'].z, 0.55)
+    yc, rx, ry = torso_at(c, z, margin=0.02)
+    c.add(k.ring('belt', Vector((0, yc, z)), rx, 0.022 * c.TT, c.m('strap'), segs=12, minor=4, scale=(1, ry / rx, 1)), 'Hips')
+    c.add(k.box('buckle', Vector((0, yc - ry - 0.012, z)), (0.06, 0.016, 0.05), c.m('strap_buckle')), 'Hips')
+    p = Vector((-rx * 0.8, yc - ry * 0.55, z - 0.06 * T))
+    c.add(k.box('pouch', p, (0.1 * T, 0.06 * T, 0.11 * T), c.m('pack'), rot=(0, 0, 0.5), bevel=0.01), 'Hips')
+    for i, (dx, mat, r) in enumerate(((-0.025, 'pack_wood', 0.012), (0.0, 'pack_steel', 0.009), (0.025, 'pack_wood', 0.013))):
+        b = p + Vector((dx * T, 0, 0.04 * T))
+        c.add(k.tube(f'handle{i}', [b, b + Vector((0.005 * i, -0.006, 0.07 * T + 0.01 * i))], r * T, c.m(mat), segs=5), 'Hips')
+    return c.out
+
+@part('bottom.work', cloth_trousers='#56604a', strap_patch='#c0a258')
+def bottom_work(k, pal):
+    """Straight work trousers with turned-up cuffs, patched at the knee."""
+    c = Ctx(k, pal); J, T = c.J, c.T
+    seat(c, 'cloth_trousers', lerp(J['pelvis'].z, J['waist'].z, 0.8), bag=1.02 * c.k.B['belly'] ** 0.5)
+    cuff = lerp(J['knee'], J['ankle'], 0.4)
+    c.pair(lambda: k.tube('leg', [J['hip'] + Vector((-0.015, 0, 0.05)), J['hip'], J['knee'], cuff], [0.1 * T, 0.104 * T, 0.098 * T, 0.094 * T], c.m('cloth_trousers'), segs=8), LEG)
+    c.pair(lambda: k.ring('cuff', cuff + Vector((0, 0, 0.014)), 0.096 * T, 0.022 * T, c.m('cloth_trousers'), segs=8, minor=4), 'LowerLeg.*')
+    q = J['knee']
+    c.add(k.box('patch', Vector((-q.x, q.y - 0.098 * T, q.z - 0.01)), (0.07 * T, 0.012, 0.07 * T), c.m('strap_patch'), rot=(0.1, -0.1, -0.15)), ['UpperLeg.R', 'LowerLeg.R'])
+    return c.out
+
+@part('held.mallet', pack_wood='#c09060', pack_mallet='#9a6a3c')
+def held_mallet(k, pal):
+    """A big wooden mallet in the left hand, head down."""
+    c = Ctx(k, pal); J = c.J; s = c.HAND
+    h = J['hand']
+    top, bot = h + Vector((0, -0.005, 0.035 * s)), h + Vector((0.01, -0.03 * s, -0.12 * s))
+    c.add(k.tube('handle', [top, bot], [0.014 * s, 0.016 * s], c.m('pack_wood'), segs=6), 'Wrist.L')
+    c.add(k.box('head', bot + Vector((0, -0.005, -0.03 * s)), (0.07 * s, 0.13 * s, 0.075 * s), c.m('pack_mallet'), rot=(0.25, 0, 0), bevel=0.008), 'Wrist.L')
     return c.out
