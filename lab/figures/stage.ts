@@ -60,7 +60,7 @@ export class Stage {
   private loader = new GLTFLoader();
   private yaw = Math.PI / 4;
   private group = new THREE.Group();
-  private mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }); // as the game's pixel look (people.ts)
   private adultH = 1.7;
   private token = 0;
 
@@ -99,8 +99,9 @@ export class Stage {
     gltf.scene.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(gltf.scene, true);
     let slots = ex.slots ?? [];
-    // "Own colours": a generated figure's clothing keeps its colours (named like a pack, which the game never re-hues).
-    if (this.opts.raw && !f.ref) slots = slots.map((s) => (/^cloth/.test(s) ? `pack_${s}` : s));
+    // "Own colours": a studio figure keeps its authored skin, hair and clothing (renamed like a pack,
+    // which the game never re-colours); off, it is re-coloured per survivor as in the game.
+    if (this.opts.raw && !f.ref) slots = slots.map(() => 'pack'); // (a name with 'hair' in it would still be re-coloured)
     const child = !!f.child;
     return { name: f.name, female: false, child, template: gltf.scene, slots, colors: ex.colors ?? [], height: child ? this.adultH : box.max.y - box.min.y || 1 };
   }

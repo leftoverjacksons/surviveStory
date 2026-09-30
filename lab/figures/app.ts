@@ -258,4 +258,4 @@ async function poll() {
 }
 setInterval(poll, 2000);
 void poll();
-Object.assign(window, { __studio: { stage, get state() { return state; }, select } });
+Object.assign(window, { __studio: { stage, get state() { return state; }, select, refUrl: (n: string) => Stage.ref(n).url } });

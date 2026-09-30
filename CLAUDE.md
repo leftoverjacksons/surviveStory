@@ -224,6 +224,10 @@ reference: Tiny Glade.
     pack.mjs → library (`lab/figures/library/`) → "Send to game" copies into `src/assets/people/`. Setup:
     `python lab/figures/setup.py`. Hunyuan outputs are prototype-only (licence excludes EU/UK/South Korea); TRELLIS
     (MIT) is the candidate for shipped figures but needs a GPU. User's GPUs: RTX 2070 8 GB (home), RTX 3050 Ti 4 GB (laptop).
+  - CHARACTER WORKSHOP (lab, `lab/workshop/`, README there): characters authored in code in Blender on the game's
+    skeleton (`kit.py` faceted parts + weighting; `characters/<name>.py`; `build.py <name>` → studio library;
+    `shots.mjs` turnaround). First: Folk Scout from the user's concept (~4.2k tris). The user proposed this route
+    after the image-to-3D test; iterate on it with them.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
