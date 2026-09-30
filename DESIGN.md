@@ -4125,3 +4125,54 @@ Before this:
     thickness);
   - icicles;
   - breath in the cold.
+
+### §36. Playtest notes on v46 (the user's; to do)
+
+The user said these don't all need doing now, but every one must be
+captured here.
+
+1. **Desire paths look blurry "at any resolution or pixel size."**
+   - Cause: the wear texture (`terrain.ts#WearTexture`) has one texel a
+     tile with linear filtering, so every path edge is a tile-wide smear.
+   - Fix options:
+     - (a) nearest filtering plus a sharp threshold in the ground shader
+       (`util.ts`, where `uWearTex` is read), so a path is either worn or
+       not, with a stepped pixel edge;
+     - (b) a higher-resolution wear texture (like the footprints' 4 a
+       tile) written along walked lines;
+     - (c) (a) plus a 1–2 texel dithered edge in the pixel look.
+   - Recommended: (a), then (c) if it looks too blocky.
+2. **A Folk being who joins people on a clearing should be bonded to
+   them.** Today a Folk companion in a clearing (§20.6, `FAE_UNIT`) leaves
+   no lasting tie.
+   - Wanted: everyone who went in with that being keeps an ongoing
+     relationship with it, as they have with each other.
+   - Ties already exist: opinions (`sim/fae.ts`, `Fae.of`, `Survivor.fae`)
+     and bonds between people (`community.ts`, `bondValue`).
+   - Proposal:
+     - a clearing shared with a Folk being raises that being's opinion of
+       each teammate, and records a named tie on both sides ("walked the
+       Veil together at Sorrel Close");
+     - the being then visits them (saucers, a night call that is always a
+       favour, not mischief);
+     - it may ask for them by name in a council;
+     - they grieve or rejoice at its fortunes;
+     - shown on the person card and the being's card.
+   - This feeds crossing (§24.6): a bonded pair is where Folk romance can
+     start.
+3. **"I just cleared some houses, but I don't see any ability to fix them
+   up and move in."**
+   - It is built (§20.4, §24.16): Build → The old world → *Restore a
+     ruin*, then click the building. A restored house becomes a household's
+     home with a plot and yard.
+   - It is hard to find: right-clicking a ruin does nothing, and the
+     district card after clearing doesn't mention it.
+   - To do:
+     - right-click a ruin → a card: what it is, what it would become, cost
+       and work, and *Restore* / *Pull down for salvage* buttons, with the
+       reason shown when a button is disabled (district not cleared, given
+       to the Folk, no way to its door);
+     - after clearing, the district card and the log line say "its houses
+       can now be restored (right-click one)";
+     - an ask in the tray when a household is waiting for a home and a
+       restorable house stands empty.

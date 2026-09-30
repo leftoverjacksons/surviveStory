@@ -252,6 +252,9 @@ reference: Tiny Glade.
     §35 SNOW (published v46): snow settles while falling and melts when not cold (`snowCold`, `uSnow` ground /
     `uRoofSnow` tops, main.ts season block), FOOTPRINTS (`render/footprints.ts`, `uFootTex`; people and deer; fade
     1.5 days, faster in snowfall), snowfall thickens with depth. `__game.snow(v)`.
+    §36 PLAYTEST NOTES v46 (to do, captured): crisp desire paths (wear texture is 1 texel/tile, linear), Folk
+    companions in a clearing leave a lasting bond with the team, RESTORE IS HARD TO FIND (only Build → The old
+    world → Restore a ruin; add a right-click ruin card with Restore / Pull down, and say so after clearing).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
