@@ -19,7 +19,8 @@ await page.goto('http://localhost:5181/', { waitUntil: 'load' });
 await page.waitForFunction(() => window.__studio?.stage?.clips?.size, null, { timeout: 60000 });
 await page.addStyleTag({ content: 'aside{display:none!important} #app{grid-template-columns:1fr!important} #bar{display:none!important}' });
 await page.waitForTimeout(4000);
-for (const [li, parts] of looks.entries()) {
+// The first look is drawn twice: the studio's own start-up display can replace the first one.
+for (const [li, parts] of [looks[0], ...looks].entries()) {
   const all = ['body.base', 'top.shirt_rolled', ...parts];
   await page.evaluate(async ({ all, build, raw, li }) => {
     const st = window.__studio.stage;

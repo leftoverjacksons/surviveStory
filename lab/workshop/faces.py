@@ -2,8 +2,10 @@
 Heads and faces: a sculpted skull and features placed on its surface, from a
 few numbers per face (FACES). parts.py registers each as a `head.<name>` part.
 
-The skull is an icosphere bent into a head (jaw, chin, cheeks, brow, a flatter
-face), then cut into small facets. Features (eyes, brows, nose, mouth, ears,
+The skull is built from profiles (half-width, face depth and back depth over
+height: temples, cranium, occiput, nape, cheekbones, jaw corner, chin), each
+slice a superellipse, then cut into small facets. `skull_point` gives the same
+shape for hair caps, so hair follows the skull. Features (eyes, brows, nose, mouth, ears,
 cheeks, lines) are found by casting a ray at the skull from the front, so they
 sit on whichever shape the face has. Every head keeps the same crown, so any
 hair fits any head.
@@ -53,30 +55,57 @@ FACES = {
 
 lerp = lambda a, b, t: a + (b - a) * t
 smooth = lambda t: (lambda u: u * u * (3 - 2 * u))(min(1.0, max(0.0, t)))
-bump = lambda d2, w: math.exp(-d2 / w)
 
 
-def shape(x, y, z, s):
-    """Bend a unit-sphere point (y negative = the face) into this face's skull."""
-    front = smooth(-y * 1.4)  # 0 at the sides and back, 1 on the face
-    x *= s['wide']
-    if z < 0:  # the jaw narrows toward the chin
-        t = (-z) ** 1.5
-        x *= 1 - s['jaw'] * t
-        if y < 0:
-            y *= 1 - s['jaw'] * 0.45 * t
-    if z < -0.35:  # chin: longer and forward, on the front only
-        t = smooth((-z - 0.35) / 0.65) * smooth(-y * 2.5 + 0.4)
-        z -= s['chin'] * t
-        y -= s['chin_fwd'] * t
-    # Cheeks: fuller (or hollow) below and beside the eyes.
-    b = s['cheek'] * bump((abs(x) - 0.55) ** 2 + (z + 0.32) ** 2 * 1.4, 0.07) * front
-    x += math.copysign(b * 0.6, x); y -= b
-    # Brow ridge above the eyes, and a flatter face plane.
-    y -= s['brow_ridge'] * bump(x * x * 0.6 + (z - 0.2) ** 2 * 4, 0.12) * front
-    if y < 0:
-        y *= 1 - s['flat'] * front * smooth((0.7 - abs(x)) / 0.7)
+def table(pts, z):
+    """Piecewise-smooth interpolation through (z, value) points (z ascending)."""
+    if z <= pts[0][0]:
+        return pts[0][1]
+    for (z0, v0), (z1, v1) in zip(pts, pts[1:]):
+        if z <= z1:
+            return lerp(v0, v1, smooth((z - z0) / (z1 - z0)))
+    return pts[-1][1]
+
+
+def profiles(s):
+    """The skull as three profiles over height z (-1 chin … 1 crown), in head radii, before the
+    sphere envelope: half-width, depth in front (the face) and depth behind (the back of the skull)."""
+    j, ch, br, wd = s['jaw'], s['cheek'], s['brow_ridge'], s['wide']
+    W = [(-1, 0.66 - j * 0.4), (-0.9, 0.73 - j * 0.5), (-0.72, 0.84 - j * 0.55), (-0.5, 0.92 - j * 0.4),
+         (-0.25, 0.97 + ch * 0.7), (0.05, 0.96), (0.35, 1.03), (0.7, 1.02), (1, 1.0)]
+    # Depths are divided by the envelope later, so these keep the face plane near vertical from the
+    # forehead to the mouth, then a chin, with a shallow dip at the eyes.
+    F = [(-1, 0.95 + s['chin_fwd']), (-0.8, 1.12 + s['chin_fwd']), (-0.55, 1.1), (-0.3, 1.03 + ch * 0.5),
+         (-0.02, 0.97), (0.2, 1.03 + br), (0.5, 1.04), (0.8, 1.0), (1, 1.0)]
+    # Behind: the back of the skull reaches well past the neck, then the nape tucks in.
+    B = [(-1, 0.5), (-0.65, 0.62), (-0.35, 0.82), (0.05, 1.12), (0.4, 1.12), (0.8, 1.02), (1, 1.0)]
+    return [(z, v * wd) for z, v in W], F, B
+
+
+def shape(x, y, z, s, P):
+    """A unit-sphere point (y negative = the face) → this face's skull. Each horizontal slice is a
+    superellipse (squarer than a circle: flat temples and a face plane) whose half-width and front and
+    back depths follow the profiles; the envelope (1 - z²)^0.42 is fuller than a sphere's toward the
+    crown and the jaw. The chin then reaches down on the front."""
+    W, F, B = P
+    h = math.hypot(x, y)
+    env = max(0.0, 1 - z * z) ** 0.42
+    if h > 1e-6:
+        cx, cy = x / h, y / h
+        w = table(W, z)
+        d = table(F, z) if cy < 0 else table(B, z)
+        p = 2.3 + s['flat'] * 3 if cy < 0 else 2.2
+        r = ((abs(cx) / w) ** p + (abs(cy) / d) ** p) ** (-1 / p)
+        x, y = cx * r * env, cy * r * env
+    if z < -0.3 and y < 0:  # the chin: longer on the front only
+        z -= s['chin'] * smooth((-z - 0.3) / 0.6) * smooth(-y / max(env, 1e-3) * 1.5)
     return x, y, z
+
+
+def skull_point(d, s=None):
+    """A unit direction → the point on a skull (head radii from the centre); the plain face by default."""
+    s = {**BASE, **(s or {})}
+    return shape(*Vector(d).normalized(), s, profiles(s))
 
 
 class Face:
@@ -86,8 +115,9 @@ class Face:
         R = (HR[0] * 1.04, HR[1] * 1.04, HR[2] * 1.02)
         self.R = R
         head = k.ico('head', (0, 0, 0), (1, 1, 1), c.m('skin'), subdiv=3)
+        P = profiles(s)
         for v in head.data.vertices:
-            x, y, z = shape(*v.co.normalized(), s)
+            x, y, z = shape(*v.co.normalized(), s, P)
             v.co = Vector((HC.x + x * R[0], HC.y + y * R[1], HC.z + z * R[2]))
         d = head.modifiers.new('dec', 'DECIMATE'); d.ratio = keep
         k.apply_modifiers(head)
@@ -106,6 +136,13 @@ class Face:
         ux, uy, uz = (hit.x - c.HC.x) / self.R[0], (hit.y - c.HC.y) / self.R[1], (hit.z - c.HC.z) / self.R[2]
         n = Vector((ux / self.R[0], uy / self.R[1], uz / self.R[2])).normalized()
         return hit, n
+
+    def side(self, y, z):
+        """The skull's surface on its left side (+x) at (y, z) in head radii."""
+        c = self.c
+        o = Vector((c.HC.x + 3 * self.R[0], c.HC.y + y * self.R[1], c.HC.z + z * self.R[2]))
+        hit = self.bvh.ray_cast(o, Vector((-1, 0, 0)))[0]
+        return hit if hit is not None else o - Vector((2.0 * self.R[0], 0, 0))
 
     def place(self, ob, at, n, spin=0.0, sink=0.0):
         """ob was built at the origin facing -y (z up): turn it to face n, sit it at `at`."""
@@ -214,9 +251,7 @@ def build(c, s):
     # ---- ears: a flattened shell, tilted back, with a shaded hollow
     ea = s['ear']
     def ear():
-        p, n = f.at(0.99, -0.12)  # (the ray hits the side; place at the skull's edge instead)
-        HC = c.HC
-        at = Vector((HC.x + f.R[0] * 0.97 * s['wide'] * (1 - s['jaw'] * 0.06), HC.y + 0.08 * f.R[1], HC.z - 0.1 * f.R[2]))
+        at = f.side(0.1, -0.1) + Vector((-0.02 * r, 0, 0))
         side = Vector((1, 0.25, 0)).normalized()
         shell = k.uvs('ear', (0, 0, 0), (0.17 * r * ea, 0.07 * r, 0.27 * r * ea), m('skin'), segs=6, rings=4)
         f.place(shell, at, side)

@@ -126,8 +126,15 @@ for _n in faces.FACES:
 
 # ---------------------------------------------------------------- hair
 def hair_cap(c, keep, scale=(1.12, 1.12, 1.1), lift=0.1):
+    """A shell over the skull (faces.skull_point, so it follows the cranium and the back of the head),
+    `scale` times the skull about its centre, lifted by `lift` head radii; keep(x, y, z) picks its vertices."""
     k = c.k
-    cap = k.ico('haircap', c.H(0, 0.05, lift), (c.HR[0] * scale[0], c.HR[1] * scale[1], c.HR[2] * scale[2]), c.m('hair'), subdiv=3, keep=0.4)
+    cap = k.ico('haircap', (0, 0, 0), (1, 1, 1), c.m('hair'), subdiv=3)
+    for v in cap.data.vertices:
+        x, y, z = faces.skull_point(v.co)
+        v.co = c.H(x * scale[0], y * scale[1], z * scale[2] + lift)
+    d = cap.modifiers.new('dec', 'DECIMATE'); d.ratio = 0.4
+    k.apply_modifiers(cap)
     bm = bmesh.new(); bm.from_mesh(cap.data)
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not keep((v.co.x - c.HC.x) / c.HR[0], (v.co.y - c.HC.y) / c.HR[1], (v.co.z - c.HC.z) / c.HR[2])], context='VERTS')
     bm.to_mesh(cap.data); bm.free()
@@ -434,7 +441,7 @@ def held_trowel(k, pal):
 def hair_swept(k, pal, seed=3):
     """Short hair swept back in ridges, short at the sides."""
     c = Ctx(k, pal); rnd = random.Random(seed)
-    hair_cap(c, lambda x, y, z: z > 0.3 or (y > 0.0 and z > -0.45) or (abs(x) > 0.85 and -0.1 < z and y > -0.4), scale=(1.07, 1.07, 1.07), lift=0.05)
+    hair_cap(c, lambda x, y, z: z > 0.3 or (y > 0.0 and z > -0.45) or (abs(x) > 0.75 and -0.4 < z and y > -0.45), scale=(1.07, 1.07, 1.07), lift=0.05)
     for i, x in enumerate((-0.55, -0.28, 0.0, 0.28, 0.55)):
         base = c.H(x, -0.72, 0.72 + rnd.uniform(0, 0.08))
         tip = c.H(x * 1.15, 0.6, 0.9 + rnd.uniform(0, 0.05))
@@ -456,7 +463,6 @@ def beard_full(k, pal, seed=4):
         p = c.H(math.sin(a) * 0.8, -0.45 - math.cos(a) * 0.4, -0.75 - abs(math.cos(a)) * 0.35)
         c.add(k.uvs(f'tuft{i}', p, c.Hr(0.2, 0.18, 0.2), c.m('hair'), segs=5, rings=3), 'Head')
     c.pair(lambda: k.uvs('moustache', c.H(0.2, -0.99, -0.34), c.Hr(0.3, 0.13, 0.13), c.m('hair'), segs=6, rings=3), 'Head')
-    c.pair(lambda: k.box('bushybrow', c.H(0.42, -0.93, 0.33), c.Hr(0.5, 0.15, 0.13), c.m('hair'), rot=(0, -0.15, 0.1), bevel=0.004), 'Head')
     return c.out
 
 @part('vest.waistcoat', cloth_vest='#b0582c', strap_button='#3a2a20')

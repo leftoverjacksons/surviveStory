@@ -71,7 +71,7 @@
    "slots": [
     "hair"
    ],
-   "triangles": 751
+   "triangles": 749
   },
   "hair.bun": {
    "category": "hair",
@@ -79,7 +79,7 @@
     "hair",
     "hat_band"
    ],
-   "triangles": 317
+   "triangles": 315
   },
   "top.tunic": {
    "category": "top",
@@ -224,14 +224,14 @@
    "slots": [
     "hair"
    ],
-   "triangles": 101
+   "triangles": 109
   },
   "beard.full": {
    "category": "beard",
    "slots": [
     "hair"
    ],
-   "triangles": 415
+   "triangles": 327
   },
   "vest.waistcoat": {
    "category": "vest",
@@ -313,7 +313,7 @@
    "pool": "woman",
    "parts": {
     "body": "body.base",
-    "head": "head.face",
+    "head": "head.soft",
     "hair": "hair.bun",
     "top": "top.shirt_rolled",
     "bottom": "bottom.overalls",
@@ -339,7 +339,7 @@
    "pool": "man",
    "parts": {
     "body": "body.base",
-    "head": "head.face",
+    "head": "head.broad",
     "hair": "hair.swept",
     "beard": "beard.full",
     "top": "top.shirt_rolled",
