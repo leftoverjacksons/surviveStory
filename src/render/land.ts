@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { tagOutline } from './outlinecats';
 import { Crop, Zone, heightAt, type World } from '../sim/world';
 import { fieldOfTile, perimeter, pointInPolygon, type FieldPlot } from '../sim/fields';
 import { box, cyl, mat } from './kit';
@@ -43,7 +44,7 @@ export class FieldsView {
   private fences: THREE.Group | null = null;
   private crops: THREE.InstancedMesh | null = null;
   private soilMat = enhance(new THREE.MeshLambertMaterial({ map: furrowTexture(), transparent: true, vertexColors: true }), { season: 'solid', zone: true, surface: 'soil' });
-  private cropMat = enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.25, season: 'solid', surface: 'none' });
+  private cropMat = tagOutline(enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.25, season: 'solid', surface: 'none' }), 'plants');
   private cropGeo = new THREE.ConeGeometry(0.17, 0.7, 5).translate(0, 0.35, 0);
   private key = '';
   private tiles: number[] = [];

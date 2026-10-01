@@ -278,6 +278,10 @@ reference: Tiny Glade.
     ranges are circles, BESIDE 1.6; lamps need line of sight to lure); two-ring soft overlay + path dots + ghost + threat
     rings (`render/clearing.ts` ReachOverlay); village paths pulled taut (`path.ts#tautPath`). `__game.veilHoverAt(d)`.
     Next: step 2 (the dark) per §38.15.
+    §39 (not published): HOME BRUSH REMOVED (button gone; tint only under autopilot `ZoneTexture.showHome`; homeResonance
+    = cells within 12 of fires and homes). OUTLINES BY KIND (`render/outlinecats.ts`: stencil category per draw via
+    Object3D.onBeforeRender, mask pass in OutlinePass; `tagOutline(mat, 'glass'|'plants')`; ground yields foot lines to
+    objects; graphics panel "Outlines on…" + Built only / All presets; `GfxSettings.outlineOff`; `__game.outlineShares()`).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

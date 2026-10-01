@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { tagOutline } from './outlinecats';
 import { CANOPY, SIGN, STORE } from '../sim/layout';
 import { PIXEL, enhance, enhanced, lambert, makeRand, shadowed } from './util';
 
@@ -80,7 +81,7 @@ export function buildStation(): StationBuild {
   const rust = lambert('#8a4b2a');
   const fasciaCream = lambert('#cfc6a8');
   const fasciaTeal = lambert('#4f7f7a');
-  const glass = new THREE.MeshLambertMaterial({ color: '#1a2226', transparent: true, opacity: 0.85 });
+  const glass = tagOutline(new THREE.MeshLambertMaterial({ color: '#1a2226', transparent: true, opacity: 0.85 }), 'glass');
 
   const roofs: THREE.Object3D[] = [];
   const storeWall = lambert('#a39e90');

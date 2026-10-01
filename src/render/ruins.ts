@@ -8,6 +8,7 @@
  */
 import { CUT_HEIGHT } from './roofs';
 import * as THREE from 'three';
+import { tagOutline } from './outlinecats';
 import type { Ruin } from '../sim/oldworld';
 import { heightAt, type World } from '../sim/world';
 import { box, cyl, mat } from './kit';
@@ -51,7 +52,7 @@ function wall(g: THREE.Group, len: number, h: number, T: number, o: Opts, rand: 
   const cw = len / n;
   const breach = rand() * len - len / 2, breachW = decay * len * (0.25 + rand() * 0.4);
   const [w0, w1] = o.windowH ?? [0.95, 1.9];
-  const glass = mat('#1f2a2e'), board = mat('#7a6446');
+  const glass = tagOutline(mat('#1f2a2e', true, 'glass'), 'glass'), board = mat('#7a6446');
   for (let i = 0; i < n; i++) {
     const x = -len / 2 + cw * (i + 0.5);
     const u = (x + len / 2) / len;

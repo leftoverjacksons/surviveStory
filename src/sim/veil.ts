@@ -201,17 +201,32 @@ export function resonanceAt(col: Colony, x: number, z: number): number {
   return col.veil.res[cellOf(col.veil, col.world, x, z)];
 }
 
-/** Average resonance over the home zone. */
+/** How far round a fire or a home counts as "the land around home" (world units). */
+const HOME_REACH = 12;
+
+/**
+ * Average resonance of the land the village lives on: within reach of its
+ * fires and its homes (not a painted zone; the Home brush is gone, DESIGN §39).
+ */
 export function homeResonance(col: Colony): number {
   const w = col.world, v = col.veil;
-  let sum = 0, n = 0;
-  for (let cz = 0; cz < v.ch; cz++) for (let cx = 0; cx < v.cw; cx++) {
-    const i = idx(w, Math.min(w.w - 1, cx * CELL + 2), Math.min(w.h - 1, cz * CELL + 2));
-    if (w.zone[i] !== Zone.Home) continue;
-    sum += v.res[cz * v.cw + cx];
-    n++;
+  const at: { x: number; z: number }[] = [w.campfire];
+  for (const b of col.village.buildings) {
+    if (b.gone || (b.kind !== 'home' && b.kind !== 'hearth')) continue;
+    at.push({ x: b.foot.tx + b.foot.w / 2 - w.w / 2, z: b.foot.tz + b.foot.d / 2 - w.h / 2 });
   }
-  return n ? sum / n : resonanceAt(col, w.home.x, w.home.z);
+  const seen = new Set<number>();
+  let sum = 0;
+  for (const p of at) {
+    for (let dz = -HOME_REACH; dz <= HOME_REACH; dz += CELL) for (let dx = -HOME_REACH; dx <= HOME_REACH; dx += CELL) {
+      if (dx * dx + dz * dz > HOME_REACH * HOME_REACH) continue;
+      const c = cellOf(v, w, p.x + dx, p.z + dz);
+      if (seen.has(c)) continue;
+      seen.add(c);
+      sum += v.res[c];
+    }
+  }
+  return seen.size ? sum / seen.size : resonanceAt(col, w.home.x, w.home.z);
 }
 
 /** Lower resonance around a point (felling, salvage, suffering). */

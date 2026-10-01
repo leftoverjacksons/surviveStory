@@ -38,9 +38,10 @@ for (const s of steps) {
     if (s.district !== undefined) { const d = w.districts.find((x) => x.kind === s.district); for (const p of w.pois) p.discovered = true; g.inspect({ district: d.id }); g.iso.target.x = d.x; g.iso.target.z = d.z; }
     if (s.veilStart) g.veilStart(s.veilStart, !!s.withFolk);
     if (s.veilTurns) g.veilTurns(s.veilTurns);
-    if (s.eval) (0, eval)(s.eval); // anything else, as a JS string with `__game` in scope
+    const said = s.eval ? (0, eval)(s.eval) : undefined; // anything else, as a JS string with `__game` in scope (its value is printed)
     g.refresh();
     return {
+      ...(said !== undefined ? { eval: said } : {}),
       day: c.community.day, minute: c.minute, council: !!c.council.active, weather: c.weather,
       folk: { standing: Math.round(c.folk.standing), level: c.folk.level, mound: [Math.round(w.folk.mound.x), Math.round(w.folk.mound.z)] },
       buildings: c.village.buildings.map((b) => b.name),

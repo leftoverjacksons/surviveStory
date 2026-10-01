@@ -8,6 +8,7 @@
  * frame with limewashed daub under thatch or shingle.
  */
 import * as THREE from 'three';
+import { tagOutline } from './outlinecats';
 import { homeLayout, type HouseSpec } from '../sim/homes';
 import type { Material } from '../sim/oldworld';
 import { GLOW, box, cyl, mat, smooth } from './kit';
@@ -191,7 +192,7 @@ function wall(len: number, h: number, pal: Palette, o: WallOpts, rand: () => num
     const wh = pal.tier === 0 ? 0.4 + rand() * 0.3 : pal.bigWindows ? 0.8 : 0.62;
     const wy = 1.35 + (pal.tier === 0 ? (rand() - 0.5) * 0.15 : 0.05);
     const sheeting = pal.tier === 0 && rand() < 0.3;
-    g.add(box(ww, wh, 0.06, mat(sheeting ? '#b8c4c0' : '#2a3236'), wx, wy, T / 2 + 0.02));
+    g.add(box(ww, wh, 0.06, sheeting ? mat('#b8c4c0') : tagOutline(mat('#2a3236', true, 'glass'), 'glass'), wx, wy, T / 2 + 0.02));
     const fm = mat(pal.frame);
     g.add(box(ww + 0.1, 0.07, 0.1, fm, wx, wy - wh / 2 - 0.02, T / 2 + 0.04));
     g.add(box(ww + 0.1, 0.06, 0.09, fm, wx, wy + wh / 2 + 0.02, T / 2 + 0.04));
@@ -515,7 +516,7 @@ export function buildHouse(spec: HouseSpec, tier: number, p: number, glow: THREE
       // A lean-to glasshouse on the side away from the hearth.
       const side = -chimney, gw = 1.6, gd = Math.min(D - 0.6, 3.2), gh = 2.1;
       const gx = side * (W / 2 + gw / 2);
-      const frame = mat('#e8e4d8'), glass = mat('#9ec4bf');
+      const frame = mat('#e8e4d8'), glass = tagOutline(mat('#9ec4bf', true, 'glass'), 'glass');
       const gy = Math.min(0, ground(gx, 0));
       g.add(box(gw, 0.3 - gy, gd, cm({ color: '#8a4a3a', surface: 'brick' }), gx, (0.3 + gy) / 2, 0));
       for (const z of [-gd / 2, gd / 2]) for (const x of [gx - side * gw / 2 + side * 0.05, gx + side * gw / 2 - side * 0.05]) {

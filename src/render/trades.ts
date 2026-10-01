@@ -9,6 +9,7 @@
  * Local frame as in village.ts: the door faces +z; W along x, D along z.
  */
 import * as THREE from 'three';
+import { tagOutline } from './outlinecats';
 import type { HouseSpec } from '../sim/homes';
 import { BULB, box, cyl, mat, smooth } from './kit';
 import { buildHouse } from './house';
@@ -208,7 +209,7 @@ export function shrineMesh(_W: number, D: number, tier: number, p: number, seed:
   return g;
 }
 
-const DOME_GLASS = new THREE.MeshLambertMaterial({ color: '#cfeee8', transparent: true, opacity: 0.32, depthWrite: false, flatShading: true });
+const DOME_GLASS = tagOutline(new THREE.MeshLambertMaterial({ color: '#cfeee8', transparent: true, opacity: 0.32, depthWrite: false, flatShading: true }), 'glass');
 const DOME_STEEL = new THREE.LineBasicMaterial({ color: '#5a6266' });
 
 /** A geodesic greenhouse: faceted glass on a steel frame, green inside. */

@@ -249,6 +249,9 @@
   #gfx label input[type=checkbox] { justify-self: start; }
   #gfx output { font-size: 11px; color: var(--ink-dim); text-align: right; }
   #gfx .presets { display: flex; gap: 4px; flex-wrap: wrap; }
+  #gfx .ocats { font-size: 12px; padding-left: 8px; display: grid; gap: 4px; }
+  #gfx .ocats summary { cursor: pointer; color: var(--ink-dim); }
+  #gfx .ocats label { grid-template-columns: 1fr 24px; }
   #build h3.sec { margin-top: 6px; font: 600 11px var(--f-body, inherit); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
   #build button.glimpsed { opacity: 0.55; }
   #build button em.new { margin-left: 6px; padding: 0 5px; border-radius: 6px; font: 600 10px var(--f-body, inherit); font-style: normal; background: #e8c86a; color: #1a1a14; vertical-align: 1px; }
@@ -460,7 +463,6 @@
   </div>
   <div class="grp zone" role="group" aria-label="Paint zones">
     <label>Zones</label>
-    <button data-zone="home" type="button" title="Where the village may build" aria-pressed="false"><i class="sw home"></i>Home</button>
     <button data-zone="field" type="button" title="Fields: click the corners to mark one out (click the first corner or press Enter to close; Esc cancels). Click inside a field to remove it. Sown in spring, harvested in autumn; fenced once worked." aria-pressed="false"><i class="sw field"></i>Field</button>
     <button data-zone="woodlot" type="button" title="Woodlot: cut here and replant" aria-pressed="false"><i class="sw woodlot"></i>Woodlot</button>
     <button data-zone="sacred" type="button" title="Sacred ground: never cut, never built on" aria-pressed="false"><i class="sw sacred"></i>Sacred</button>

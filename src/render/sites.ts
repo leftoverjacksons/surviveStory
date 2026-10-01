@@ -8,6 +8,7 @@
  * the site's definition in the simulation.
  */
 import * as THREE from 'three';
+import { tagOutline } from './outlinecats';
 import type { Site } from '../sim/sites';
 import { boxSurface, buildStation, slabSurface, type StationBuild, type VineEdge, type VineSurface } from './station';
 import { enhance, enhanced, lambert, makeRand, shadowed } from './util';
@@ -162,7 +163,7 @@ function chapel(site: Site, k: Kit) {
   const stone = lambert('#aaa394');
   const slate = lambert('#59606a');
   const trim = lambert('#6d665a');
-  const glass = new THREE.MeshLambertMaterial({ color: '#2a3440', transparent: true, opacity: 0.85 });
+  const glass = tagOutline(new THREE.MeshLambertMaterial({ color: '#2a3440', transparent: true, opacity: 0.85 }), 'glass');
   shell(k, site, stone);
   floor(k, site, '#77705f');
   // Buttresses along the sides.
@@ -227,7 +228,7 @@ function motel(site: Site, k: Kit) {
   const stucco = lambert('#dacdb2');
   const roofM = lambert('#6f6b62');
   const trim = lambert('#4f7f7a');
-  const glass = new THREE.MeshLambertMaterial({ color: '#1a2226', transparent: true, opacity: 0.85 });
+  const glass = tagOutline(new THREE.MeshLambertMaterial({ color: '#1a2226', transparent: true, opacity: 0.85 }), 'glass');
   shell(k, site, stucco);
   floor(k, site, '#6a655a');
   // Room dividers at the back (the front is a knocked-through corridor now).
@@ -287,7 +288,7 @@ function farm(site: Site, k: Kit) {
   const boards = lambert('#8a3a2e');
   const white = lambert('#e2dccb');
   const roofM = lambert('#5a4f4a');
-  const glass = new THREE.MeshLambertMaterial({ color: '#1a2226', transparent: true, opacity: 0.85 });
+  const glass = tagOutline(new THREE.MeshLambertMaterial({ color: '#1a2226', transparent: true, opacity: 0.85 }), 'glass');
   shell(k, site, boards, S.h, 0.22, 2.6);
   floor(k, site, '#6b5236');
   // White trim at the corners and round the big doorway.
@@ -334,7 +335,7 @@ function glasshouse(site: Site, k: Kit) {
   const S = site.shelter;
   const brick = lambert('#8a5a44');
   const frame = lambert('#d6d9cf');
-  const glass = new THREE.MeshLambertMaterial({ color: '#cfe8e4', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
+  const glass = tagOutline(new THREE.MeshLambertMaterial({ color: '#cfe8e4', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }), 'glass');
   const x0 = S.x - S.w / 2, x1 = S.x + S.w / 2, z0 = S.z - S.d / 2, z1 = S.z + S.d / 2;
   // Low brick base, then glass and a white frame.
   const base = 0.6;

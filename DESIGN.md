@@ -4806,3 +4806,68 @@ reachable spot about `d` away.
 
 **Not yet:** a closer camera; drawn roads and free plot corners in the
 village; smoothing the pixel look of the ring edges.
+
+## 39. The Home brush goes; outlines by kind of thing (after §38.18)
+
+### 39.1 The Home zone brush is removed
+
+The user asked what the Home tool did; the answer was "almost nothing" in
+the default game:
+- placement and drawn plots ignore it (`canPlace` passes `needZone = false`);
+- only the autopilot plans by it (`findSite`, `findPlot`, `autopilot.ts`
+  painting more).
+
+The user agreed it can go.
+
+- **The button is gone** from the zone toolbar (`index.html`).
+- **The Home tint and outline are hidden** unless the village plans itself
+  (`ZoneTexture.showHome`, set from `village.autoPlan`).
+- **The autopilot still paints and uses Home internally.**
+- **"The land around home"** (`veil.ts#homeResonance`) is no longer the
+  painted zone. It is the resonance cells within 12 of the fire, each hamlet
+  fire and each home.
+  - It drives thin sleep, phenomena near the village, the council's shrine
+    proposal, the shrine unlocking, and the hourly mood from the land.
+
+### 39.2 Outlines for some kinds of thing, not others
+
+The user: outlines make things feel cluttered, and not everything needs
+them; perhaps outlines on built things but not plants, and not glass.
+
+**How it works** (`render/outlinecats.ts`):
+- Outlines come from the depth buffer alone, so every draw in the main pass
+  also writes a category into the stencil buffer. A hook on
+  `Object3D.prototype.onBeforeRender` sets the material's stencil reference.
+- **The category** comes from:
+  - the material, if it says: glass panes, dome glass and shop windows are
+    tagged `glass` (`tagOutline`); foliage materials (enhance seasons
+    broadleaf, conifer and grass, including ivy) and crops are `plants`;
+  - otherwise the nearest named scene group: terrain (ground); trees,
+    bushes and tufts (plants); village, site, plots, camp, fields and
+    gatherings (built); ruins, oldworld and heaps (old world); people and
+    herds; folk, townhouse, mycelium and clearing (the Folk and spirits);
+  - anything else is "other".
+- **See-through materials** keep the category of what is behind them,
+  except glass.
+- **The mask:** the outline pass draws one full-screen quad per category
+  that is switched on, stencil-tested against the frame's depth-stencil
+  texture (borrowed by a small target, never sampled there). The result is
+  a mask texture: red where lines are allowed, green where the pixel is
+  ground.
+- **Who owns a line:** a line lands on the nearer surface, so a tree in front
+  of a house is the tree's to outline. The ground hands its line at an
+  object's foot to that object, so a house keeps its whole outline with the
+  ground's lines off.
+- **Cost:** with everything ticked the mask isn't drawn at all. The composer's
+  depth textures are now depth-and-stencil.
+
+**The panel** (key G):
+- Under Outlines, "Outlines on…" lists the eight kinds, each with a tick.
+- Presets: "Built only" (lines on built things, the old world, people and
+  the Folk; none on ground, plants or glass) and "All".
+- Remembered as `GfxSettings.outlineOff`.
+
+**Debug:**
+- `__game.outlineShares()` gives each category's share of the screen (seed
+  3, the camp: ground 62%, plants 20%, built 13%, old world 4.5%).
+- `shot.mjs` now prints an `eval` step's value.

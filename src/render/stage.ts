@@ -6,6 +6,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutlineMask, installOutlineCategories } from './outlinecats';
 
 /**
  * Final colour grade, in display space: cool shadows and warm highlights
@@ -53,6 +54,8 @@ const GradeShader = {
  * so they stay one pixel wide.
  */
 class OutlinePass extends Pass {
+  /** Which kinds of thing get lines (DESIGN §39). */
+  mask = new OutlineMask();
   private quad: FullScreenQuad;
   private mat: THREE.ShaderMaterial;
   constructor(private camera: THREE.OrthographicCamera, private scene?: THREE.Scene) {
@@ -63,11 +66,13 @@ class OutlinePass extends Pass {
         uNear: { value: 0.1 }, uFar: { value: 400 }, uView: { value: new THREE.Vector2(1, 1) }, uDebug: { value: typeof location !== 'undefined' && location.search.includes('pixeldebug') ? 1 : 0 },
         uCam: { value: new THREE.Matrix4() }, uFogTex: worldUniforms.uFogTex, uFogSize: worldUniforms.uFogSize,
         uFogNear: { value: 115 }, uFogFar: { value: 230 },
+        tMask: { value: null }, uUseMask: { value: 0 },
       },
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
         uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform vec2 uView; uniform float uDebug;
         uniform mat4 uCam; uniform sampler2D uFogTex; uniform float uFogSize; uniform float uFogNear; uniform float uFogFar;
+        uniform sampler2D tMask; uniform float uUseMask;
         varying vec2 vUv;
         float lin(vec2 uv) { return uNear + texture2D(tDepth, uv).x * (uFar - uNear); }
         vec3 P(vec2 uv) { return vec3((uv - 0.5) * uView, -lin(uv)); }
@@ -83,11 +88,11 @@ class OutlinePass extends Pass {
           // World size of one pixel: the ground's own slope shouldn't count as an edge.
           float wpp = uView.y / uRes.y;
           float thresh = 0.35 + wpp * 3.0;
-          float edge = 0.0, crease = 0.0;
+          float edge = 0.0, crease = 0.0, behind = 0.0;
           vec3 n = N(vUv, px);
           for (int i = 0; i < 4; i++) {
             float dn = lin(vUv + o[i]);
-            if (dn - d > thresh) edge = 1.0;
+            if (dn - d > thresh) { edge = 1.0; if (uUseMask > 0.5) behind = max(behind, texture2D(tMask, vUv + o[i]).r); }
             else if (abs(dn - d) < thresh) {
               vec3 nn = N(vUv + o[i], px);
               // Convex crease on one side only (keeps the line one pixel wide).
@@ -104,6 +109,14 @@ class OutlinePass extends Pass {
           float clearAir = 1.0 - smoothstep(uFogNear, uFogFar, d);
           float ink = seen * clearAir;
           edge *= step(0.5, ink); crease *= ink;
+          // Only on the kinds of thing that get lines (outlinecats.ts).
+          // The ground gives its line at an object's foot to the object (if that kind gets lines).
+          if (uUseMask > 0.5) {
+            vec2 m = texture2D(tMask, vUv).rg;
+            float own = step(0.5, m.r);
+            edge *= max(own, step(0.5, m.g) * step(0.5, behind));
+            crease *= own;
+          }
           if (uDebug > 0.5) { gl_FragColor = vec4(edge, texture2D(tDepth, vUv).x * 20.0 - floor(texture2D(tDepth, vUv).x * 20.0), crease, 1.0); return; }
           if (edge > 0.0) c = c * 0.38 + vec3(0.025, 0.012, 0.03);          // ink: a deep warm violet-brown
           else if (crease > 0.0) c = c * (1.0 + 0.5 * clamp(crease * 2.0, 0.0, 1.0)) + 0.015;
@@ -122,6 +135,9 @@ class OutlinePass extends Pass {
     u.uCam.value.copy(c.matrixWorld);
     const fog = this.scene?.fog as THREE.Fog | undefined;
     if (fog) { u.uFogNear.value = fog.near; u.uFogFar.value = fog.far; }
+    const masked = !this.mask.all;
+    u.uUseMask.value = masked ? 1 : 0;
+    if (masked) u.tMask.value = this.mask.render(renderer, readBuffer);
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
   }
@@ -386,15 +402,18 @@ export function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene
   // The composer draws into its own buffers, which get no anti-aliasing
   // unless they are multisampled: the renderer's own `antialias` doesn't reach them.
   const pr = renderer.getPixelRatio();
-  const target = new THREE.WebGLRenderTarget(w * pr, h * pr, { type: THREE.HalfFloatType, samples: SOFT && !PIXEL ? 4 : 0 });
-  // The outline pass reads depth: give both of the composer's buffers a depth texture.
-  if (PIXEL) target.depthTexture = new THREE.DepthTexture(w * pr, h * pr);
+  const target = new THREE.WebGLRenderTarget(w * pr, h * pr, { type: THREE.HalfFloatType, samples: SOFT && !PIXEL ? 4 : 0, stencilBuffer: !!PIXEL });
+  // The outline pass reads depth, and which kind of thing each pixel is from the stencil (outlinecats.ts):
+  // give both of the composer's buffers a depth-and-stencil texture.
+  const depthStencil = () => { const d = new THREE.DepthTexture(w * pr, h * pr, THREE.UnsignedInt248Type); d.format = THREE.DepthStencilFormat; return d; };
+  if (PIXEL) { target.depthTexture = depthStencil(); installOutlineCategories(); }
   const composer = new EffectComposer(renderer, target);
-  if (PIXEL && !composer.renderTarget2.depthTexture) composer.renderTarget2.depthTexture = new THREE.DepthTexture(w * pr, h * pr);
+  if (PIXEL && composer.renderTarget2.depthTexture?.format !== THREE.DepthStencilFormat) composer.renderTarget2.depthTexture = depthStencil();
   composer.addPass(new RenderPass(scene, camera));
   const xrayCam = (camera as THREE.OrthographicCamera).clone();
   const peopleCam = (camera as THREE.OrthographicCamera).clone();
   const xrayMat = new THREE.MeshBasicMaterial({ color: '#5f9f98', depthWrite: false, depthFunc: THREE.GreaterDepth, fog: false });
+  xrayMat.userData.noOutlineCat = true;
   const xray = new OverlayPass(scene, xrayCam, xrayMat);
   xray.clear = false;
   xray.clearDepth = false;

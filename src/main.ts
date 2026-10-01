@@ -32,6 +32,7 @@ import { Footprints } from './render/footprints';
 import { KeepOut } from './render/keepout';
 import { Tray } from './ui/tray';
 import { GfxPanel } from './ui/gfx';
+import { OUTLINE_CATS } from './render/outlinecats';
 import { dropAnsweredHomes } from './sim/requests';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
@@ -144,7 +145,7 @@ function sizeComposer() {
 let pixelScale = PIXEL || 1;
 const gfx = new GfxPanel({
   pixel: !!PIXEL,
-  defaults: { px: PIXEL || 1, outline: true, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
+  defaults: { px: PIXEL || 1, outline: true, outlineOff: [], steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
   apply(s, changed) {
     if (PIXEL && (changed === null || changed === 'px')) {
       pixelScale = s.px;
@@ -153,7 +154,11 @@ const gfx = new GfxPanel({
       renderer.domElement.style.imageRendering = s.px > 1 ? 'pixelated' : 'auto';
       iso.snapRows = Math.round(view.clientHeight / s.px);
     }
-    if (outline) outline.enabled = s.outline;
+    if (outline) {
+      outline.enabled = s.outline;
+      // Lines only on the kinds of thing still ticked (render/outlinecats.ts).
+      outline.mask.on = OUTLINE_CATS.map((c) => !(s.outlineOff ?? []).includes(c.key));
+    }
     if (PIXEL) grade.uniforms.uSteps.value = s.steps;
     worldUniforms.uSurface.value = s.surface;
     worldUniforms.uGrassPaint.value = s.grassPaint;
@@ -1382,6 +1387,7 @@ function frame() {
   clearingView.updateArena(t, veil?.cl ?? null, veil?.sel ?? 0, veil?.hover ?? null, iso.camera, view.clientWidth, view.clientHeight);
   wear.sync(t);
   fog.sync();
+  zoneTex.showHome = colony.village.autoPlan !== false;
   zoneTex.sync();
   trees.setGhosts(worldUniforms.uThin.value); // zones changed: which chunks touch the Wild
   worldUniforms.uTime.value = t;
@@ -1728,7 +1734,24 @@ const veilDebug = {
     return toScreen(x, heightAt(world, x, z) + 1.1, z);
   },
 };
-Object.assign(window, { __game: { ...veilDebug, stats, addModel, setWoods, flicker, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean; camp?: 'fire' | 'stockpile' }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
+Object.assign(window, { __game: { ...veilDebug, gfx,
+  /** Share of the screen each outline category covers (render/outlinecats.ts), for checking the tagging. */
+  outlineShares() {
+    if (!outline) return null;
+    const m = outline.mask, keep = m.on.slice(), out: Record<string, number> = {};
+    for (let k = 0; k < keep.length; k++) {
+      m.on = keep.map((_, j) => j === k);
+      composer.render();
+      const t = m.target!, buf = new Uint8Array(t.width * t.height * 4);
+      renderer.readRenderTargetPixels(t, 0, 0, t.width, t.height, buf);
+      let n = 0;
+      for (let i = 0; i < buf.length; i += 4) if (buf[i] > 127) n++;
+      out[OUTLINE_CATS[k].key] = Math.round((n / (t.width * t.height)) * 1000) / 10;
+    }
+    m.on = keep;
+    return out;
+  },
+  stats, addModel, setWoods, flicker, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean; camp?: 'fire' | 'stockpile' }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
   place: (k: PlaceKind, x: number, z: number, turn = 0) => { const { foot, facing } = footAt(k, toTileX(world, x), toTileZ(world, z), turn); return placeProject(world, colony.village, community, k, foot, facing); },
   folkOrder: (k: never, x: number, z: number) => orderFolkWork(colony, k, x, z), folkWhy: (x: number, z: number) => whyNotFolkWork(colony, x, z),
   save: () => saveNow('manual'),

@@ -5,7 +5,7 @@
  * The look is several layers that can be told apart:
  * - pixel size: the scene drawn at 1/n of the screen and enlarged with hard
  *   pixels (1 = full resolution, no pixelation);
- * - outlines drawn from depth;
+ * - outlines drawn from depth, for each kind of thing separately (DESIGN §39);
  * - colour steps (the grade's quantising);
  * - surface patterns: planks, brick, loam and leaves in world space;
  * - bloom, exposure, shadows;
@@ -13,9 +13,13 @@
  * So "pixel textures without the overall pixel effect" is: pixel size 1,
  * surface patterns on.
  */
+import { OUTLINE_CATS } from '../render/outlinecats';
+
 export interface GfxSettings {
   px: number;
   outline: boolean;
+  /** Kinds of thing drawn without outlines (render/outlinecats.ts keys). */
+  outlineOff: string[];
   steps: number;
   surface: number;
   bloom: number;
@@ -69,12 +73,20 @@ export class GfxPanel {
   }
 
   private read(t: HTMLInputElement) {
+    if (t.name.startsWith('oc-')) {
+      const key = t.name.slice(3);
+      this.s.outlineOff = t.checked ? this.s.outlineOff.filter((x) => x !== key) : [...new Set([...this.s.outlineOff, key])];
+      this.save();
+      this.hooks.apply(this.s, 'outlineOff');
+      return;
+    }
     const k = t.name as keyof GfxSettings;
     if (!k || !(k in this.s)) return;
     const v = t.type === 'checkbox' ? t.checked : Number(t.value);
     (this.s as unknown as Record<string, unknown>)[k] = v;
     this.save();
     this.hooks.apply(this.s, k);
+    if (k === 'outline') this.el.querySelectorAll<HTMLInputElement>('.ocats input').forEach((x) => { x.disabled = !v; });
     const out = this.el.querySelector(`output[for="gfx-${k}"]`);
     if (out) out.textContent = fmt(k, v);
   }
@@ -96,6 +108,13 @@ export class GfxPanel {
       </div>
       ${range('px', 'Pixel size', 1, 6, 1, '1 = full resolution: no pixelation')}
       ${check('outline', 'Outlines', 'Dark edges drawn from depth')}
+      <details class="ocats" ${s.outlineOff.length ? 'open' : ''}><summary>Outlines on…</summary>
+        ${OUTLINE_CATS.map((c) => `<label><span>${esc(c.label)}</span><input name="oc-${c.key}" type="checkbox" ${s.outlineOff.includes(c.key) ? '' : 'checked'} ${s.outline ? '' : 'disabled'}></label>`).join('')}
+        <div class="row presets">
+          <button type="button" data-preset="lines-built" title="Lines on built things, the old world and people; none on plants, ground or glass">Built only</button>
+          <button type="button" data-preset="lines-all" title="Lines on everything">All</button>
+        </div>
+      </details>
       ${range('steps', 'Colour steps', 0, 32, 1, '0 = smooth colour; fewer steps = more posterised')}
       ${range('surface', 'Surface patterns', 0, 1, 0.05, 'Planks, brick, loam, leaves at pixel scale')}
       ${range('bloom', 'Glow (bloom)', 0, 2, 0.05)}
@@ -111,6 +130,8 @@ const fmt = (k: keyof GfxSettings, v: unknown) =>
   typeof v === 'boolean' ? '' : k === 'px' ? (Number(v) === 1 ? 'off' : `${v}×`) : k === 'steps' ? (Number(v) === 0 ? 'off' : String(v)) : Number(v).toFixed(2);
 
 const PRESETS: Record<string, Partial<GfxSettings>> = {
+  'lines-built': { outline: true, outlineOff: ['ground', 'plants', 'glass'] },
+  'lines-all': { outline: true, outlineOff: [] },
   pixel: { px: 3, outline: true, steps: 20, surface: 1 },
   crisp: { px: 1, outline: false, steps: 0, surface: 1 },
   clean: { px: 1, outline: false, steps: 0, surface: 0 },

@@ -53,6 +53,9 @@ const DEPAVE: [number, number, number] = [210, 120, 60];
 
 export class ZoneTexture {
   texture: THREE.DataTexture;
+  /** Show the Home zone? Only the autopilot plans by it now (DESIGN §39); otherwise it is hidden. */
+  showHome = false;
+  private shownHome = false;
   private data: Uint8Array;
   private version = -1;
   constructor(private world: World) {
@@ -64,13 +67,15 @@ export class ZoneTexture {
   }
   sync() {
     const w = this.world;
-    if (this.version === w.zoneVersion) return;
+    if (this.version === w.zoneVersion && this.shownHome === this.showHome) return;
     this.version = w.zoneVersion;
+    this.shownHome = this.showHome;
     const d = this.data;
     for (let i = 0; i < w.zone.length; i++) {
       // Fields are drawn by their own outline and fence, not the tile grid.
       // Haunted ground shows its edge, so it's clear where nothing can be zoned.
-      const c = w.depave?.[i] ? DEPAVE : w.zone[i] === Zone.Field ? undefined : ZONE_COLORS[w.zone[i]] ?? (w.haunted?.[i] ? HAUNTED : undefined);
+      const z = w.zone[i] === Zone.Home && !this.showHome ? Zone.None : w.zone[i];
+      const c = w.depave?.[i] ? DEPAVE : z === Zone.Field ? undefined : ZONE_COLORS[z] ?? (w.haunted?.[i] ? HAUNTED : undefined);
       if (c) { d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255; }
       else d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = d[i * 4 + 3] = 0;
     }
