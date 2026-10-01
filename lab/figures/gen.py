@@ -2,10 +2,13 @@
 Figure studio, step 1: image(s) → untextured mesh.
 
     python gen.py --front front.png [--back back.png] --out mesh.glb --cut <dir>
-                  [--backend local|space] [--model mini|mv] [--preset turbo|full]
+                  [--backend triposr|import|local|space] [--mesh source.glb]
+                  [--model mini|mv] [--preset turbo|full] [--chunk-size 4096]
                   [--octree 192] [--seed 1234] [--device auto|cuda|cpu] [--offload auto|on|off]
 
 Backends:
+  triposr  Local TripoSR (MIT code/weights), single front view; TRIPOSR_REPO.
+  import   Existing self-contained GLB, plus reference images for recolouring.
   local  Hunyuan3D-2mini (one image) or Hunyuan3D-2mv (front + back), shape
          only, from a clone of Tencent-Hunyuan/Hunyuan3D-2 (HY3D_REPO). Runs on
          CUDA when present (fp16; whole-model CPU offload below 7 GB of VRAM),
@@ -14,8 +17,8 @@ Backends:
   space  A hosted Hugging Face Space (default tencent/Hunyuan3D-2.1) through
          gradio_client; HF_TOKEN raises the free GPU quota.
 
-Either way the cut-out images (background removed, RGBA) are saved to --cut
-for the colour step (rig.py). Licence: Hunyuan3D outputs may not be used or
+The cut-out images (background removed, RGBA) are saved to --cut
+for the colour step (rig.py). Hunyuan only: outputs may not be used or
 shown in the EU, UK or South Korea (see README.md): prototypes only.
 """
 import argparse, json, os, shutil, sys, time
@@ -25,7 +28,9 @@ ap.add_argument('--front', required=True)
 ap.add_argument('--back')
 ap.add_argument('--out', required=True)
 ap.add_argument('--cut', required=True)
-ap.add_argument('--backend', default='local', choices=['local', 'space'])
+ap.add_argument('--backend', default='triposr', choices=['triposr', 'import', 'local', 'space'])
+ap.add_argument('--mesh', help='Self-contained GLB for the import backend')
+ap.add_argument('--chunk-size', type=int, default=4096)
 ap.add_argument('--model', default='auto', choices=['auto', 'mini', 'mv'])
 ap.add_argument('--preset', default='turbo', choices=['turbo', 'full'])
 ap.add_argument('--octree', type=int, default=192)
@@ -41,19 +46,21 @@ def log(*m):
 
 sys.path.insert(0, os.environ.get('HY3D_REPO', os.path.join(os.path.dirname(__file__), '.hy3d')))
 from PIL import Image
-from hy3dgen.rembg import BackgroundRemover
 
 # ---------------------------------------------------------------- cut-outs
-rembg = None
+rembg_session = None
 def cutout(path, name):
-    global rembg
+    global rembg_session
     im = Image.open(path)
     im = im.convert('RGBA')
     if im.getextrema()[3][0] > 250:  # fully opaque: remove the background
-        rembg = rembg or BackgroundRemover()
-        im = rembg(im.convert('RGB'))
+        import rembg
+        rembg_session = rembg_session or rembg.new_session()
+        im = rembg.remove(im.convert('RGB'), session=rembg_session).convert('RGBA')
     # Crop to the figure with a margin and centre it on a square, as the model expects.
-    box = im.getbbox()
+    box = im.getchannel('A').getbbox()
+    if not box:
+        raise ValueError('The reference image has no visible foreground')
     im = im.crop(box)
     s = int(max(im.size) * 1.15)
     sq = Image.new('RGBA', (s, s), (255, 255, 255, 0))
@@ -65,6 +72,24 @@ def cutout(path, name):
 front_path, front = cutout(a.front, 'front.png')
 back_path, back = cutout(a.back, 'back.png') if a.back else (None, None)
 log('cut-outs saved')
+
+if a.backend == 'import':
+    from sources import validate_glb
+    if not a.mesh:
+        raise ValueError('Choose a GLB to import')
+    with open(a.mesh, 'rb') as f:
+        validate_glb(f.read())
+    shutil.copyfile(a.mesh, a.out)
+    log('imported', a.out)
+    sys.exit(0)
+
+if a.backend == 'triposr':
+    from triposr_backend import generate
+    if back:
+        log('TripoSR uses the front view for shape; the back view is used for colouring only')
+    generate(front, a.out, a.octree, a.chunk_size, a.device)
+    log('wrote', a.out)
+    sys.exit(0)
 
 # ---------------------------------------------------------------- space
 if a.backend == 'space':
