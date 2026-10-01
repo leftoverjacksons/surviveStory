@@ -15,7 +15,8 @@ or, on request, into the game's figures (src/assets/people/).
 Paths to the environments come from lab/figures/config.json (written by
 setup.py); see README.md.
 """
-import base64, json, os, queue, re, shutil, subprocess, sys, threading, time, traceback
+import base64, json, os, queue, re, shutil, subprocess, sys, threading, time, traceback, uuid
+from sources import decode_upload, validate_glb, provenance, fingerprint
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, unquote
 
@@ -40,6 +41,9 @@ def load_config():
         with open(p) as f: c = json.load(f)
     c.setdefault('gen_python', venv_python(os.path.join(HERE, '.venv-gen')) or sys.executable)
     c.setdefault('hy3d_repo', os.path.join(HERE, '.hy3d'))
+    c.setdefault('triposr_repo', os.path.join(HERE, '.triposr'))
+    c.setdefault('triposr_python', venv_python(os.path.join(HERE, '.venv-triposr')))
+    c.setdefault('import_python', venv_python(os.path.join(HERE, '.venv-import')))
     c.setdefault('bpy_python', venv_python(os.path.join(HERE, '.venv-bpy')))
     c.setdefault('blender', None)  # a Blender executable, used if bpy_python is unset
     c.setdefault('node', 'node')
@@ -94,11 +98,17 @@ def run(fid, step, cmd, env=None):
 
 def step_generate(fid, m):
     d, prm = fdir(fid), m['params']
-    cmd = [CFG['gen_python'], os.path.join(HERE, 'gen.py'), '--front', os.path.join(d, m['front']),
-           '--out', os.path.join(d, 'mesh.glb'), '--cut', d, '--backend', prm.get('backend', 'local'),
+    backend = prm.get('backend', 'local')
+    python = CFG.get(backend + '_python') if backend in ('triposr', 'import') else CFG['gen_python']
+    if not python:
+        raise RuntimeError(f'Run python lab/figures/setup.py --backend {backend} first')
+    cmd = [python, os.path.join(HERE, 'gen.py'), '--front', os.path.join(d, m['front']),
+           '--out', os.path.join(d, 'mesh.glb'), '--cut', d, '--backend', backend,
            '--preset', prm.get('preset', 'turbo'), '--octree', str(prm.get('octree', 192)), '--seed', str(prm.get('seed', 1234))]
+    if backend == 'import': cmd += ['--mesh', os.path.join(d, 'source.glb')]
+    if backend == 'triposr': cmd += ['--chunk-size', str(prm.get('chunk_size', 4096))]
     if m.get('back'): cmd += ['--back', os.path.join(d, m['back'])]
-    run(fid, 'generate', cmd, {'HY3D_REPO': CFG['hy3d_repo']})
+    run(fid, 'generate', cmd, {'HY3D_REPO': CFG['hy3d_repo'], 'TRIPOSR_REPO': CFG['triposr_repo']})
 
 def step_rig(fid, m):
     d, prm = fdir(fid), m['params']
@@ -130,10 +140,21 @@ def worker():
         except Exception as e:
             traceback.print_exc()
             write_meta(fid, status='error', error=str(e))
-threading.Thread(target=worker, daemon=True).start()
 
 def enqueue(fid, steps):
-    write_meta(fid, status='queued')
+    m = read_meta(fid)
+    if m.get('status', '').startswith(('running', 'queued')):
+        raise ValueError('This figure already has a queued or running job')
+    # A failed rerun must not expose a previous packed mesh as the new result.
+    order = ['generate', 'rig', 'pack']
+    if not steps:
+        raise ValueError('Choose at least one pipeline step')
+    first = min(order.index(s) for s in steps)
+    steps = order[first:]
+    for file in ['mesh.glb', 'rigged.glb', 'packed.glb'][first:]:
+        path = os.path.join(fdir(fid), file)
+        if os.path.exists(path): os.remove(path)
+    write_meta(fid, status='queued', error=None, done=[s for s in m.get('done', []) if s in order[:first]])
     jobs.put((fid, steps))
 
 # ---------------------------------------------------------------- environment probe
@@ -144,14 +165,15 @@ def probe():
             '"gpu":torch.cuda.get_device_name(0) if c else None,'
             '"vram":round(torch.cuda.get_device_properties(0).total_memory/2**30,1) if c else 0}))')
     try:
-        out = subprocess.run([CFG['gen_python'], '-c', code], capture_output=True, text=True, timeout=120)
+        out = subprocess.run([CFG.get('triposr_python') or CFG['gen_python'], '-c', code], capture_output=True, text=True, timeout=120)
         ENV.update(json.loads(out.stdout.strip().splitlines()[-1]))
     except Exception as e:
         ENV.update(error=f'generation environment not usable: {e}')
     ENV['hy3d_repo'] = os.path.isdir(os.path.join(CFG['hy3d_repo'], 'hy3dgen'))
+    ENV['triposr'] = bool(CFG.get('triposr_python') and os.path.isdir(os.path.join(CFG['triposr_repo'], 'tsr')))
+    ENV['import'] = bool(CFG.get('import_python'))
     ENV['blender'] = bool(CFG.get('bpy_python') or CFG.get('blender'))
     ENV['hf_token'] = bool(os.environ.get('HF_TOKEN'))
-threading.Thread(target=probe, daemon=True).start()
 
 # ---------------------------------------------------------------- HTTP
 def save_data_url(url, path):
@@ -194,10 +216,21 @@ class H(BaseHTTPRequestHandler):
         try:
             b = self.body()
             if u == ['api', 'figures']:
-                fid = time.strftime('%Y%m%d-%H%M%S') + '-' + slug(b.get('name', 'figure'))[:24]
+                params = {'backend': 'triposr', **b.get('params', {})}
+                source = provenance(params, b.get('source'))
+                if b.get('body', 'man') not in ('man', 'woman', 'child'):
+                    raise ValueError('Unknown body pool')
+                mesh = None
+                if params['backend'] == 'import':
+                    mesh = decode_upload(b.get('mesh'))
+                    validate_glb(mesh)
+                    source['mesh_sha256'] = fingerprint(mesh)
+                fid = time.strftime('%Y%m%d-%H%M%S') + '-' + slug(b.get('name', 'figure'))[:24] + '-' + uuid.uuid4().hex[:8]
                 os.makedirs(fdir(fid))
                 m = {'id': fid, 'name': b.get('name') or 'figure', 'body': b.get('body', 'man'),
-                     'params': b.get('params', {}), 'created': time.time(), 'done': [], 'names': {}}
+                     'params': params, 'source': source, 'created': time.time(), 'done': [], 'names': {}}
+                if mesh is not None:
+                    with open(os.path.join(fdir(fid), 'source.glb'), 'wb') as f: f.write(mesh)
                 ext = lambda url: '.' + url.split(';')[0].split('/')[-1].replace('jpeg', 'jpg')
                 m['front'] = 'source_front' + ext(b['front'])
                 save_data_url(b['front'], os.path.join(fdir(fid), m['front']))
@@ -211,7 +244,11 @@ class H(BaseHTTPRequestHandler):
                 fid, act = u[2], u[3]
                 if not os.path.exists(meta_path(fid)): return self.send(404, {'error': 'no such figure'})
                 m = read_meta(fid)
+                if m.get('status', '').startswith(('running', 'queued')):
+                    raise ValueError('Wait for this figure to finish before changing it')
                 if act == 'run':  # {steps: [...], params: {...}}
+                    if b.get('params', {}).get('backend', m['params'].get('backend', 'local')) != m['params'].get('backend', 'local'):
+                        raise ValueError('Create a new figure to change its source')
                     write_meta(fid, params={**m['params'], **b.get('params', {})})
                     enqueue(fid, [s for s in b.get('steps', ['generate', 'rig', 'pack']) if s in STEPS])
                 elif act == 'names':  # {names: {index: name}} → re-colour
@@ -221,14 +258,13 @@ class H(BaseHTTPRequestHandler):
                     write_meta(fid, **{k: b[k] for k in ('name', 'body') if k in b})
                 elif act == 'library':
                     src = os.path.join(fdir(fid), 'packed.glb')
-                    if not os.path.exists(src): return self.send(400, {'error': 'not packed yet'})
+                    if m.get('status') != 'ready' or not os.path.exists(src): return self.send(400, {'error': 'not packed yet'})
                     file = f"{m['body']}_{slug(m['name'])}.glb"
                     shutil.copy(src, os.path.join(LIB, file))
                     shutil.copy(os.path.join(fdir(fid), 'front.png'), os.path.join(LIB, file.replace('.glb', '.png')))
                     lib = [e for e in library() if e['file'] != file]
                     lib.append({'file': file, 'name': m['name'], 'body': m['body'], 'from': fid,
-                                'generator': 'hunyuan3d-2 (' + m['params'].get('backend', 'local') + ')',
-                                'licence': 'Tencent Hunyuan 3D community licence: not for the EU, UK or South Korea; prototype only',
+                                **m.get('source', provenance(m['params'])), 'params': m['params'],
                                 'added': time.strftime('%Y-%m-%d %H:%M')})
                     with open(os.path.join(LIB, 'library.json'), 'w') as f: json.dump(lib, f, indent=1)
                     write_meta(fid, library=file)
@@ -253,14 +289,19 @@ class H(BaseHTTPRequestHandler):
                         write_meta(m['id'], library=None, **({'game': None} if b.get('game') else {}))
                 return self.send(200, {'ok': True})
             self.send(404, {'error': 'not found'})
+        except ValueError as e:
+            self.send(400, {'error': str(e)})
         except Exception as e:
             traceback.print_exc()
             self.send(500, {'error': str(e)})
 
-# Anything left mid-run when the server stopped is queued again.
-for m in figures():
-    if m.get('status', '').startswith(('running', 'queued')):
-        enqueue(m['id'], [s for s in ('generate', 'rig', 'pack') if s not in m.get('done', [])] or ['pack'])
-
-print(f'figure studio backend on http://localhost:{PORT} (work: {WORK})', flush=True)
-ThreadingHTTPServer(('127.0.0.1', PORT), H).serve_forever()
+if __name__ == '__main__':
+    threading.Thread(target=worker, daemon=True).start()
+    threading.Thread(target=probe, daemon=True).start()
+    # Anything left mid-run when the server stopped is queued again.
+    for m in figures():
+        if m.get('status', '').startswith(('running', 'queued')):
+            write_meta(m['id'], status='interrupted')
+            enqueue(m['id'], [s for s in ('generate', 'rig', 'pack') if s not in m.get('done', [])] or ['pack'])
+    print(f'figure studio backend on http://localhost:{PORT} (work: {WORK})', flush=True)
+    ThreadingHTTPServer(('127.0.0.1', PORT), H).serve_forever()
