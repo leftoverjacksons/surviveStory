@@ -10,6 +10,7 @@
     --accent: #c9a45c; --ok: #7fae6a; --bad: #d0735b; --field: #2a2f28;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 13px/1.45 system-ui, sans-serif; }
   #app { display: grid; grid-template-columns: 290px 1fr 330px; height: 100vh; }
   aside, section { overflow-y: auto; }
@@ -78,14 +79,22 @@
     <label>Body</label>
     <select id="body"><option value="man">Man</option><option value="woman">Woman</option><option value="child">Child</option></select>
     <div class="row">
-      <div><label>Generator</label><select id="backend"><option value="local">This machine</option><option value="space">Hugging Face Space</option></select></div>
-      <div><label>Quality</label><select id="preset"><option value="turbo">Turbo (5 steps)</option><option value="full">Full (30 steps)</option></select></div>
+      <div><label>Source</label><select id="backend"><option value="triposr">TripoSR (local)</option><option value="import">Import GLB</option><option value="local">Hunyuan (local prototype)</option><option value="space">Hunyuan (Space prototype)</option></select></div>
+      <div id="qualityField"><label>Quality</label><select id="preset"><option value="turbo">Turbo (5 steps)</option><option value="full">Full (30 steps)</option></select></div>
+    </div>
+    <div id="sourceHint" class="sub" style="margin-top:6px"></div>
+    <div id="importFields" hidden>
+      <label>Character GLB</label><input id="mesh" type="file" accept=".glb" />
+      <label>Made with</label><input id="sourceGenerator" type="text" placeholder="e.g. TRELLIS.2" />
+      <label>Source or job URL</label><input id="sourceUrl" type="text" />
+      <label>Licence / provenance notes</label><input id="sourceLicence" type="text" placeholder="Record the model and source image terms" />
     </div>
     <details><summary>More settings</summary>
       <div class="row">
-        <div><label>Detail (octree)</label><input id="octree" type="number" value="192" min="96" max="384" step="32" /></div>
-        <div><label>Seed</label><input id="seed" type="number" value="1234" /></div>
+        <div id="detailField"><label>Mesh resolution</label><input id="octree" type="number" value="192" min="96" max="384" step="32" /></div>
+        <div id="seedField"><label>Seed</label><input id="seed" type="number" value="1234" /></div>
       </div>
+      <div id="chunkField"><label>Memory chunk size</label><input id="chunk" type="number" value="4096" min="512" max="8192" step="512" /></div>
       <div class="row">
         <div><label>Triangles</label><input id="tris" type="number" value="3000" min="800" max="10000" step="200" /></div>
         <div><label>Colour slots</label><input id="k" type="number" value="5" min="3" max="8" /></div>
