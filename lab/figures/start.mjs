@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // The backend needs only the standard library; prefer the studio's own environment.
-const venv = ['.venv-gen/Scripts/python.exe', '.venv-gen/bin/python'].map((p) => path.join(here, p)).find((p) => fs.existsSync(p));
+const venv = ['.venv-import', '.venv-triposr', '.venv-gen'].flatMap((p) => [`${p}/Scripts/python.exe`, `${p}/bin/python`]).map((p) => path.join(here, p)).find((p) => fs.existsSync(p));
 const python = process.env.PYTHON ?? venv ?? (process.platform === 'win32' ? 'python' : 'python3');
 const kids = [
   spawn(python, [path.join(here, 'server.py')], { stdio: 'inherit' }),
