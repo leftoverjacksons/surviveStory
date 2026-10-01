@@ -826,7 +826,8 @@ export class Hud {
       <div class="facts">${facts.map(([k, v]) => `<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}</div>
       <div class="vneeds" title="Rest, dance and light must all be met before the hill can grow again. Room and gifts make it grow faster."><div class="nt"><span>Their needs</span></div><div class="nl">${fneeds}</div></div>
       ${this.underHill()}
-      <div class="row"><button type="button" id="folk-ask" ${f.met ? '' : 'disabled title="Meet them first"'}>Ask them to build… (by night)</button></div>
+      <div class="row"><button type="button" id="folk-ask" ${f.met ? '' : 'disabled'}>Ask them to build… (by night)</button></div>
+      ${f.met ? '' : '<div class="what" style="font-size:12px">Nobody has met them yet. Someone will take bread to the hill at dusk (usually in the first day or two); once the door opens to them, you can ask the Folk to build.</div>'}
       <div class="h" style="margin-top:8px">What they give their nights to</div>
       <div class="row">${focus}</div>
       ${news ? `<div class="folk-news">${news}</div>` : ''}`;

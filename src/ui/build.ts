@@ -89,7 +89,7 @@ export class BuildPanel {
     }).join('');
     const f = this.col.folk;
     // The Folk's works: only once someone has met them.
-    const folk = !f.met ? '' : `<h3 class="folk">Ask the Folk <small>built at night, in the Wild, from their dew and song (${Math.floor(f.dew)} · ${Math.floor(f.song)})</small></h3>
+    const folk = !f.met ? '<h3 class="folk">Ask the Folk</h3><button type="button" class="folk glimpsed" disabled><b>Not yet</b><span>Nobody has met them. Someone will take bread to the hill at dusk; once the door opens, the Folk will build for you by night.</span></button>' : `<h3 class="folk">Ask the Folk <small>built at night, in the Wild, from their dew and song (${Math.floor(f.dew)} · ${Math.floor(f.song)})</small></h3>
       ${(Object.keys(FOLK_WORKS) as FolkWorkKind[]).map((k) => {
         const d = FOLK_WORKS[k];
         const short = d.dew > f.dew || d.song > f.song;
