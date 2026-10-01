@@ -20,6 +20,8 @@ export interface GfxSettings {
   outline: boolean;
   /** Kinds of thing drawn without outlines (render/outlinecats.ts keys). */
   outlineOff: string[];
+  /** Size of an outline pixel on screen (0: the same as the scene's pixel size). */
+  outlinePx: number;
   steps: number;
   surface: number;
   bloom: number;
@@ -108,6 +110,7 @@ export class GfxPanel {
       </div>
       ${range('px', 'Pixel size', 1, 6, 1, '1 = full resolution: no pixelation')}
       ${check('outline', 'Outlines', 'Dark edges drawn from depth')}
+      ${range('outlinePx', 'Outline pixel', 0, 8, 1, 'How big the outlines\' pixels are on screen, separately from the scene\'s. 0 = the same as Pixel size. With Pixel size 1 (no pixelation), 2–4 gives chunky pixel lines over a smooth picture.')}
       <details class="ocats" ${s.outlineOff.length ? 'open' : ''}><summary>Outlines on…</summary>
         ${OUTLINE_CATS.map((c) => `<label><span>${esc(c.label)}</span><input name="oc-${c.key}" type="checkbox" ${s.outlineOff.includes(c.key) ? '' : 'checked'} ${s.outline ? '' : 'disabled'}></label>`).join('')}
         <div class="row presets">
@@ -127,7 +130,7 @@ export class GfxPanel {
 }
 
 const fmt = (k: keyof GfxSettings, v: unknown) =>
-  typeof v === 'boolean' ? '' : k === 'px' ? (Number(v) === 1 ? 'off' : `${v}×`) : k === 'steps' ? (Number(v) === 0 ? 'off' : String(v)) : Number(v).toFixed(2);
+  typeof v === 'boolean' ? '' : k === 'px' ? (Number(v) === 1 ? 'off' : `${v}×`) : k === 'outlinePx' ? (Number(v) === 0 ? 'same' : `${v}px`) : k === 'steps' ? (Number(v) === 0 ? 'off' : String(v)) : Number(v).toFixed(2);
 
 const PRESETS: Record<string, Partial<GfxSettings>> = {
   'lines-built': { outline: true, outlineOff: ['ground', 'plants', 'glass'] },

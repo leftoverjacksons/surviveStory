@@ -5020,3 +5020,21 @@ its own house.
 - a debrief;
 - map layouts per district kind;
 - the remaining kinds of light.
+
+### 39.3 Outline pixel size, apart from the scene's (the user's question)
+
+The outlines are found one pixel wide in the buffer the scene is drawn into,
+so they followed the Pixel size slider: 3-pixel lines at pixel size 3, and
+1-pixel lines (hardly visible) at pixel size 1.
+
+**Outline pixel** (graphics panel, 0–8; 0 = the same as Pixel size) sets how
+big an outline pixel is on screen. The outline pass then works in blocks of
+that many scene pixels (`OutlinePass.block`, uniform `uBlock`): an edge is
+found once per block, from the block's centre and its neighbouring blocks'
+centres, and the whole block is inked.
+
+So pixel size 1 with outline pixel 3 gives chunky pixel lines over a
+full-resolution picture.
+
+**Caveat:** at pixel size 1 the camera isn't snapped to whole pixels, so the
+blocks can shimmer slightly while panning.

@@ -145,7 +145,7 @@ function sizeComposer() {
 let pixelScale = PIXEL || 1;
 const gfx = new GfxPanel({
   pixel: !!PIXEL,
-  defaults: { px: PIXEL || 1, outline: true, outlineOff: [], steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
+  defaults: { px: PIXEL || 1, outline: true, outlineOff: [], outlinePx: 0, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
   apply(s, changed) {
     if (PIXEL && (changed === null || changed === 'px')) {
       pixelScale = s.px;
@@ -158,6 +158,8 @@ const gfx = new GfxPanel({
       outline.enabled = s.outline;
       // Lines only on the kinds of thing still ticked (render/outlinecats.ts).
       outline.mask.on = OUTLINE_CATS.map((c) => !(s.outlineOff ?? []).includes(c.key));
+      // Outline pixels in the scene's own pixels: the scene is drawn at 1/px of the screen.
+      outline.block = s.outlinePx ? Math.max(1, Math.round(s.outlinePx / (PIXEL ? s.px : 1))) : 1;
     }
     if (PIXEL) grade.uniforms.uSteps.value = s.steps;
     worldUniforms.uSurface.value = s.surface;

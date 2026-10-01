@@ -56,6 +56,8 @@ const GradeShader = {
 class OutlinePass extends Pass {
   /** Which kinds of thing get lines (DESIGN §39). */
   mask = new OutlineMask();
+  /** How many of the scene's pixels make one outline pixel (1: the same). */
+  set block(b: number) { this.mat.uniforms.uBlock.value = Math.max(1, b); }
   private quad: FullScreenQuad;
   private mat: THREE.ShaderMaterial;
   constructor(private camera: THREE.OrthographicCamera, private scene?: THREE.Scene) {
@@ -66,13 +68,13 @@ class OutlinePass extends Pass {
         uNear: { value: 0.1 }, uFar: { value: 400 }, uView: { value: new THREE.Vector2(1, 1) }, uDebug: { value: typeof location !== 'undefined' && location.search.includes('pixeldebug') ? 1 : 0 },
         uCam: { value: new THREE.Matrix4() }, uFogTex: worldUniforms.uFogTex, uFogSize: worldUniforms.uFogSize, uVeilDark: worldUniforms.uVeilDark,
         uFogNear: { value: 115 }, uFogFar: { value: 230 },
-        tMask: { value: null }, uUseMask: { value: 0 },
+        tMask: { value: null }, uUseMask: { value: 0 }, uBlock: { value: 1 },
       },
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
         uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform vec2 uView; uniform float uDebug;
         uniform mat4 uCam; uniform sampler2D uFogTex; uniform float uFogSize; uniform float uFogNear; uniform float uFogFar; uniform float uVeilDark;
-        uniform sampler2D tMask; uniform float uUseMask;
+        uniform sampler2D tMask; uniform float uUseMask; uniform float uBlock;
         varying vec2 vUv;
         float lin(vec2 uv) { return uNear + texture2D(tDepth, uv).x * (uFar - uNear); }
         vec3 P(vec2 uv) { return vec3((uv - 0.5) * uView, -lin(uv)); }
@@ -81,30 +83,36 @@ class OutlinePass extends Pass {
           return normalize(cross(P(uv + vec2(px.x, 0.0)) - p, P(uv + vec2(0.0, px.y)) - p));
         }
         void main() {
-          vec2 px = 1.0 / uRes;
           vec4 src = texture2D(tDiffuse, vUv);
-          float d = lin(vUv);
+          if (lin(vUv) > uFar - 1.0) { gl_FragColor = src; return; }   // sky
+          // Outline pixels can be bigger than the scene's (the graphics panel's "Outline pixel"): the
+          // edge is found once per block of uBlock x uBlock pixels, from the block's centre, so lines
+          // come out as blocks even over a full-resolution image.
+          float B = max(1.0, uBlock);
+          vec2 px = B / uRes;
+          vec2 q = B > 1.0 ? (floor(vUv * uRes / B) + 0.5) * B / uRes : vUv;
+          float d = lin(q);
           vec2 o[4]; o[0] = vec2(px.x, 0.0); o[1] = vec2(-px.x, 0.0); o[2] = vec2(0.0, px.y); o[3] = vec2(0.0, -px.y);
           // World size of one pixel: the ground's own slope shouldn't count as an edge.
-          float wpp = uView.y / uRes.y;
+          float wpp = uView.y / uRes.y * B;
           float thresh = 0.35 + wpp * 3.0;
           float edge = 0.0, crease = 0.0, behind = 0.0;
-          vec3 n = N(vUv, px);
+          vec3 n = N(q, px);
           for (int i = 0; i < 4; i++) {
-            float dn = lin(vUv + o[i]);
-            if (dn - d > thresh) { edge = 1.0; if (uUseMask > 0.5) behind = max(behind, texture2D(tMask, vUv + o[i]).r); }
+            float dn = lin(q + o[i]);
+            if (dn - d > thresh) { edge = 1.0; if (uUseMask > 0.5) behind = max(behind, texture2D(tMask, q + o[i]).r); }
             else if (abs(dn - d) < thresh) {
-              vec3 nn = N(vUv + o[i], px);
+              vec3 nn = N(q + o[i], px);
               // Convex crease on one side only (keeps the line one pixel wide).
               float turn = 1.0 - dot(n, nn);
-              vec3 dp = P(vUv + o[i]) - P(vUv);
+              vec3 dp = P(q + o[i]) - P(q);
               if (turn > 0.35 && dot(dp, n) < 0.0 && dot(nn - n, vec3(1.0, 1.0, 0.0)) > 0.0) crease = max(crease, turn);
             }
           }
           vec3 c = src.rgb;
-          if (d > uFar - 1.0) { gl_FragColor = src; return; }   // sky
+          if (d > uFar - 1.0) { gl_FragColor = src; return; }   // a block whose centre is sky
           // No lines where the land is unexplored or lost in fog: they would give it away.
-          vec3 wp = (uCam * vec4(P(vUv), 1.0)).xyz;
+          vec3 wp = (uCam * vec4(P(q), 1.0)).xyz;
           vec4 fogs = texture2D(uFogTex, (wp.xz + uFogSize * 0.5) / uFogSize);
           float seen = smoothstep(0.3, 0.8, min(fogs.r, mix(1.0, fogs.g, uVeilDark)));
           float clearAir = 1.0 - smoothstep(uFogNear, uFogFar, d);
@@ -113,7 +121,7 @@ class OutlinePass extends Pass {
           // Only on the kinds of thing that get lines (outlinecats.ts).
           // The ground gives its line at an object's foot to the object (if that kind gets lines).
           if (uUseMask > 0.5) {
-            vec2 m = texture2D(tMask, vUv).rg;
+            vec2 m = texture2D(tMask, q).rg;
             float own = step(0.5, m.r);
             edge *= max(own, step(0.5, m.g) * step(0.5, behind));
             crease *= own;

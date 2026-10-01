@@ -283,6 +283,7 @@ reference: Tiny Glade.
     = cells within 12 of fires and homes). OUTLINES BY KIND (`render/outlinecats.ts`: stencil category per draw via
     Object3D.onBeforeRender, mask pass in OutlinePass; `tagOutline(mat, 'glass'|'plants')`; ground yields foot lines to
     objects; graphics panel "Outlines on…" + Built only / All presets; `GfxSettings.outlineOff`; `__game.outlineShares()`).
+    §39.3 OUTLINE PIXEL slider (`GfxSettings.outlinePx`, 0 = same as Pixel size): outline pass works in blocks (`uBlock`).
     §40 MISSION STEPS 2–5 BUILT (not published; `sim/veilkit.ts`): kit (tin lantern/torch with fuel, 2 slots from
     the stores, hearthstone), the dark (seen = lit now + last turn's `dusk`; unseen goes violet-dark via fog tex G +
     `uVeilDark`; senseRange 3+Sight/25), lanterns (raise/shutter/set down=pool/relight/refuel/aim; Hollow drinks; dark
