@@ -1,10 +1,14 @@
 """
 Set up the figure studio on this machine (Windows, Linux or macOS).
 
-    python lab/figures/setup.py            (Python 3.10–3.12; 3.11 also installs Blender's module)
-    python lab/figures/setup.py --cpu      (no CUDA, even with an NVIDIA GPU)
+    python lab/figures/setup.py --backend triposr   (default; local image-to-3D)
+    python lab/figures/setup.py --backend import    (GLBs from another machine)
+    python lab/figures/setup.py --backend hunyuan   (legacy prototype backend)
+    Add --cpu to avoid CUDA. Python 3.10–3.12; 3.11 also installs Blender's module.
 
 Creates, inside lab/figures/ (all git-ignored):
+  .venv-triposr, .triposr   TripoSR environment and upstream checkout
+  .venv-import             Pillow and background removal only
   .venv-gen   PyTorch (CUDA 12.4 build when an NVIDIA GPU is found, else CPU)
               plus the Hunyuan3D shape-generation dependencies and gradio_client
   .hy3d       a clone of Tencent-Hunyuan/Hunyuan3D-2 (the shape pipeline's code)
@@ -15,11 +19,17 @@ Creates, inside lab/figures/ (all git-ignored):
 Model weights (about 2–7 GB) download on the first figure, into the
 Hugging Face cache. Then: npm run figures, and open http://localhost:5181/.
 """
-import json, os, platform, shutil, subprocess, sys, glob
+import argparse, json, os, platform, shutil, subprocess, sys, glob
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WIN = platform.system() == 'Windows'
 CPU = '--cpu' in sys.argv
+parser = argparse.ArgumentParser(description='Install one Figure Studio backend in its own environment')
+parser.add_argument('--backend', choices=['triposr', 'import', 'hunyuan'], default='triposr')
+parser.add_argument('--cpu', action='store_true')
+options = parser.parse_args()
+config_path = os.path.join(HERE, 'config.json')
+cfg = json.load(open(config_path)) if os.path.exists(config_path) else {'node': 'node'}
 
 def sh(*cmd, **kw):
     print('>', ' '.join(cmd), flush=True)
@@ -46,22 +56,35 @@ if not CPU and shutil.which('nvidia-smi'):
         gpu = bool(out)
     except Exception:
         pass
-gen = venv('.venv-gen')
+gen = venv({'triposr': '.venv-triposr', 'import': '.venv-import', 'hunyuan': '.venv-gen'}[options.backend])
 index = 'https://download.pytorch.org/whl/cu124' if gpu else 'https://download.pytorch.org/whl/cpu'
-sh(gen, '-m', 'pip', 'install', '-q', 'torch', 'torchvision', '--index-url', index)
-sh(gen, '-m', 'pip', 'install', '-q', 'diffusers', 'transformers', 'accelerate', 'einops', 'omegaconf', 'tqdm',
-   'trimesh', 'pymeshlab', 'opencv-python-headless', 'scikit-image', 'pillow', 'rembg', 'onnxruntime',
-   'huggingface_hub', 'gradio_client')
-
-repo = os.path.join(HERE, '.hy3d')
-if not os.path.exists(os.path.join(repo, 'hy3dgen')):
-    if not shutil.which('git'):
-        sys.exit('git is needed to fetch the Hunyuan3D-2 code (https://git-scm.com).')
-    sh('git', 'clone', '--depth', '1', 'https://github.com/Tencent-Hunyuan/Hunyuan3D-2', repo)
+if options.backend == 'import':
+    sh(gen, '-m', 'pip', 'install', '-q', 'pillow', 'rembg', 'onnxruntime')
+    cfg['import_python'] = gen
+else:
+    sh(gen, '-m', 'pip', 'install', '-q', 'torch==2.6.0', 'torchvision==0.21.0', '--index-url', index)
+    triposr = options.backend == 'triposr'
+    repo = os.path.join(HERE, '.triposr' if triposr else '.hy3d')
+    url = 'https://github.com/VAST-AI-Research/TripoSR' if triposr else 'https://github.com/Tencent-Hunyuan/Hunyuan3D-2'
+    if not os.path.isdir(os.path.join(repo, 'tsr' if triposr else 'hy3dgen')):
+        sh('git', 'clone', '--depth', '1', url, repo)
+    if triposr:
+        sh(gen, '-m', 'pip', 'install', '-q', 'setuptools', 'wheel')
+        sh(gen, '-m', 'pip', 'install', '-r', os.path.join(repo, 'requirements.txt'))
+        sh(gen, '-m', 'pip', 'install', '-q', 'onnxruntime')
+        cfg.update(triposr_python=gen, triposr_repo=repo)
+    else:
+        sh(gen, '-m', 'pip', 'install', '-q', 'diffusers', 'transformers', 'accelerate', 'einops', 'omegaconf', 'tqdm',
+           'trimesh', 'pymeshlab', 'opencv-python-headless', 'scikit-image', 'pillow', 'rembg', 'onnxruntime',
+           'huggingface_hub', 'gradio_client')
+        cfg.update(gen_python=gen, hy3d_repo=repo)
+    # Image preparation for imported GLBs can reuse either generation environment.
+    cfg.setdefault('import_python', gen)
 
 # ---------------------------------------------------------------- Blender (rigging)
-cfg = {'gen_python': gen, 'hy3d_repo': repo, 'bpy_python': None, 'blender': None, 'node': 'node'}
-if (v.major, v.minor) == (3, 11):
+if cfg.get('bpy_python') or cfg.get('blender'):
+    print('Keeping configured Blender:', cfg.get('bpy_python') or cfg.get('blender'))
+elif (v.major, v.minor) == (3, 11):
     bpy = venv('.venv-bpy')
     sh(bpy, '-m', 'pip', 'install', '-q', 'bpy')
     cfg['bpy_python'] = bpy
@@ -79,7 +102,7 @@ with open(os.path.join(HERE, 'config.json'), 'w') as f:
     json.dump(cfg, f, indent=1)
 
 # ---------------------------------------------------------------- check
-code = 'import torch;print("torch", torch.__version__, "cuda", torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else "")'
+code = 'from PIL import Image; print("GLB import image preparation ready")' if options.backend == 'import' else 'import torch;print("torch", torch.__version__, "cuda", torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else "")'
 sh(gen, '-c', code)
 print('\nDone. Wrote', os.path.join(HERE, 'config.json'))
 print('Next: npm install (once, in the repo), then npm run figures, and open http://localhost:5181/')
