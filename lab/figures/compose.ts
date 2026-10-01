@@ -74,7 +74,7 @@ export class Composer {
     this.crowd = Array.from({ length: n }, (_, i) => {
       const role = roles[Math.floor(rnd() * roles.length)];
       const build = role === 'builder' || rnd() < 0.15 ? 'stout' : 'hero';
-      const parts: Record<string, string> = { body: 'body.base', head: 'head.face', hair: pick('hair'), feet: 'feet.boots', ...ROLES[role](pick, rnd) };
+      const parts: Record<string, string> = { body: 'body.base', head: pick('head'), hair: pick('hair'), feet: 'feet.boots', ...ROLES[role](pick, rnd) };
       if (rnd() < 0.5 && !parts.hands) parts.hands = 'hands.gloves_fingerless';
       return { name: `${role} ${i + 1}`, url: LIB(build), seed: Math.floor(rnd() * 1000), compose: { parts: Object.values(parts).filter(Boolean) } };
     });

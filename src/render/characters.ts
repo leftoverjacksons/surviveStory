@@ -184,6 +184,7 @@ export function composeOutfit(kit: PartsKit, build: string, parts: string[], key
 // ---------- one survivor ----------
 
 const SKIN = ['#e8c0a0', '#d0a07a', '#a8764f', '#7d5537', '#5c3b26', '#f0d0b4'];
+const BLUSH = new THREE.Color('#c85048');
 const HAIR = ['#2a1d14', '#5a3b22', '#8a8070', '#1a1a1a', '#a0522d', '#c8b080', '#d8d4cc'];
 
 /** A muted, post-collapse take on a piece of clothing: same lightness, new hue. */
@@ -218,7 +219,13 @@ export function makeCharacter(outfit: Outfit, seed: { skin: number; hair: number
   const pal = outfit.slots.map((name, i) => {
     const base = outfit.colors[i] ?? [0.5, 0.5, 0.5];
     const c = new THREE.Color();
-    if (/^skin/i.test(name)) c.set(SKIN[seed.skin % SKIN.length]);
+    if (/^skin/i.test(name)) {
+      c.set(SKIN[seed.skin % SKIN.length]);
+      // Face details from the workshop's heads (lab/workshop/faces.py), derived from the skin.
+      if (/^skin_blush/i.test(name)) c.lerp(BLUSH, 0.3);
+      else if (/^skin_lip/i.test(name)) c.lerp(BLUSH, 0.35).multiplyScalar(0.82);
+      else if (/^skin_shade/i.test(name)) c.multiplyScalar(0.72);
+    }
     else if (/hair|eyebrow|moustache|beard/i.test(name)) c.set(HAIR[seed.hair % HAIR.length]);
     else if (/^eye$/i.test(name) || /boot|strap|pack|roll|hat/i.test(name)) c.setRGB(base[0], base[1], base[2], THREE.LinearSRGBColorSpace);
     else clothing(base, seed.hue, i, c);

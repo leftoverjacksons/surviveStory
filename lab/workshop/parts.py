@@ -111,22 +111,18 @@ def body_base(k, pal):
     c.pair(thumb, 'Wrist.*')
     return c.out
 
-@part('head.face', skin='#b27a50', eye='#20140c', eye_white='#efe6d6', hair='#241a14')
-def head_face(k, pal, jaw=0.14):
-    c = Ctx(k, pal)
-    head = c.add(k.ico('head', c.HC, (c.HR[0] * 1.04, c.HR[1] * 1.04, c.HR[2] * 1.02), c.m('skin'), subdiv=3, keep=0.45), 'Head')
-    for v in head.data.vertices:  # a softer, narrower jaw
-        if v.co.z < c.HC.z:
-            f = 1 - jaw * (c.HC.z - v.co.z) / c.HR[2]
-            v.co.x *= f; v.co.y = c.HC.y + (v.co.y - c.HC.y) * f
-    c.add(k.uvs('nose', c.H(0, -0.97, -0.2), c.Hr(0.15, 0.09, 0.15), c.m('skin'), segs=6, rings=4), 'Head')
-    c.pair(lambda: k.uvs('ear', c.H(1.0, 0.08, -0.08), c.Hr(0.15, 0.22, 0.26), c.m('skin'), segs=6, rings=4), 'Head')
-    # Big eyes, set a little low (the references' youthful faces).
-    c.pair(lambda: k.uvs('eyewhite', c.H(0.4, -0.87, -0.02), c.Hr(0.25, 0.07, 0.22), c.m('eye_white'), segs=8, rings=4), 'Head')
-    c.pair(lambda: k.uvs('iris', c.H(0.41, -0.915, -0.03), c.Hr(0.19, 0.06, 0.2), c.m('eye'), segs=8, rings=4), 'Head')
-    c.pair(lambda: k.box('brow', c.H(0.42, -0.9, 0.3), c.Hr(0.4, 0.1, 0.07), c.m('hair'), rot=(0, -0.1, 0.06)), 'Head')
-    c.add(k.box('mouth', c.H(0, -0.9, -0.48), c.Hr(0.26, 0.08, 0.045), c.m('eye')), 'Head')
-    return c.out
+# Heads (faces.py): one part per face; every head has the same crown, so any hair fits.
+import faces  # noqa: E402
+
+def _head(name):
+    @part(f'head.{name}', skin='#b27a50', skin_blush='#c8705a', skin_lip='#a0584a', skin_shade='#8a5a3c',
+          eye='#20140c', eye_white='#efe6d6', hair='#241a14')
+    def head(k, pal):
+        return faces.build(Ctx(k, pal), faces.FACES[name])
+    return head
+
+for _n in faces.FACES:
+    _head(_n)
 
 # ---------------------------------------------------------------- hair
 def hair_cap(c, keep, scale=(1.12, 1.12, 1.1), lift=0.1):

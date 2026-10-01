@@ -1,35 +1,35 @@
 [
  {
-  "file": "man_builder.glb",
-  "added": "2026-09-30 20:49",
-  "name": "builder",
-  "body": "man",
-  "build": "stout",
-  "recipe": "builder",
-  "generator": "workshop (Blender, parts + recipe)",
-  "licence": "own work",
-  "triangles": 3548
- },
- {
   "file": "man_folk_scout.glb",
-  "added": "2026-09-30 20:49",
+  "added": "2026-10-01 20:37",
   "name": "folk scout",
   "body": "man",
   "build": "hero",
   "recipe": "folk_scout",
   "generator": "workshop (Blender, parts + recipe)",
   "licence": "own work",
-  "triangles": 5125
+  "triangles": 5379
  },
  {
   "file": "woman_gardener.glb",
-  "added": "2026-09-30 20:49",
+  "added": "2026-10-01 20:37",
   "name": "gardener",
   "body": "woman",
   "build": "hero",
   "recipe": "gardener",
   "generator": "workshop (Blender, parts + recipe)",
   "licence": "own work",
-  "triangles": 3017
+  "triangles": 3319
+ },
+ {
+  "file": "man_builder.glb",
+  "added": "2026-10-01 20:37",
+  "name": "builder",
+  "body": "man",
+  "build": "stout",
+  "recipe": "builder",
+  "generator": "workshop (Blender, parts + recipe)",
+  "licence": "own work",
+  "triangles": 3746
  }
 ]

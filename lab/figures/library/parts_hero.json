@@ -14,9 +14,57 @@
     "skin",
     "eye_white",
     "eye",
+    "hair",
+    "skin_blush",
+    "skin_shade"
+   ],
+   "triangles": 734
+  },
+  "head.soft": {
+   "category": "head",
+   "slots": [
+    "skin",
+    "eye_white",
+    "eye",
+    "hair",
+    "skin_lip",
+    "skin_blush",
+    "skin_shade"
+   ],
+   "triangles": 782
+  },
+  "head.broad": {
+   "category": "head",
+   "slots": [
+    "skin",
+    "eye_white",
+    "eye",
+    "hair",
+    "skin_shade"
+   ],
+   "triangles": 678
+  },
+  "head.long": {
+   "category": "head",
+   "slots": [
+    "skin",
+    "eye_white",
+    "eye",
+    "hair",
+    "skin_shade"
+   ],
+   "triangles": 668
+  },
+  "head.elder": {
+   "category": "head",
+   "slots": [
+    "skin",
+    "eye_white",
+    "eye",
+    "skin_shade",
     "hair"
    ],
-   "triangles": 480
+   "triangles": 788
   },
   "hair.curly": {
    "category": "hair",
@@ -314,6 +362,9 @@
  },
  "defaults": {
   "skin": "#b27a50",
+  "skin_blush": "#c8705a",
+  "skin_lip": "#a0584a",
+  "skin_shade": "#8a5a3c",
   "eye": "#20140c",
   "eye_white": "#efe6d6",
   "hair": "#9a958c",

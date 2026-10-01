@@ -35,7 +35,15 @@ yet.
 - `parts.py`: the catalogue, one part per slot. Every position is relative to
   the build's joints and head, so each part fits any build.
   - body: `body.base` (neck, arms, shins, mitten hands)
-  - head: `head.face`
+  - head: `head.face` (the concept's young face), `soft`, `broad`, `long`, `elder`, from
+    `faces.py`: a sculpted skull (jaw, chin, cheeks, brow ridge, flatter face) plus
+    features cast onto its surface (eyes with a glint and lid, brows, nose, mouth,
+    blush, lines, ears). A face is a few numbers in `faces.FACES`; every head keeps
+    the same crown, so any hair fits. Slots `skin_blush`/`skin_lip`/`skin_shade` are
+    derived from each survivor's skin in the game (`characters.ts`). Close-ups:
+    `node lab/workshop/heads.mjs <out> hero head.soft,hair.bun ...` (`GAME=1` for
+    game colours), then `python lab/workshop/heads_sheet.py <out> sheet.png`
+    (`shots/heads*.png`).
   - hair: `curly`, `bun`
   - top: `tunic`, `shirt_rolled`
   - bottom: `baggy`, `overalls`

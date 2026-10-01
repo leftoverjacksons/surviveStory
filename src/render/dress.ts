@@ -53,8 +53,11 @@ export function dress(s: Survivor): Dress {
   const elder = s.age >= 55;
   const build = (s.role === 'builder' ? yes(7, 0.5) : yes(7, 0.12)) || (elder && yes(8, 0.3)) ? 'stout' : 'hero';
   const hairs = female ? ['hair.bun', 'hair.curly', 'hair.bun'] : elder ? ['hair.swept', 'hair.swept', 'hair.curly'] : ['hair.curly', 'hair.swept'];
+  // Faces (lab/workshop/faces.py): elders mostly the old face; otherwise a steady pick per person.
+  const heads = female ? ['head.face', 'head.soft', 'head.soft', 'head.long'] : ['head.face', 'head.broad', 'head.long', 'head.face'];
+  const head = elder && yes(9, 0.7) ? 'head.elder' : heads[Math.floor(roll(s.id, 10) * heads.length)];
   const slots: Record<string, string> = {
-    body: 'body.base', head: 'head.face', feet: 'feet.boots',
+    body: 'body.base', head, feet: 'feet.boots',
     hair: hairs[Math.floor(roll(s.id, 1) * hairs.length)],
     beard: !female && yes(3, elder ? 0.6 : 0.3) ? 'beard.full' : '',
     ...(ROLE[s.role] ?? ROLE.rest)(yes),

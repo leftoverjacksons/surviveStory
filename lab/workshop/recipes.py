@@ -19,7 +19,7 @@ RECIPES = {
     # concepts/gardener_ingame.png
     'gardener': dict(
         build='hero', pool='woman',
-        parts={'body': 'body.base', 'head': 'head.face', 'hair': 'hair.bun', 'top': 'top.shirt_rolled',
+        parts={'body': 'body.base', 'head': 'head.soft', 'hair': 'hair.bun', 'top': 'top.shirt_rolled',
                'bottom': 'bottom.overalls', 'feet': 'feet.boots', 'hands': 'hands.gloves_fingerless',
                'neck': 'neck.bandana', 'bag': 'bag.plant_sack', 'held': 'held.trowel'},
         palette={'skin': '#d9a57c', 'hair': '#1c1a22', 'hat_band': '#d8c070', 'cloth_shirt': '#e2d3ad',
@@ -28,7 +28,7 @@ RECIPES = {
     # concepts/builder_ingame.png
     'builder': dict(
         build='stout', pool='man',
-        parts={'body': 'body.base', 'head': 'head.face', 'hair': 'hair.swept', 'beard': 'beard.full', 'top': 'top.shirt_rolled',
+        parts={'body': 'body.base', 'head': 'head.broad', 'hair': 'hair.swept', 'beard': 'beard.full', 'top': 'top.shirt_rolled',
                'vest': 'vest.waistcoat', 'straps': 'straps.suspenders', 'bottom': 'bottom.work', 'feet': 'feet.boots',
                'waist': 'waist.tool_belt', 'held': 'held.mallet'},
         palette={'skin': '#e0aa86', 'hair': '#c4bdb2', 'cloth_shirt': '#e6d6b0', 'cloth_vest': '#b0582c',
