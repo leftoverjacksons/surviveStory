@@ -4,3 +4,7 @@ config.json
 .venv-gen/
 .venv-bpy/
 .hy3d/
+.triposr/
+.venv-triposr/
+.venv-import/
+__pycache__/
