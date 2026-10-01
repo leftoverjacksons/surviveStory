@@ -6,14 +6,84 @@ clips → compared beside the current figures at the game's camera and pixel
 scale → a library → optionally into the game. Nothing in `src/` imports this
 folder, and the game's `vite build` doesn't include it.
 
-## Setup (once, on the machine that will generate)
+## Local generation or hosted meshes
+
+The Studio now supports three routes into the same rigging and library steps:
+
+| Source | Where generation runs | Setup |
+|---|---|---|
+| TripoSR | Local; single front image | `python lab/figures/setup.py --backend triposr` |
+| Import GLB | Generate elsewhere, then upload the file | `python lab/figures/setup.py --backend import` |
+| Hunyuan (prototype) | Local or its existing Hugging Face Space | `python lab/figures/setup.py --backend hunyuan` |
+
+Run `npm install` in the repository, then `npm run figures` and open
+http://localhost:5181/. Setup preserves other configured backends. The launcher
+also accepts `PYTHON` when the server's Python executable isn't on PATH.
+
+**RTX 2070 / 8 GB:** start with TripoSR, resolution 192 and chunk size 4096.
+Upstream reports about 6 GB VRAM at its default settings; this is a starting
+profile, not a measured guarantee on a 2070. Close other GPU-heavy applications;
+reduce the chunk size if extraction exhausts memory. TripoSR is a feed-forward
+model: seed and diffusion quality controls do not apply. The optional back view
+colours the mesh but does not condition its geometry.
+
+TripoSR setup uses an isolated `.venv-triposr` and `.triposr` checkout. Its
+upstream requirements compile `torchmcubes`; Windows may require C++ build tools
+and a compatible CUDA toolkit. If setup fails there, use the import route to
+continue without installing local inference. Code and weights use MIT; reference
+image rights still need to be appropriate for the intended use.
+
+**Hosted generation:** generate a mesh with a tool such as TRELLIS.2, download
+the GLB, and choose **Import GLB**. This route makes no hosted API calls and needs
+no provider credentials. TRELLIS.2's official setup currently specifies Linux
+and at least 24 GB NVIDIA VRAM; the earlier 12–16 GB estimate below was incorrect.
+Provider billing, generation and downloads happen outside the Studio.
+
+For import, provide a self-contained GLB (under 64 MB in the UI), a matching
+front image, and optionally a back image. Record the generator, source/job URL
+and licence notes. Use glTF Y-up, facing +Z, in a neutral pose with separated
+arms and legs. Blender will **replace its rig and materials**: the current
+pipeline projects reference-image colours into recolour slots; it does not
+preserve generated PBR textures. Transparent PNG cutouts avoid the background
+removal model download. This route is for humanoid figures, not arbitrary props.
+
+Both paths preserve source metadata and generation settings in `library.json`;
+imports also record the source GLB's SHA-256. Inspect Walk, Interact and the
+other clips at game zoom before keeping a figure. Successful weighting alone
+doesn't establish good deformation.
+
+**Game integration on this branch:** Send to game copies a whole figure into
+the existing `?classic` outfit pool. Default adults use workshop parts, which
+take precedence over that pool. It does not automatically replace the modular
+outfits or select a specific survivor. The newer workshop uses hero proportions
+(head about 1:4.2), while this legacy auto-rigger still uses the older joint
+table. A shared configurable rig profile is follow-up work; don't assume hero
+references will deform correctly yet.
+
+Sources: [TripoSR](https://github.com/VAST-AI-Research/TripoSR),
+[TRELLIS.2](https://github.com/microsoft/TRELLIS.2).
+
+## Checks
+
+```
+python -m unittest discover -s lab/figures -p "test_*.py"
+npx tsc --noEmit -p lab/figures/tsconfig.json
+npm run build
+npm test
+```
+
+The Python tests exercise backend routing, imported GLB validation, provenance,
+and rerun invalidation without model weights or Blender. Actual TripoSR inference
+and character quality must be tested on the generation machine.
+
+## Original Hunyuan setup and experiment
 
 Needs: Python 3.11 (3.10–3.12 work, but only 3.11 installs Blender's module;
 otherwise an installed Blender 4.2+ is used), git, Node (the repo's
 `npm install`).
 
 ```
-python lab/figures/setup.py        # add --cpu to ignore an NVIDIA GPU
+python lab/figures/setup.py --backend hunyuan  # add --cpu to ignore an NVIDIA GPU
 npm run figures                    # then open http://localhost:5181/
 ```
 
@@ -120,8 +190,8 @@ white shirt.
   distributing or *displaying* its **Outputs** outside the "Territory", which
   excludes the EU, UK and South Korea. Figures made with it shouldn't ship in a
   public web game; use it for prototyping only.
-- **TRELLIS / TRELLIS.2 (Microsoft) is MIT-licensed**, so it is the candidate
-  for real assets. It needs an NVIDIA GPU (CUDA-only kernels; about 12–16 GB
-  VRAM for TRELLIS.2 at 512³), so it can't run in this CPU container.
+- **TRELLIS / TRELLIS.2 (Microsoft) is MIT-licensed**. The official TRELLIS.2
+  setup specifies Linux and at least 24 GB NVIDIA VRAM. The Studio accepts its
+  output via Import GLB; it does not yet run TRELLIS directly.
 - **Rigging stays in Blender either way,** so `rig.py`, `pack.mjs` and the
   viewer are unchanged whichever generator makes the mesh.
