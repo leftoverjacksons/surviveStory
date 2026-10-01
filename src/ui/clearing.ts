@@ -5,9 +5,24 @@
  */
 import type { Colony } from '../sim/colony';
 import {
-  BESIDE, KIND_NAME, NEED_TEXT, VERB_COST, clearingDistrict, dist, quiet, readingOf, teamReading, verbsFor,
-  type Clearing, type Reading, type Spirit, type Verb,
+  BESIDE, KIND_NAME, NEED_TEXT, VERB_COST, canSound, clearingDistrict, dist, quiet, readingOf, teamReading, verbsFor,
+  type Clearing, type ItemKind, type LanternOp, type Reading, type Spirit, type Verb,
 } from '../sim/haunt';
+import { CALL_R, ITEMS, LANTERN, LANTERN_COST, SOUND_R, lanternOps } from '../sim/veilkit';
+
+const OP_LABEL: Record<LanternOp, string> = {
+  raise: 'Open the lantern', shutter: 'Shutter the lantern', set_down: 'Set the lantern down here', pick_up: 'Pick the lantern up',
+  relight: 'Relight it', refuel: 'Refill it (spare fuel)', aim: 'Shine the torch on it',
+};
+const OP_TIP: Record<LanternOp, string> = {
+  raise: 'Full light. Spirits notice you sooner: lamps are drawn to a warm lantern.',
+  shutter: 'Almost dark: hedge-folk and lamps don\'t notice you beyond arm\'s length. Being alone in the dark wears at Nerve.',
+  set_down: 'A pool of light, a ward: inside it lures fail and a Hollow\'s dread is halved. You go on in the dark (or in a friend\'s light).',
+  pick_up: 'Take it up again.',
+  relight: 'Strike a light. Needs fuel left in it.',
+  refuel: 'Six more turns of light, from the spare can.',
+  aim: 'A torch beam: a lamp\'s lure and a hedge-spirit\'s tricks fail while it is lit. A remnant flinches from it.',
+};
 
 export interface ClearingActions {
   onSelect(unit: number): void;
@@ -23,7 +38,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const VERB_LABEL: Record<Verb, string> = {
   listen: 'Listen', offer_food: 'Offer food', offer_glimmer: 'Offer glimmer', offer_object: 'Give back their things',
-  rest: 'Lay to rest', invite: 'Ask them home', befriend: 'Befriend', unravel: 'Unravel', banish: 'Banish', steady: 'Steady', ward: 'Ward',
+  rest: 'Lay to rest', invite: 'Ask them home', befriend: 'Befriend', unravel: 'Unravel', banish: 'Banish', steady: 'Steady',
   name: 'Speak its true name', play: 'Play for it', search: 'Search their house',
 };
 const VERB_TIP: Record<Verb, string> = {
@@ -34,10 +49,9 @@ const VERB_TIP: Record<Verb, string> = {
   rest: 'Help them finish. They go, and the land is better for it.',
   invite: 'They come home with you and keep a hearth warm (+comfort in a home).',
   befriend: 'It goes to live with the Folk (another of them at the hill, and their thanks).',
-  unravel: 'Tear at the Hollow. Costs Nerve. Anchors (low Sight) do it better, and so does a ward\'s light.',
+  unravel: 'Tear at the Hollow. Costs Nerve. Anchors (low Sight) do it better, and so does light falling on it.',
   banish: 'Always works. But the place goes colder, and the Folk won\'t like it.',
   steady: 'Give back some Nerve. Anchors are best at it.',
-  ward: 'A lantern and a ring of salt: inside it, lures fail and dread is halved.',
   name: 'Once a clearing: the spirit is known at once and half at peace. A Hollow loses two of its hold.',
   play: 'Every spirit within three paces grows calmer; the team near the piper steadier.',
   search: 'Look through the house for something of theirs (a photograph, a teacup). Then give it back.',
@@ -82,8 +96,11 @@ export class ClearingPanel {
       const frac = Math.max(0, x.nerve) / x.maxNerve;
       const tag = x.fae ? `Folk · ${x.fae}` : x.sight >= 40 ? 'Seer' : x.anchor ? 'Anchor' : '';
       const state = x.state === 'fled' ? 'fled home' : x.state === 'taken' ? 'taken' : `${'●'.repeat(x.ap)}${'○'.repeat(Math.max(0, 2 - x.ap))}`;
-      return `<button type="button" class="unit ${x.id === sel ? 'sel' : ''} ${x.state}" data-unit="${x.id}" ${x.state !== 'in' ? 'disabled' : ''}>
-        <span class="n">${esc(x.name)}${tag ? ` <i>${tag}</i>` : ''}</span>
+      const l = x.lantern;
+      const lamp = l ? `${l.kind === 'torch' ? 'torch' : 'lantern'} ${!l.lit ? 'out' : l.state === 'down' ? 'set down' : l.state}, ${Math.ceil(l.fuel)} turn${Math.ceil(l.fuel) === 1 ? '' : 's'} of fuel` : 'glows';
+      const kit = x.slots.length ? x.slots.map((it) => ITEMS[it].label).join(', ') : 'nothing';
+      return `<button type="button" class="unit ${x.id === sel ? 'sel' : ''} ${x.state}" data-unit="${x.id}" ${x.state !== 'in' ? 'disabled' : ''} title="${esc(`${lamp}. Carrying: ${kit}.`)}">
+        <span class="n">${esc(x.name)}${tag ? ` <i>${tag}</i>` : ''}<small class="kit">${esc(lamp)} · ${esc(kit)}</small></span>
         <span class="nerve"><b style="width:${(frac * 100).toFixed(0)}%" class="${frac < 0.35 ? 'low' : frac < 0.65 ? 'mid' : ''}"></b></span>
         <span class="ap">${state}</span></button>`;
     }).join('');
@@ -105,7 +122,10 @@ export class ClearingPanel {
     const known = h.spirits.map((s) => {
       const r = teamReading(col, cl, s);
       if (s.fate !== 'present') return `<li class="done">${esc(cap(s.name))}: ${s.fate === 'rested' ? 'laid to rest' : s.fate === 'invited' ? 'coming home with you' : s.fate === 'befriended' ? 'gone to the Folk' : s.fate === 'unravelled' ? 'unravelled' : 'banished'}</li>`;
-      if (r === 'none' && s.known < 1) return '<li class="unknown">Something you can\'t perceive</li>';
+      if (r === 'none' && s.known < 1) {
+        const e = cl.echoes.find((x) => x.spirit === s.id);
+        return `<li class="unknown">${e ? `An echo (${e.quality === 'exact' ? 'clear' : e.quality === 'circle' ? 'somewhere about here' : e.quality === 'arc' ? 'a bearing only' : 'how far, not which way'}, ${cl.turn - e.turn === 0 ? 'fresh' : `${cl.turn - e.turn} turn${cl.turn - e.turn > 1 ? 's' : ''} old`})` : 'Something you can\'t perceive'}</li>`;
+      }
       const bits: string[] = [];
       if (s.known >= 2 && s.kind !== 'hollow') bits.push(`wants ${NEED_TEXT[s.need]}`);
       if (s.kind === 'hollow' && s.known >= 1) bits.push(`hold ${s.integrity}`);
@@ -116,8 +136,10 @@ export class ClearingPanel {
     const isQuiet = quiet(col, cl);
     const guide = `<details class="guide" ${this.guideOpen ? 'open' : ''}><summary>How it works</summary><ol>
       <li><b>Click</b> one of your people, then <b>click the ground</b> to walk there. Inside the <b>inner ring</b> it costs one action and they can still act; out to the <b>outer ring</b> it takes the whole turn. Hover to see the way, and which spirits would reach them there.</li>
-      <li><b>Click a spirit</b> (or right-click anything) for what you can do. Listen to learn what it wants; give it that; then lay it to rest, befriend it, or ask it home.</li>
-      <li>The <b>Hollow</b> (the dark orb) is unravelled last: Anchors (low Sight) do it best, standing inside a ward.</li>
+      <li>It is dark: you see only where your <b>lanterns</b> shine (and, for a turn, where they shone). Spirits are sensed, not seen: by Sight up close, or a Seer <b>sounding the Veil</b> (right-click them). Look for <b>signs</b> in the light.</li>
+      <li><b>Right-click</b> one of your people for their lantern (open, shutter, set down as a pool of light), sounding, and what they carry (salt, iron, rowan, a bell). Lanterns burn down; standing in the dark wears at Nerve.</li>
+      <li><b>Click a spirit</b> for what you can do. Listen to learn what it wants; give it that; then lay it to rest, befriend it, or ask it home.</li>
+      <li>The <b>Hollow</b> (the dark orb) is unravelled last: Anchors (low Sight) do it best, with light falling on it. It drinks lanterns. Rowan and a pool of light help against its dread.</li>
       <li><b>End turn</b>: the spirits act on everyone's Nerve. If Nerve breaks, they run home; if a light is pulling them when it breaks, they are taken.</li>
       <li>When the Hollow is gone and the rest are at peace, <b>come home</b>.</li></ol></details>`;
     const html = `<h3>In the Veil · ${esc(d.name)}</h3>
@@ -140,6 +162,10 @@ export interface MenuActions {
   onAct(unit: number, verb: Verb, target?: number): void;
   onApproach(unit: number, target: { x: number; z: number }): void;
   onSelect(unit: number): void;
+  onLantern(unit: number, op: LanternOp, target?: number): void;
+  onSound(unit: number, loud: boolean): void;
+  /** Start laying something: the next click on the ground places it. */
+  onPlace(unit: number, item: ItemKind): void;
 }
 
 /** What to try next with a spirit, in plain words. */
@@ -165,6 +191,9 @@ export class ClearingMenu {
       if (!b || b.disabled) return;
       const d = b.dataset;
       if (d.verb) act.onAct(Number(d.by), d.verb as Verb, d.target !== undefined ? Number(d.target) : undefined);
+      else if (d.op) act.onLantern(Number(d.by), d.op as LanternOp, d.target !== undefined ? Number(d.target) : undefined);
+      else if (d.sound) act.onSound(Number(d.by), d.sound === 'call');
+      else if (d.place) act.onPlace(Number(d.by), d.place as ItemKind);
       else if (d.go) { const [x, z] = d.go.split(',').map(Number); act.onApproach(Number(d.by), { x, z }); }
       else if (d.sel) act.onSelect(Number(d.sel));
       this.close();
@@ -186,6 +215,9 @@ export class ClearingMenu {
   open(x: number, y: number, cl: Clearing, sel: number, target: MenuTarget, approach: { x: number; z: number; beside: boolean; cost: number } | null) {
     const col = this.col, h = col.haunts[cl.haunt];
     const u = cl.units.find((q) => q.id === sel && q.state === 'in');
+    const opItem = (by: number, op: LanternOp, ok: boolean, why?: string, target?: number) =>
+      `<button type="button" data-op="${op}" data-by="${by}" ${target !== undefined ? `data-target="${target}"` : ''} ${ok ? '' : 'disabled'} title="${esc(OP_TIP[op])}">
+        <span>${esc(OP_LABEL[op])}</span><i>${LANTERN_COST[op] ? `${LANTERN_COST[op]} action` : 'free'}</i>${!ok && why ? `<em>${esc(why)}</em>` : ''}</button>`;
     const item = (verb: Verb, ok: boolean, why: string | undefined, target?: number, label = VERB_LABEL[verb]) =>
       `<button type="button" data-verb="${verb}" data-by="${u?.id}" ${target !== undefined ? `data-target="${target}"` : ''} ${ok ? '' : 'disabled'} title="${esc(VERB_TIP[verb])}">
         <span>${esc(label)}</span><i>${VERB_COST[verb]} action${VERB_COST[verb] > 1 ? 's' : ''}</i>${!ok && why ? `<em>${esc(why)}</em>` : ''}</button>`;
@@ -210,6 +242,8 @@ export class ClearingMenu {
       const vs = verbsFor(col, cl, u, s);
       if (d > BESIDE && approach) body += `<button type="button" data-go="${approach.x},${approach.z}" data-by="${u.id}"><span>${approach.beside ? 'Walk beside it' : 'Walk toward it'}</span><i>${approach.cost} action${approach.cost > 1 ? 's' : ''}</i></button>`;
       body += vs.map((v) => item(v.verb, v.ok, v.why, s.id)).join('');
+      const aim = lanternOps(col, cl, u).find((o) => o.op === 'aim');
+      if (aim) body += opItem(u.id, 'aim', aim.ok, aim.why, s.id);
     } else if ('ally' in target) {
       const a = cl.units.find((q) => q.id === target.ally && q.state === 'in');
       if (!a) return;
@@ -219,8 +253,19 @@ export class ClearingMenu {
       if (!near && approach) body += `<button type="button" data-go="${approach.x},${approach.z}" data-by="${u.id}"><span>${u.name}: walk beside ${esc(a.name)}</span></button>`;
       body += `<button type="button" data-sel="${a.id}"><span>Switch to ${esc(a.name)}</span></button>`;
     } else {
-      head = `<b>${esc(u.name)}</b><span>Nerve ${Math.max(0, u.nerve)} of ${u.maxNerve} · ${u.ap} action${u.ap === 1 ? '' : 's'} left</span>`;
-      body += item('ward', cl.wardsLeft > 0 && u.ap >= 1, cl.wardsLeft <= 0 ? 'No lanterns left.' : 'No actions left.', undefined, `Ward here (${cl.wardsLeft} lantern${cl.wardsLeft === 1 ? '' : 's'} left)`);
+      const l = u.lantern;
+      head = `<b>${esc(u.name)}</b><span>Nerve ${Math.max(0, u.nerve)} of ${u.maxNerve} · ${u.ap} action${u.ap === 1 ? '' : 's'} left</span>
+        ${l ? `<span>${esc(LANTERN[l.kind].label)}: ${!l.lit ? 'out' : l.state === 'down' ? 'set down' : l.state}, ${Math.ceil(l.fuel)} turns of fuel</span>` : ''}`;
+      for (const o of lanternOps(col, cl, u)) if (o.op !== 'aim') body += opItem(u.id, o.op, o.ok, o.why);
+      if (canSound(u)) {
+        const can = u.ap >= 1;
+        body += `<button type="button" data-sound="quiet" data-by="${u.id}" ${can ? '' : 'disabled'} title="Listen to the Veil out to ${SOUND_R} paces. Echoes come back exact, as a rough circle, or only as a bearing. Nothing hears you."><span>Sound the Veil</span><i>1 action</i></button>`;
+        body += `<button type="button" data-sound="call" data-by="${u.id}" ${can ? '' : 'disabled'} title="Call out to ${CALL_R} paces. Clearer echoes, further, but everything out there hears: lamps reach for you, the Hollow turns to you, remnants hide deeper."><span>Call out into the dark</span><i>1 action</i></button>`;
+      }
+      for (const it of [...new Set(u.slots)]) {
+        if (it === 'oil' || it === 'radio') continue;
+        body += `<button type="button" data-place="${it}" data-by="${u.id}" ${u.ap >= 1 ? '' : 'disabled'} title="${esc(ITEMS[it].note)}"><span>Lay ${esc(ITEMS[it].label.toLowerCase())}${it === 'salt' || it === 'iron' ? ' (a line: then click where it runs to)' : ' (then click where)'}</span><i>1 action</i></button>`;
+      }
     }
     this.el.innerHTML = `<div class="mh">${head}</div><div class="mb">${body}</div>`;
     this.el.hidden = false;

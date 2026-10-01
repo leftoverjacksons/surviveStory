@@ -64,14 +64,14 @@ class OutlinePass extends Pass {
       uniforms: {
         tDiffuse: { value: null }, tDepth: { value: null }, uRes: { value: new THREE.Vector2(1, 1) },
         uNear: { value: 0.1 }, uFar: { value: 400 }, uView: { value: new THREE.Vector2(1, 1) }, uDebug: { value: typeof location !== 'undefined' && location.search.includes('pixeldebug') ? 1 : 0 },
-        uCam: { value: new THREE.Matrix4() }, uFogTex: worldUniforms.uFogTex, uFogSize: worldUniforms.uFogSize,
+        uCam: { value: new THREE.Matrix4() }, uFogTex: worldUniforms.uFogTex, uFogSize: worldUniforms.uFogSize, uVeilDark: worldUniforms.uVeilDark,
         uFogNear: { value: 115 }, uFogFar: { value: 230 },
         tMask: { value: null }, uUseMask: { value: 0 },
       },
       vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `
         uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform vec2 uRes; uniform float uNear; uniform float uFar; uniform vec2 uView; uniform float uDebug;
-        uniform mat4 uCam; uniform sampler2D uFogTex; uniform float uFogSize; uniform float uFogNear; uniform float uFogFar;
+        uniform mat4 uCam; uniform sampler2D uFogTex; uniform float uFogSize; uniform float uFogNear; uniform float uFogFar; uniform float uVeilDark;
         uniform sampler2D tMask; uniform float uUseMask;
         varying vec2 vUv;
         float lin(vec2 uv) { return uNear + texture2D(tDepth, uv).x * (uFar - uNear); }
@@ -105,7 +105,8 @@ class OutlinePass extends Pass {
           if (d > uFar - 1.0) { gl_FragColor = src; return; }   // sky
           // No lines where the land is unexplored or lost in fog: they would give it away.
           vec3 wp = (uCam * vec4(P(vUv), 1.0)).xyz;
-          float seen = smoothstep(0.3, 0.8, texture2D(uFogTex, (wp.xz + uFogSize * 0.5) / uFogSize).r);
+          vec4 fogs = texture2D(uFogTex, (wp.xz + uFogSize * 0.5) / uFogSize);
+          float seen = smoothstep(0.3, 0.8, min(fogs.r, mix(1.0, fogs.g, uVeilDark)));
           float clearAir = 1.0 - smoothstep(uFogNear, uFogFar, d);
           float ink = seen * clearAir;
           edge *= step(0.5, ink); crease *= ink;

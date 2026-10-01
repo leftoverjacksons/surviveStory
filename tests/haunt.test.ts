@@ -3,7 +3,7 @@ import { alive, createCommunity } from '../src/sim/community';
 import { createColony, tick } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
 import { Zone, idx, paintZone, tileX, tileZ, toTileX, toTileZ, zoneAllowed } from '../src/sim/world';
-import { act, finish, giveDistrict, startClearing, type Clearing } from '../src/sim/haunt';
+import { act, finish, giveDistrict, lanternAct, startClearing, type Clearing } from '../src/sim/haunt';
 import { playTurn } from '../src/sim/clearbot';
 
 function ready(seed: number) {
@@ -83,9 +83,10 @@ describe('haunted districts', () => {
     const s = alive(col.community)[0];
     const sight = s.sight;
     const cl = startClearing(col, 0, [s.id]) as Clearing;
+    cl.units[0].x += 6; // away from the hearthstone, where nobody is taken
     cl.units[0].lured = true;
     cl.units[0].nerve = 0;
-    act(col, cl, s.id, 'ward'); // breaks while lured
+    lanternAct(col, cl, s.id, 'shutter'); // breaks while lured (away from the hearthstone)
     expect(s.taken).toBe(true);
     expect(s.alive).toBe(false);
     expect(col.taken.length).toBe(1);

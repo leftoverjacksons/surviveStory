@@ -5,13 +5,16 @@ import { PIXEL, SOFT, enhance, makeRand, soften } from './util';
 
 /**
  * Map-sized RGBA texture shared by fog-aware materials:
- * R = explored (fog of war), G = home zone, B = woodlot, A = sacred ground.
+ * R = explored (fog of war), G = seen in the Veil (a clearing's light, DESIGN §38.11;
+ * 255 everywhere outside one), B = woodlot, A = sacred ground.
  */
 export class FogTexture {
   texture: THREE.DataTexture;
   private data: Uint8Array;
   private version = -1;
   private zoneVersion = -1;
+  /** What a clearing team can see (tile indices), or null outside the Veil. */
+  private veilSeen: Set<number> | null = null;
   constructor(private world: World) {
     this.data = new Uint8Array(world.w * world.h * 4);
     this.texture = new THREE.DataTexture(this.data, world.w, world.h, THREE.RGBAFormat, THREE.UnsignedByteType);
@@ -29,11 +32,17 @@ export class FogTexture {
     for (let i = 0, n = w.explored.length; i < n; i++) {
       const z = w.zone[i];
       d[i * 4] = w.explored[i];
-      d[i * 4 + 1] = z === Zone.Home ? 255 : 0;
+      d[i * 4 + 1] = !this.veilSeen || this.veilSeen.has(i) ? 255 : 0;
       d[i * 4 + 2] = z === Zone.Woodlot ? 255 : 0;
       d[i * 4 + 3] = z === Zone.Sacred ? 255 : 0;
     }
     this.texture.needsUpdate = true;
+  }
+  /** In a clearing: everything not seen goes dark (null: all seen again). */
+  setVeilSight(seen: Set<number> | null) {
+    this.veilSeen = seen;
+    this.version = -1;
+    this.sync();
   }
 }
 

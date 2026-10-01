@@ -120,6 +120,8 @@ export const worldUniforms = {
   uTime: { value: 0 },
   uWind: { value: 1 },
   uFogTex: { value: null as THREE.Texture | null },
+  /** 1 in a clearing: ground nobody's light reaches is dark (uFogTex.g, DESIGN §38.11). */
+  uVeilDark: { value: 0 },
   uWearTex: { value: null as THREE.Texture | null },
   uFogSize: { value: 256 },
   /** Zones: crisp per-tile colours; uZone is 0 normally (outlines only), 1 while painting (shaded). */
@@ -456,7 +458,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
     let fs = shader.fragmentShader.replace(
       '#include <common>',
       `#include <common>
-      uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform sampler2D uZoneTex; uniform float uVeil;
+      uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform sampler2D uZoneTex; uniform float uVeil; uniform float uVeilDark;
       uniform float uFogSize; uniform float uTime; uniform float uZone;
       uniform float uSnow; uniform float uRoofSnow; uniform sampler2D uFootTex; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
       varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
@@ -544,6 +546,13 @@ ${SURFACE_GLSL}` : ''}`,
           float lum = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
           vec3 mist = vec3(0.045, 0.06, 0.07) + lum * ${PIXEL ? '0.0' : '0.08'};
           gl_FragColor.rgb = mix(mist, gl_FragColor.rgb, k);
+          // In a clearing, only what the team's light reaches (or reached last turn) is seen (DESIGN §38.11):
+          // the rest sinks into a violet dark, shapes only just there.
+          if (uVeilDark > 0.5) {
+            float lit = smoothstep(0.15, 0.85, fz.g + drift * 0.6);
+            vec3 murk = gl_FragColor.rgb * vec3(0.16, 0.14, 0.22) + vec3(0.008, 0.006, 0.016);
+            gl_FragColor.rgb = mix(murk, gl_FragColor.rgb, lit);
+          }
         }
         #include <fog_fragment>`,
       );

@@ -37,7 +37,7 @@ import { dropAnsweredHomes } from './sim/requests';
 import { RESTORE, requestRestore, whyNotRestore } from './sim/restore';
 import { Rng } from './sim/rng';
 import { playTurn } from './sim/clearbot';
-import { HAUNT_RADIUS, THREAT_TEXT, act as veilAct, approachPoint, endTurn, finish, giveDistrict, gridOf, moveUnit, occupantsFor, reachOf, spiritAt, startClearing, teamReading, type Clearing } from './sim/haunt';
+import { HAUNT_RADIUS, THREAT_TEXT, act as veilAct, approachPoint, endTurn, finish, giveDistrict, gridOf, lanternAct, moveUnit, occupantsFor, reachOf, soundAct, spiritAt, startClearing, teamReading, wardAct, type Clearing, type ItemKind } from './sim/haunt';
 import { cells as reachCells, standable } from './sim/veilmove';
 import { People } from './render/people';
 import { Camp } from './render/camp';
@@ -289,6 +289,8 @@ scene.add(myceliumView.group);
 scene.add(folkView.group);
 const clearingView = new ClearingView(colony, document.getElementById('labels')!);
 scene.add(clearingView.group);
+// In a clearing, what the team can't see goes dark (DESIGN §38.11), through the fog texture every material reads.
+clearingView.onSeen = (seen) => { fog.setVeilSight(seen); worldUniforms.uVeilDark.value = seen ? 1 : 0; };
 // Inside the Veil the world has its own dim light, enough to see into the houses.
 const veilLight = new THREE.HemisphereLight('#c9b8ff', '#4a3a6a', 0);
 scene.add(veilLight);
@@ -851,6 +853,8 @@ interface VeilMode {
   camera: { x: number; z: number; zoom: number };
   /** Each walker's progress along the way they last walked. */
   walking: Map<number, { trail: { x: number; z: number }[]; i: number }>;
+  /** Laying something (DESIGN §38.13): the next click on the ground places it. */
+  placing: { unit: number; item: ItemKind } | null;
 }
 let veil: VeilMode | null = null;
 const veilPanel = new ClearingPanel(colony, {
@@ -884,7 +888,7 @@ function enterVeil(cl: Clearing) {
   const d = world.districts[colony.haunts[cl.haunt].district];
   const roofMode = roofs.mode;
   setRoofs('cutaway');
-  veil = { roofMode, follow: true, cl, sel: cl.units[0]?.id ?? 0, saved, hover: null, camera: { x: iso.target.x, z: iso.target.z, zoom: iso.zoomGoal }, walking: new Map() };
+  veil = { roofMode, follow: true, cl, sel: cl.units[0]?.id ?? 0, saved, hover: null, camera: { x: iso.target.x, z: iso.target.z, zoom: iso.zoomGoal }, walking: new Map(), placing: null };
   iso.target.x = d.x - (d.x / Math.hypot(d.x, d.z)) * 6; iso.target.z = d.z - (d.z / Math.hypot(d.x, d.z)) * 6;
   iso.zoomGoal = 1.9;
   renderVeil();
@@ -917,6 +921,19 @@ const veilMenu = new ClearingMenu(colony, {
     afterVeilAction();
   },
   onSelect(id) { if (veil) { veil.sel = id; veil.follow = true; renderVeil(); } },
+  onLantern(by, op, target) {
+    if (!veil) return;
+    const err = lanternAct(colony, veil.cl, by, op, target);
+    if (err) veil.cl.log.push(err);
+    afterVeilAction();
+  },
+  onSound(by, loud) {
+    if (!veil) return;
+    const err = soundAct(colony, veil.cl, by, loud);
+    if (err) veil.cl.log.push(err);
+    afterVeilAction();
+  },
+  onPlace(by, item) { if (veil) { veil.placing = { unit: by, item }; veil.sel = by; renderVeil(); } },
 });
 
 /** Screen position of a world point. */
@@ -958,6 +975,18 @@ function approachTo(target: { x: number; z: number }) {
 function veilClick(cx: number, cy: number, button: number) {
   if (!veil || veil.cl.outcome) return;
   if (veilMenu.isOpen) { veilMenu.close(); return; }
+  if (veil.placing) {
+    // Laying a ward: a left click places it, anything else lets it go.
+    const pl = veil.placing;
+    veil.placing = null;
+    const g = button === 0 ? groundAt(cx, cy) : null;
+    if (g) {
+      const err = wardAct(colony, veil.cl, pl.unit, pl.item, g.x, g.z);
+      if (err) veilMenu.tip(cx, cy, err);
+      afterVeilAction();
+    }
+    return;
+  }
   const hit = veilPick(cx, cy);
   if (hit && 'spirit' in hit) {
     const s = colony.haunts[veil.cl.haunt].spirits.find((x) => x.id === hit.spirit)!;
@@ -983,6 +1012,7 @@ function veilClick(cx: number, cy: number, button: number) {
 /** Hovering in the Veil: say what it is and that it can be clicked. */
 function veilHover(cx: number, cy: number) {
   if (!veil || veil.cl.outcome) { veilMenu.tip(0, 0, null); return; }
+  if (veil.placing) { veilMenu.tip(cx, cy, `Click where the ${veil.placing.item === 'salt' || veil.placing.item === 'iron' ? 'line runs to (up to five paces)' : `${veil.placing.item} goes (beside them)`} · right-click to cancel`); return; }
   const hit = veilPick(cx, cy);
   if (!hit) {
     // Over the ground: what the walk would cost, and what would reach them there.
@@ -1202,6 +1232,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'o') setWoods((worldUniforms.uThin.value + 1) % 3);
   else if (k === 'b' && !veil) buildPanel.toggle();
   else if (k === 't' && build?.kind === 'place') { build.turn = (build.turn + 1) % 4; placeHover(lastPointer.x, lastPointer.y); }
+  else if (k === 'escape' && veil?.placing) { veil.placing = null; veilMenu.tip(0, 0, null); }
   else if (k === 'escape' && build && !draft.length) setBuild(null);
   else if (k === 'v') { veilView = !veilView; hud.setVeilView(veilView); hud.render(); }
   else if (k === 'escape' && draft.length) clearDraft();
@@ -1384,7 +1415,7 @@ function frame() {
   }
   clearingView.updateAmbient(t, veil ? 0 : sky.night, people.selected, iso.camera, view.clientWidth, view.clientHeight);
   veilLight.intensity += ((veil ? 1.6 : 0) - veilLight.intensity) * Math.min(1, dt * 2);
-  clearingView.updateArena(t, veil?.cl ?? null, veil?.sel ?? 0, veil?.hover ?? null, iso.camera, view.clientWidth, view.clientHeight);
+  clearingView.updateArena(t, veil?.cl ?? null, veil?.sel ?? 0, veil?.hover ?? null, iso.camera, view.clientWidth, view.clientHeight, veil?.placing ?? null);
   wear.sync(t);
   fog.sync();
   zoneTex.showHome = colony.village.autoPlan !== false;

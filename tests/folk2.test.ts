@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { alive, createCommunity } from '../src/sim/community';
 import { createColony, tick, type Colony } from '../src/sim/colony';
 import { generateWorld } from '../src/sim/worldgen';
-import { act, faeUnitId, finish, startClearing, verbsFor, type Clearing } from '../src/sim/haunt';
+import { act, faeUnitId, finish, startClearing, verbsFor, wardAct, type Clearing } from '../src/sim/haunt';
 import { breakRule } from '../src/sim/folk';
 import { tileX, tileZ } from '../src/sim/world';
 import { nudgeOmen } from '../src/sim/council';
@@ -23,7 +23,7 @@ describe('the Folk and the village together', () => {
     expect(typeof cl).not.toBe('string');
     const u = cl.units.find((x) => x.id === faeUnitId(elder.id))!;
     expect(u.fae).toBe('elder');
-    expect(act(col, cl, u.id, 'ward')).toMatch(/iron/);
+    expect(wardAct(col, cl, u.id, 'iron', u.x + 2, u.z)).toMatch(/iron/);
     // Speak a true name: the spirit is known at once.
     const s = col.haunts[0].spirits.find((x) => x.fate === 'present')!;
     u.x = tileX(col.world, s.tx) + 1; u.z = tileZ(col.world, s.tz);

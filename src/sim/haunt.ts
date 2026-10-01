@@ -23,9 +23,16 @@ import { addFae, changeStanding, type FaeKind } from './folk';
 import type { District, DistrictKind, Ruin } from './oldworld';
 import { Rng } from './rng';
 import { isFullMoon } from './calendar';
+import { powerSupply } from './power';
 import { disturb, nurture, resonanceAt } from './veil';
 import { Ground, Zone, idx, inBounds, reveal, tileX, tileZ, toTileX, toTileZ, type World } from './world';
 import { VeilGrid, cells, distAt, lineOfSight, pathTo, reachField, ruinAtPoint, standable, walkableTile, type Occupant, type Pt, type ReachField } from './veilmove';
+import {
+  HEARTH_R, SEER_SIGHT, addEcho, afterSpirits, ageEchoes, atHearth, beforeSpirits, defaultKit, inPool, inRowan, ironReckoning, lanternFor, lightAt, lineBetween,
+  look, makeSigns, packKit, placeWard, sound, useLantern,
+  type Echo, type ItemKind, type Lantern, type LanternOp, type Sign, type WardKind,
+} from './veilkit';
+export type { Echo, ItemKind, Lantern, LanternOp, Sign, WardKind };
 
 // ---------- data ----------
 
@@ -84,7 +91,7 @@ export const KIND_NAME: Record<SpiritKind, string> = { remnant: 'a remnant', hed
 export const NEED_TEXT: Record<Need, string> = {
   object: 'something of theirs from their house, given back to them',
   company: 'someone to listen to them',
-  light: 'a light to see by (a ward beside them)',
+  light: 'a light to see by: a warm lantern near them',
   food: 'food, freely given',
   glimmer: 'glimmer',
 };
@@ -289,6 +296,10 @@ export interface Unit {
   stride?: number;
   /** Once-a-clearing gifts already used (the elder's naming). */
   used?: boolean;
+  /** Their own lantern (DESIGN §38.12); the Folk have none, they glow. */
+  lantern?: Lantern;
+  /** What they carry: two slots (DESIGN §38.13). */
+  slots: ItemKind[];
 }
 
 /** What each kind of the Folk brings into the Veil. */
@@ -302,7 +313,21 @@ export const faeUnitId = (faeId: number) => -1000 - faeId;
 /** The Folk will walk into the Veil with the village once they are friendly and have been met. */
 export const canAskFolk = (col: Colony) => col.folk.met && col.folk.standing >= 45;
 
-export interface Ward { x: number; z: number; r: number }
+/**
+ * Something placed on the ground (DESIGN §38.13): a lantern set down (a pool
+ * of light), a line of salt or iron (from x,z to x2,z2), a ring of rowan, a
+ * bell, or the hearthstone carried from home. Worn down to nothing (`hp`) by
+ * a Hollow, and salt by the hedge-folk.
+ */
+export interface Ward {
+  kind: WardKind;
+  x: number; z: number;
+  x2?: number; z2?: number;
+  r: number;
+  hp: number;
+  /** A set-down lantern: whose it is. */
+  owner?: number;
+}
 
 export interface Clearing {
   haunt: number;
@@ -310,7 +335,18 @@ export interface Clearing {
   maxTurns: number;
   units: Unit[];
   wards: Ward[];
-  wardsLeft: number;
+  /** Tiles that were lit at the end of last turn: still seen (the dark comes back a turn after the light leaves). */
+  dusk: number[];
+  /** Traces the spirits left, found where light falls (DESIGN §38.14). */
+  signs: Sign[];
+  /** What the seers' soundings (and bells, radios, signs) say is out there. */
+  echoes: Echo[];
+  /** Spirits that heard a call this turn, and who called (spirit id → unit id). */
+  heard: Record<number, number>;
+  /** Spirits caught in a torch beam this turn (spirit ids). */
+  beamed: number[];
+  /** Whether iron was laid (the Folk will hear of it). */
+  ironLaid?: boolean;
   /** Newest last. */
   log: string[];
   outcome: null | 'cleared' | 'withdrew' | 'lost';
@@ -328,7 +364,7 @@ export const MOVE_PER_AP = 4.5;
 export const BESIDE = 1.6;
 /** Every old "within n paces" is now a circle of n + this. */
 const PACE = 0.6;
-const within = (n: number) => n + PACE;
+export const within = (n: number) => n + PACE;
 
 export type Reading = 'none' | 'chill' | 'luminous' | 'coherent';
 const RANK: Reading[] = ['none', 'chill', 'luminous', 'coherent'];
@@ -366,12 +402,18 @@ export function canClear(col: Colony, h: Haunt): string | null {
   return null;
 }
 
+/**
+ * How far someone senses spirits without trying (DESIGN §38.14): a few paces,
+ * more with Sight. Beyond it, only soundings, bells, radios and signs tell them.
+ */
+export const senseRange = (u: Pick<Unit, 'sight'>) => 3 + u.sight / 25;
+
 /** How one team member reads a spirit. */
 export function readingOf(col: Colony, u: Unit, s: Spirit): Reading {
   const surv = col.community.survivors.find((x) => x.id === u.id);
   const res = resonanceAt(col, tileX(col.world, s.tx), tileZ(col.world, s.tz));
   const v = u.sight + res * 40 + (surv?.traits.includes('orb_touched') ? 10 : 0) - s.depth;
-  if (dist(col, u, s) > within(10)) return 'none';
+  if (dist(col, u, s) > senseRange(u)) return 'none';
   return v < -10 ? 'none' : v < 10 ? 'chill' : v < 35 ? 'luminous' : 'coherent';
 }
 
@@ -382,7 +424,11 @@ export function teamReading(col: Colony, cl: Clearing, s: Spirit): Reading {
   return best;
 }
 
-export function startClearing(col: Colony, hauntIdx: number, team: number[], faeId?: number): Clearing | string {
+/**
+ * Send a team in. `kit`: what each person packs in their two slots (DESIGN §38.13); left out,
+ * they pack for themselves (`defaultKit`). The kit and the lanterns' fuel come from the stores.
+ */
+export function startClearing(col: Colony, hauntIdx: number, team: number[], faeId?: number, kit?: Record<number, ItemKind[]>): Clearing | string {
   const h = col.haunts[hauntIdx];
   const why = canClear(col, h);
   if (why) return why;
@@ -398,7 +444,8 @@ export function startClearing(col: Colony, hauntIdx: number, team: number[], fae
   for (const s of members) {
     const at = nearestFree(w, toTileX(w, ex), toTileZ(w, ez), free);
     const maxNerve = 8 + (s.traits.includes('brave') ? 3 : 0) + (s.traits.includes('stoic') ? 2 : 0) - (s.traits.includes('skittish') ? 3 : 0) + Math.round((s.morale - 50) / 20);
-    units.push({ id: s.id, name: first(s), x: tileX(w, at.tx), z: tileZ(w, at.tz), nerve: maxNerve, maxNerve, ap: AP_PER_TURN, sight: s.sight, anchor: s.sight < 30, state: 'in', lured: false });
+    const torches = units.filter((u) => u.lantern?.kind === 'torch').length;
+    units.push({ id: s.id, name: first(s), x: tileX(w, at.tx), z: tileZ(w, at.tz), nerve: maxNerve, maxNerve, ap: AP_PER_TURN, sight: s.sight, anchor: s.sight < 30, state: 'in', lured: false, lantern: lanternFor(s.sight, powerSupply(col) > 0 && torches === 0 ? 1 : 0), slots: [] });
   }
   // One of the Folk may come too, if they are friendly enough to be asked.
   const fae = faeId !== undefined ? col.folk.beings.find((b) => b.id === faeId) : undefined;
@@ -406,17 +453,24 @@ export function startClearing(col: Colony, hauntIdx: number, team: number[], fae
   if (fae) {
     const at = nearestFree(w, toTileX(w, ex), toTileZ(w, ez), free);
     const k = FAE_UNIT[fae.kind];
-    units.push({ id: faeUnitId(fae.id), name: fae.name, x: tileX(w, at.tx), z: tileZ(w, at.tz), nerve: k.nerve, maxNerve: k.nerve, ap: AP_PER_TURN, sight: k.sight, anchor: false, state: 'in', lured: false, fae: fae.kind, faeId: fae.id, stride: k.stride });
+    units.push({ id: faeUnitId(fae.id), name: fae.name, x: tileX(w, at.tx), z: tileZ(w, at.tz), nerve: k.nerve, maxNerve: k.nerve, ap: AP_PER_TURN, sight: k.sight, anchor: false, state: 'in', lured: false, fae: fae.kind, faeId: fae.id, stride: k.stride, slots: [] });
     fae.known = true;
   }
   h.attempts++;
   col.veil.influence -= veilCost(col);
+  packKit(col, units, kit ?? defaultKit(col, units));
   // Walking in, they see the whole of it.
   reveal(w, d.x, d.z, HAUNT_RADIUS);
   const cl: Clearing = {
-    haunt: hauntIdx, turn: 1, maxTurns: 12, units, wards: [], wardsLeft: 2, log: [], outcome: null,
+    haunt: hauntIdx, turn: 1, maxTurns: 14, units, wards: [], log: [], outcome: null,
     rng: (w.seed ^ (h.district * 7919) ^ (col.community.day * 104729) ^ h.attempts) >>> 0, spent: { food: 0, glimmer: 0 }, found: {},
+    dusk: [], signs: [], echoes: [], heard: {}, beamed: [],
   };
+  // The hearthstone from home, set down where they came in: a little light, and nobody is taken beside it.
+  const cx = units.reduce((a, u) => a + u.x, 0) / units.length, cz = units.reduce((a, u) => a + u.z, 0) / units.length;
+  cl.wards.push({ kind: 'hearth', x: cx, z: cz, r: HEARTH_R, hp: 1 });
+  cl.signs = makeSigns(col, cl);
+  look(col, cl);
   cl.log.push(`${units.map((u) => u.name).join(', ')} stepped into the Veil at the edge of ${d.name}. At home, no time will pass.`);
   col.clearing = cl;
   return cl;
@@ -499,7 +553,8 @@ export function approachPoint(col: Colony, cl: Clearing, u: Unit, target: Pt, ne
   return { x: best.x, z: best.z, cost: walkCost(r, best.x, best.z, u.ap) ?? u.ap, beside: best.gap <= 0.01 };
 }
 
-const inWard = (col: Colony, cl: Clearing, p: Unit | Spirit | Pt) => cl.wards.some((wd) => dist(col, wd, p) <= within(wd.r));
+/** Sheltered from a Hollow's dread: in a pool of light (a set-down lantern, the hearthstone) or a ring of rowan. */
+const sheltered = (col: Colony, cl: Clearing, p: Pt) => inPool(col, cl, p) || inRowan(cl, p);
 const say = (cl: Clearing, text: string) => { cl.log.push(text); if (cl.log.length > 40) cl.log.shift(); };
 
 function unitOf(cl: Clearing, id: number) { const u = cl.units.find((x) => x.id === id && x.state === 'in'); return u; }
@@ -519,14 +574,15 @@ export function moveUnit(col: Colony, cl: Clearing, unitId: number, x: number, z
   u.ap -= cost;
   u.trail = path;
   u.x = x; u.z = z;
+  look(col, cl);
   const inside = ruinAtPoint(col.world, x, z);
   if (inside && !cl.log[cl.log.length - 1]?.includes(inside.name)) say(cl, `${u.name} went in through the door of ${inside.name}.`);
   return null;
 }
 
 /** What can be done to a spirit (or an ally) from where a unit stands. */
-export type Verb = 'listen' | 'offer_food' | 'offer_glimmer' | 'offer_object' | 'rest' | 'invite' | 'befriend' | 'unravel' | 'banish' | 'steady' | 'ward' | 'name' | 'play' | 'search';
-export const VERB_COST: Record<Verb, number> = { listen: 1, offer_food: 1, offer_glimmer: 1, offer_object: 1, rest: 1, invite: 1, befriend: 1, unravel: 2, banish: 2, steady: 1, ward: 1, name: 1, play: 2, search: 1 };
+export type Verb = 'listen' | 'offer_food' | 'offer_glimmer' | 'offer_object' | 'rest' | 'invite' | 'befriend' | 'unravel' | 'banish' | 'steady' | 'name' | 'play' | 'search';
+export const VERB_COST: Record<Verb, number> = { listen: 1, offer_food: 1, offer_glimmer: 1, offer_object: 1, rest: 1, invite: 1, befriend: 1, unravel: 2, banish: 2, steady: 1, name: 1, play: 2, search: 1 };
 
 export function hasObjectFor(col: Colony, s: Spirit, cl?: Clearing): boolean {
   if (s.home === undefined) return false;
@@ -554,7 +610,7 @@ export function verbsFor(col: Colony, cl: Clearing, u: Unit, s: Spirit): { verb:
   if (s.kind === 'remnant') {
     // Something of theirs: search the house for it, then give it back.
     if (s.home !== undefined && (s.need === 'object' && s.known >= 2 || cl.found[s.id])) {
-      if (!hasObjectFor(col, s, cl)) add('search', near, 'Stand beside them, in their house.');
+      if (!hasObjectFor(col, s, cl)) add('search', near && lightAt(col, cl, u).lit, !near ? 'Stand beside them, in their house.' : 'Too dark to search: bring a light.');
       add('offer_object', near && hasObjectFor(col, s, cl), !near ? 'Stand beside them.' : 'Search their house for something of theirs first.');
     }
     add('offer_food', near && res.food >= 2, !near ? 'Stand beside them.' : 'Not enough food in the stores.');
@@ -573,16 +629,6 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
   const u = unitOf(cl, unitId);
   if (!u || cl.outcome) return 'They can\'t act.';
   const res = col.community.resources;
-  if (verb === 'ward') {
-    if (u.fae) return 'The Folk won\'t touch iron or salt.';
-    if (cl.wardsLeft <= 0) return 'No lanterns left to ward with.';
-    if (u.ap < 1) return 'Not enough time this turn.';
-    u.ap -= 1; cl.wardsLeft--;
-    cl.wards.push({ x: u.x, z: u.z, r: 2 });
-    say(cl, `${u.name} set down a lantern and drew a ring of salt around it. Inside the light, the Veil holds back.`);
-    checkBreak(cl); settleCheck(col, cl);
-    return null;
-  }
   if (verb === 'steady') {
     const ally = cl.units.find((x) => x.id === targetId && x.state === 'in');
     if (!ally || ally === u) return 'Choose someone else.';
@@ -656,7 +702,7 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
       say(cl, `${cap(s.name)} decided it liked ${u.name}. It will go to live with the Folk.`);
       break;
     case 'unravel': {
-      const dmg = 1 + (inWard(col, cl, s) ? 1 : 0) + (u.anchor ? 1 : 0);
+      const dmg = 1 + (lightAt(col, cl, spiritAt(col, s)).lit ? 1 : 0) + (u.anchor ? 1 : 0);
       s.integrity = Math.max(0, s.integrity - dmg);
       u.nerve -= u.anchor ? 1 : 2;
       if (s.integrity <= 0) {
@@ -699,6 +745,32 @@ export function act(col: Colony, cl: Clearing, unitId: number, verb: Verb, targe
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 
+/** Do something with a lantern (DESIGN §38.12): raise, shutter, set down, pick up, relight, refuel, aim a torch at a spirit. */
+export function lanternAct(col: Colony, cl: Clearing, unitId: number, op: LanternOp, target?: number): string | null {
+  const u = unitOf(cl, unitId);
+  if (!u || cl.outcome) return 'They can\'t.';
+  const err = useLantern(col, cl, u, op, target);
+  if (!err) { checkBreak(cl); settleCheck(col, cl); }
+  return err;
+}
+
+/** A seer sounds the Veil (DESIGN §38.14): quietly, or calling out (heard by what's out there). */
+export function soundAct(col: Colony, cl: Clearing, unitId: number, loud: boolean): string | null {
+  const u = unitOf(cl, unitId);
+  if (!u || cl.outcome) return 'They can\'t.';
+  return sound(col, cl, u, loud);
+}
+
+/** Lay what someone carries (DESIGN §38.13): salt or iron as a line toward (x, z); rowan or a bell at (x, z). */
+export function wardAct(col: Colony, cl: Clearing, unitId: number, item: ItemKind, x: number, z: number): string | null {
+  const u = unitOf(cl, unitId);
+  if (!u || cl.outcome) return 'They can\'t.';
+  return placeWard(col, cl, u, item, x, z);
+}
+
+/** Can someone sound the Veil? */
+export const canSound = (u: Unit) => u.state === 'in' && (u.sight >= SEER_SIGHT || !!u.fae);
+
 /** The district is quiet enough to settle: no Hollow, and everything left is at peace. */
 export function quiet(col: Colony, cl: Clearing): boolean {
   return clearingHaunt(col, cl).spirits.every((s) => !present(s) || (s.kind !== 'hollow' && s.calm >= 2));
@@ -712,7 +784,7 @@ function checkBreak(cl: Clearing) {
   for (const u of cl.units) {
     if (u.state !== 'in' || u.nerve > 0) continue;
     if (u.fae) { u.state = 'fled'; say(cl, `${u.name} went pale as a moth and was simply not there any more. Gone home to the hill.`); continue; }
-    if (u.lured) { u.state = 'taken'; say(cl, `${u.name} followed the light between two houses, and did not come out the other side.`); }
+    if (u.lured && !atHearth(cl, u)) { u.state = 'taken'; say(cl, `${u.name} followed the light between two houses, and did not come out the other side.`); }
     else { u.state = 'fled'; say(cl, `${u.name}'s nerve broke. They ran for home and didn't stop.`); }
   }
 }
@@ -726,7 +798,7 @@ function pull(col: Colony, cl: Clearing, u: Unit, to: Spirit, n: number) {
     const d = Math.hypot(t.x - u.x, t.z - u.z);
     if (d <= BESIDE - 0.3) break;
     const x = u.x + ((t.x - u.x) / d) * 0.2, z = u.z + ((t.z - u.z) / d) * 0.2;
-    if (!standable(g, occ, x, z)) break;
+    if (!standable(g, occ, x, z) || lineBetween(cl, u, { x, z })) break;
     u.x = x; u.z = z;
   }
   if (u.x !== from.x || u.z !== from.z) u.trail = [from, { x: u.x, z: u.z }];
@@ -742,15 +814,24 @@ export const THREAT_TEXT: Record<Threat, string> = { dread: 'its dread', weeping
  * end of the turn, so the walk preview can show them (DESIGN §38.10). A lamp
  * must be seen to lure: a wall or a wreck between hides you from it.
  */
-export function reaches(col: Colony, cl: Clearing, s: Spirit, who: Pick<Unit, 'anchor' | 'fae'> & Pt): Threat | null {
+export function reaches(col: Colony, cl: Clearing, s: Spirit, who: Pick<Unit, 'anchor' | 'fae' | 'lantern' | 'id'> & Pt): Threat | null {
   if (!present(s)) return null;
   const d = dist(col, who, s);
+  const at = spiritAt(col, s);
   if (s.kind === 'hollow') return d <= within(4) ? 'dread' : null;
   if (s.calm >= 2) return null;
   if (s.kind === 'remnant') return d <= within(2) && !who.anchor ? 'weeping' : null;
-  if (s.kind === 'hedge') return d <= within(5) && !inWard(col, cl, who) ? 'tricks' : null;
-  if (d > within(8) || inWard(col, cl, who) || who.fae) return null;
-  return lineOfSight(gridOf(col, cl), spiritAt(col, s), who) ? 'lure' : null;
+  // Shuttered, or with no light at all, they're hard to notice beyond arm's length.
+  const l = who.lantern;
+  const quiet = !who.fae && (!l?.lit || l.state !== 'raised');
+  if (quiet && d > within(2)) return null;
+  // A torch's beam on it breaks its hold this turn; salt or iron between stops it reaching.
+  if (cl.beamed.includes(s.id) || lineBetween(cl, at, who)) return null;
+  if (s.kind === 'hedge') return d <= within(5) && !inRowan(cl, who) ? 'tricks' : null;
+  // A lamp is drawn to warm light, and to whoever called out.
+  const reach = 8 + (l?.lit && l.state === 'raised' && l.kind === 'tin' ? 2 : 0) + (cl.heard[s.id] === who.id ? 4 : 0);
+  if (d > within(reach) || who.fae || inPool(col, cl, who)) return null;
+  return lineOfSight(gridOf(col, cl), at, who) ? 'lure' : null;
 }
 
 /** Everything that would reach someone standing at a point, among the spirits the team can perceive. */
@@ -758,7 +839,7 @@ export function threatsAt(col: Colony, cl: Clearing, u: Unit, x: number, z: numb
   const out: { spirit: Spirit; threat: Threat }[] = [];
   for (const s of clearingHaunt(col, cl).spirits) {
     if (!present(s) || (teamReading(col, cl, s) === 'none' && s.known < 1)) continue;
-    const t = reaches(col, cl, s, { x, z, anchor: u.anchor, fae: u.fae });
+    const t = reaches(col, cl, s, { x, z, anchor: u.anchor, fae: u.fae, lantern: u.lantern, id: u.id });
     if (t) out.push({ spirit: s, threat: t });
   }
   return out;
@@ -770,6 +851,7 @@ export function endTurn(col: Colony, cl: Clearing) {
   const rng = clRng(cl);
   for (const u of cl.units) u.lured = false;
   const team = () => cl.units.filter((u) => u.state === 'in');
+  beforeSpirits(col, cl);
   for (const s of h.spirits) {
     if (!present(s)) continue;
     if (s.kind === 'hollow') {
@@ -779,7 +861,9 @@ export function endTurn(col: Colony, cl: Clearing) {
         if (!reaches(col, cl, s, u)) continue;
         let loss = (u.anchor ? 1 : 2) + deep;
         if (u.fae) loss = Math.ceil(loss / 2);
-        if (inWard(col, cl, u)) loss = Math.ceil(loss / 2);
+        if (sheltered(col, cl, u)) loss = Math.ceil(loss / 2);
+        // It turns toward whoever called out into the dark.
+        if (cl.heard[s.id] === u.id) loss += 1;
         u.nerve -= loss;
       }
       if (team().some((u) => reaches(col, cl, s, u))) say(cl, `${cap(s.name)} pressed on everyone near it, like a held breath.`);
@@ -800,6 +884,9 @@ export function endTurn(col: Colony, cl: Clearing) {
       } else {
         const u = near.sort((x, y) => dist(col, x, s) - dist(col, y, s))[0];
         pull(col, cl, u, s, 1);
+        // Tugged from somewhere over there: the team knows roughly where it is now.
+        const at = spiritAt(col, s);
+        addEcho(cl, { spirit: s.id, turn: cl.turn, quality: 'circle', x: at.x + 0.8, z: at.z - 0.6, r: 2.5, source: 'sign' });
         u.nerve -= 1;
         say(cl, `Something tugged ${u.name} toward the brambles.`);
       }
@@ -809,16 +896,21 @@ export function endTurn(col: Colony, cl: Clearing) {
       if (!u) continue;
       pull(col, cl, u, s, 2);
       u.nerve -= 1;
-      if (dist(col, u, s) <= BESIDE && u.nerve <= 3) {
+      // A lamp is a light: whoever it pulls has seen exactly where it is.
+      const at = spiritAt(col, s);
+      addEcho(cl, { spirit: s.id, turn: cl.turn, quality: 'exact', x: at.x, z: at.z, r: 0.5, source: 'sign' });
+      if (dist(col, u, s) <= BESIDE && u.nerve <= 3 && !atHearth(cl, u)) {
         u.state = 'taken';
         say(cl, `${u.name} walked after ${s.name} with a smile on their face, and the light went out, and so did they.`);
       } else say(cl, `${u.name} found themselves walking toward ${s.name}${dist(col, u, s) <= BESIDE ? ', close enough to feel its warmth' : ''}.`);
     }
   }
+  afterSpirits(col, cl);
   checkBreak(cl);
   saveRng(cl, rng);
   if (!team().length) { finish(col, cl, 'lost'); return; }
   cl.turn++;
+  ageEchoes(col, cl);
   for (const u of team()) u.ap = AP_PER_TURN;
   if (cl.turn > cl.maxTurns) {
     say(cl, 'The Veil thinned toward morning. The team found themselves standing on an ordinary road.');
@@ -877,6 +969,9 @@ function applyClearing(col: Colony, cl: Clearing) {
       s.sight = Math.min(100, s.sight + 2);
     }
   }
+  // Iron laid in the Veil: the Folk hear of it, more so in country they love (DESIGN §38.17).
+  const iron = ironReckoning(col, cl);
+  if (iron) { changeStanding(col, iron); log(c, `The Folk heard that iron was laid in ${d.name}. ${iron < -1 ? 'They are cold about it.' : 'They said nothing, pointedly.'}`, 'bad'); }
   const back = cl.units.filter((u) => u.state !== 'taken').map((u) => u.name);
   const taken = cl.units.filter((u) => u.state === 'taken').map((u) => u.name);
   const resolved = h.spirits.filter((s) => s.fate !== 'present').length;

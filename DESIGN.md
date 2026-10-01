@@ -4871,3 +4871,152 @@ them; perhaps outlines on built things but not plants, and not glass.
 - `__game.outlineShares()` gives each category's share of the screen (seed
   3, the camp: ground 62%, plants 20%, built 13%, old world 4.5%).
 - `shot.mjs` now prints an `eval` step's value.
+
+## 40. Steps 2–5 of the first mission: the dark, lanterns, finding, wards (built overnight; not published)
+
+Built from §38.11–38.17 (`sim/veilkit.ts`, with the rules in `sim/haunt.ts`).
+The user asked for "a decent chunk of backend work" while away; the rules,
+the test bot, the tests and enough of the interface to play it are done.
+Numbers are first guesses to tune with the user.
+
+### 40.1 The kit (§38.13)
+
+- **Lanterns:**
+  - everyone carries a tin lantern (radius 4, warm, 14 turns of fuel);
+  - if the village has any power, the first person with low Sight carries an
+    electric torch instead (a cone 8 long, cold, 10 turns);
+  - each tin lantern's candles cost 1 food from the stores; without the food,
+    it goes in half full.
+- **Two slots each** (`Unit.slots`), packed by `defaultKit` (seers: a bell
+  and spare fuel; anchors: rowan and salt; others: a radio if there is power,
+  otherwise salt, plus fuel). `startClearing(..., kit)` takes a chosen kit.
+  The stores pay for what is packed:
+
+  | Item | Cost |
+  | --- | --- |
+  | iron | 2 scrap |
+  | bell | 1 scrap |
+  | rowan | 1 wood |
+  | spare fuel | 1 food |
+  | radio | 1 scrap, and needs power |
+  | salt | free |
+
+  What can't be paid for stays at home.
+- **The hearthstone** is set down where the team came in: a small warm
+  light (radius 2.5), and nobody beside it is taken (they flee instead).
+
+### 40.2 The dark (§38.11, §38.16)
+
+- **Ground is seen** where a light reaches it now (radius, a torch's cone,
+  line of sight), plus last turn's lit tiles (`Clearing.dusk`). Everything
+  else sinks into a violet dark with faint shapes:
+  - the clearing writes what is seen into the fog texture's green channel;
+  - every material reads it under `uVeilDark` (`util.ts`);
+  - outlines stop at the dark too.
+- **Perception:** spirits are sensed, not lit. Passive Sight now reaches only
+  `senseRange` = 3 + Sight/25 paces (it was 10).
+
+### 40.3 Lanterns (§38.12)
+
+- **Handling:** raise / shutter / set down / pick up are free; relight and
+  refuel (spare fuel) take an action.
+  - A set-down lantern is a **pool** (a ward): radius 3.5. Inside it lures
+    fail and a Hollow's dread is halved; the bearer goes on in the dark.
+- **Fuel** burns 1 a turn (0.5 shuttered).
+  - A Hollow drinks lights within its reach: 1 more fuel, and a 35% chance
+    the light goes out.
+  - At 0 the lantern gutters out.
+- **The dark frightens:**
+  - no light on someone at the turn's end: −1 Nerve;
+  - alone with a shuttered lantern: −1 every other turn.
+- **Noticed or not:** shuttered or unlit, hedge-folk and lamps don't notice
+  someone beyond arm's length (2.6). A raised tin lantern draws a lamp from
+  2 paces further.
+- **Spirit by light** (built so far):
+  - warm light on a remnant that wants light: calm +1 a turn (replaces the
+    old "ward beside them");
+  - a torch beam (aimed at a spirit, free): a lamp's lure and a hedge's
+    tricks fail that turn, and a remnant loses 1 calm;
+  - light on a Hollow helps unravel it (+1, as the old ward did).
+- **Not yet:** foxfire, flares, the mirror lantern, tailored parts.
+
+### 40.4 Finding spirits (§38.14)
+
+- **Signs** (`makeSigns`): two near each spirit, three near a Hollow, one of
+  a remnant's hinting at what it wants ("two cups set out on a garden table,
+  one untouched"). A sign is found when light falls on it; it is logged, and
+  leaves an echo circle (radius 3) near what left it.
+- **Sounding** (seers, Sight 35+, and the Folk), one action:
+  - *sound* reaches 9 paces, unheard; *call* reaches 18 and is heard;
+  - quality = Sight + land − depth − 2 × distance (+5 for a call): exact,
+    a circle (radius 2), or a bearing only (an arc);
+  - two bearings from places at least 4 apart, within a turn, make a circle
+    (radius 1.4) where they cross;
+  - **heard** (a call): a lamp reaches 4 further for the caller, the Hollow
+    presses the caller 1 harder, and remnants go 8 deeper.
+- **Echoes fade:** exact → a circle radius 1, then +1 radius a turn, and
+  gone after 3 turns.
+- **Other ways to know:**
+  - **bells** give exact echoes within 4.5 each turn's end;
+  - a **radio** gives a ring: how far, not which way (12 at most);
+  - **being lured** gives the lamp's exact place; a hedge's tug gives a
+    circle.
+
+### 40.5 Wards (§38.13)
+
+- **Salt / iron:** a line from where you stand toward a point, up to 5
+  long. Hedge-folk and lamps can't reach across it, and a lure's pull stops
+  at it.
+  - Salt has 4 hp, iron 8.
+  - Hedge-folk wear salt down; a Hollow wears everything near it.
+  - **Iron:** a Folk companion within 3 loses 1 Nerve a turn, and laying it
+    at all costs standing at the end (−3 in Folk-suited districts, −1
+    elsewhere).
+- **Rowan:** a ring of radius 2, 3 hp. Inside it, Nerve never falls below 2
+  and gains 1 a turn; a Hollow withers it.
+- **Bell:** see above (4 hp).
+
+### 40.6 Ruins and sight (a fix)
+
+A ruin's walls no longer block light or sight into the ruin itself (a
+doorway sees in and out). Before, a lantern could never light a remnant in
+its own house.
+
+### 40.7 The test bot and balance
+
+- `sim/clearbot.ts` now plays only on what the team knows (perceived spirits,
+  echoes, signs):
+  - seers sound every turn while anything is unaccounted for (quiet on odd
+    turns, a call on even);
+  - the blind explore outward;
+  - lanterns are tended; torches are aimed at lamps and hedges;
+  - beside the Hollow it lays rowan and sets a lantern down.
+- Nights are 14 turns now (were 12).
+- `scripts/clearprobe.ts -- [kind] [seeds] [--log] [--poor]` plays one kind
+  of district on many seeds.
+  - Suburbs, 12 seeds: 6 cleared, 6 withdrew; 9 people fled and 1 was taken
+    across the runs.
+  - Most failures end with the Hollow nearly unravelled (hold 1–2) or never
+    reached; that is the bot's weakness, and a player should do better.
+- `tests/veilkit.test.ts` (13 tests). The clearing tests still pass.
+
+### 40.8 The interface (minimal)
+
+- **Right-click one of the team:** their lantern's actions, *Sound the Veil*
+  and *Call out into the dark* (seers), and *Lay salt / iron / rowan / bell*
+  (then click where; right-click or Escape cancels; a preview line or ring
+  follows the cursor).
+- **Clicking a spirit** (with a torch): *Shine the torch on it*.
+- **The team panel** shows each person's lantern, fuel and kit.
+- **"What lives here"** lists echoes of what isn't yet perceived (clear /
+  about here / a bearing only, and how old).
+- **On the ground:** echoes as violet rings and arcs fading with age; wards
+  as lines and rings; found signs as small pale marks; the hearthstone in
+  orange.
+
+**Not yet:**
+- a packing screen before setting out (the kit is the default);
+- light itself drawn (glow pools);
+- a debrief;
+- map layouts per district kind;
+- the remaining kinds of light.

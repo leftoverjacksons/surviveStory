@@ -12,7 +12,8 @@
 import * as THREE from 'three';
 import type { Colony } from '../sim/colony';
 import { alive } from '../sim/community';
-import { gridOf, occupantsFor, previewPath, reachOf, readingOf, teamReading, threatsAt, walkCost, type Clearing, type Reach, type Reading, type Spirit, type Threat } from '../sim/haunt';
+import { gridOf, occupantsFor, previewPath, reachOf, readingOf, teamReading, threatsAt, walkCost, type Clearing, type ItemKind, type Reach, type Reading, type Spirit, type Threat } from '../sim/haunt';
+import { HEARTH_R, seenTiles } from '../sim/veilkit';
 import { CELL, standable, type Pt } from '../sim/veilmove';
 import { resonanceAt } from '../sim/veil';
 import { heightAt, tileX, tileZ } from '../sim/world';
@@ -44,6 +45,13 @@ export class ClearingView {
   private pathDots: THREE.InstancedMesh;
   private ghost: THREE.Group;
   private warn = new THREE.Group();
+  /** Told what the team can see whenever it changes (main.ts darkens the rest through the fog texture). */
+  onSeen: ((seen: Set<number> | null) => void) | null = null;
+  /** Wards, echoes and found signs. */
+  private marks = new THREE.Group();
+  private placeMarks = new THREE.Group();
+  private marksKey = '';
+  private placeKey = '';
   private rings: THREE.Group = new THREE.Group();
   private reachKey = '';
   private previewKey = '';
@@ -69,7 +77,7 @@ export class ClearingView {
     head.position.y = 1.35;
     this.ghost.add(body, head);
     this.ghost.visible = false;
-    this.arena.add(this.reach.mesh, this.pathDots, this.ghost, this.warn, this.rings);
+    this.arena.add(this.reach.mesh, this.pathDots, this.ghost, this.warn, this.rings, this.marks, this.placeMarks);
     this.arena.visible = false;
     this.group.add(this.ambient, this.arena);
   }
@@ -176,6 +184,68 @@ export class ClearingView {
     f.label.hidden = p.z > 1;
   }
 
+  /** A flat strip along the ground from a to b (salt, iron, a ward line being laid). */
+  private ribbon(a: Pt, b: Pt, color: string, opacity: number, width = 0.16): THREE.Mesh {
+    const w = this.col.world;
+    const len = Math.max(0.01, Math.hypot(b.x - a.x, b.z - a.z));
+    const geo = new THREE.PlaneGeometry(len, width);
+    geo.rotateX(-Math.PI / 2);
+    const m = new THREE.Mesh(geo, flat(color, opacity));
+    const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2;
+    m.position.set(cx, heightAt(w, cx, cz) + 0.08, cz);
+    m.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+    m.renderOrder = 6;
+    return m;
+  }
+
+  /** An arc of ground at `dist` ± `r` from a point, `spread` either side of a bearing (a sounding's bearing-only echo). */
+  private arc(from: Pt, bearing: number, spread: number, d: number, r: number, color: string, opacity: number): THREE.Mesh {
+    const inner = Math.max(0.2, d - r), outer = d + r;
+    const geo = new THREE.RingGeometry(inner, outer, 24, 1, -bearing - spread, spread * 2);
+    const m = new THREE.Mesh(geo, flat(color, opacity));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(from.x, heightAt(this.col.world, from.x, from.z) + 0.07, from.z);
+    m.renderOrder = 5;
+    return m;
+  }
+
+  private drawMarks(cl: Clearing) {
+    for (const c of [...this.marks.children]) { this.marks.remove(c); (c as THREE.Mesh).geometry.dispose(); }
+    for (const wd of cl.wards) {
+      if (wd.kind === 'salt' || wd.kind === 'iron') this.marks.add(this.ribbon(wd, { x: wd.x2!, z: wd.z2! }, wd.kind === 'salt' ? '#f2efe6' : '#4a4e55', 0.85, wd.kind === 'salt' ? 0.14 : 0.2));
+      else if (wd.kind === 'pool') this.marks.add(this.ring(wd.x, wd.z, wd.r, '#ffcf7a', 0.5, 0.08));
+      else if (wd.kind === 'hearth') this.marks.add(this.ring(wd.x, wd.z, HEARTH_R, '#ff9a4a', 0.65, 0.14));
+      else if (wd.kind === 'rowan') this.marks.add(this.ring(wd.x, wd.z, wd.r, '#9ad86a', 0.75, 0.14));
+      else if (wd.kind === 'bell') { this.marks.add(this.ring(wd.x, wd.z, 0.35, '#e8d48a', 0.9, 0.12)); this.marks.add(this.ring(wd.x, wd.z, wd.r, '#e8d48a', 0.22, 0.06)); }
+    }
+    // Echoes: violet, fading with age.
+    for (const e of cl.echoes) {
+      const fade = Math.max(0.25, 1 - (cl.turn - e.turn) * 0.25);
+      if (e.quality === 'arc' && e.from) this.marks.add(this.arc(e.from, e.bearing!, e.spread!, e.dist!, e.r, '#b48cff', 0.3 * fade));
+      else if (e.quality === 'ring' && e.from) this.marks.add(this.arc(e.from, 0, Math.PI, e.dist!, e.r, '#b48cff', 0.14 * fade));
+      else this.marks.add(this.ring(e.x, e.z, Math.max(0.5, e.r), '#b48cff', (e.quality === 'exact' ? 0.9 : 0.6) * fade, e.quality === 'exact' ? 0.12 : 0.08));
+    }
+    // Signs found: a small pale mark where each was.
+    for (const sg of cl.signs) if (sg.found) this.marks.add(this.ring(sg.x, sg.z, 0.28, '#fff2c8', 0.8, 0.1));
+  }
+
+  /** Laying a ward: show where it would go. */
+  private drawPlacing(cl: Clearing, placing: { unit: number; item: ItemKind } | null, hover: Pt | null) {
+    const u = placing && cl.units.find((x) => x.id === placing.unit);
+    const key = u && hover ? `${placing!.item}|${u.x},${u.z}|${hover.x.toFixed(2)},${hover.z.toFixed(2)}` : '';
+    if (key === this.placeKey) return;
+    this.placeKey = key;
+    for (const c of [...this.placeMarks.children]) { this.placeMarks.remove(c); (c as THREE.Mesh).geometry.dispose(); }
+    if (!u || !hover || !placing) return;
+    if (placing.item === 'salt' || placing.item === 'iron') {
+      const d = Math.hypot(hover.x - u.x, hover.z - u.z), k = Math.min(1, 5 / Math.max(0.01, d));
+      this.placeMarks.add(this.ribbon(u, { x: u.x + (hover.x - u.x) * k, z: u.z + (hover.z - u.z) * k }, placing.item === 'salt' ? '#f2efe6' : '#6a6e75', 0.5));
+    } else {
+      const ok = Math.hypot(hover.x - u.x, hover.z - u.z) <= 2.2;
+      this.placeMarks.add(this.ring(hover.x, hover.z, placing.item === 'rowan' ? 2 : 4.5, ok ? (placing.item === 'rowan' ? '#9ad86a' : '#e8d48a') : '#ff7a5a', 0.55, 0.1));
+    }
+  }
+
   /** Outside a clearing: the haunted districts at night, as the best perceiver would see them. */
   updateAmbient(t: number, night: number, viewer: number, camera: THREE.Camera, width: number, height: number) {
     this.ambient.visible = night > 0.3;
@@ -209,14 +279,25 @@ export class ClearingView {
   }
 
   /** Inside a clearing. `hover` is the point under the cursor, in world units. */
-  updateArena(t: number, cl: Clearing | null, selUnit: number, hover: Pt | null, camera: THREE.Camera, width: number, height: number) {
+  updateArena(t: number, cl: Clearing | null, selUnit: number, hover: Pt | null, camera: THREE.Camera, width: number, height: number, placing: { unit: number; item: ItemKind } | null = null) {
     this.arena.visible = !!cl;
     const live = new Set<string>();
-    if (!cl) { this.preview = null; this.previewKey = ''; this.reachKey = ''; }
+    if (!cl) {
+      if (this.marksKey) this.onSeen?.(null);
+      this.preview = null; this.previewKey = ''; this.reachKey = ''; this.marksKey = ''; this.placeKey = '';
+    }
     if (cl) {
       const w = this.col.world;
       const h = this.col.haunts[cl.haunt];
       const u = cl.units.find((x) => x.id === selUnit && x.state === 'in');
+      // The dark, the wards, the echoes and the signs: redrawn when anything about the light changes.
+      const mk = `${cl.turn}|${cl.units.map((x) => `${x.x.toFixed(2)},${x.z.toFixed(2)},${x.state},${x.lantern ? `${x.lantern.state}${x.lantern.lit ? 1 : 0}${x.lantern.aim?.toFixed(2) ?? ''}` : ''}`).join(';')}|${cl.wards.map((x) => `${x.kind}${x.hp}`).join(',')}|${cl.echoes.map((e) => `${e.spirit}${e.quality}${e.turn}`).join(',')}|${cl.signs.filter((x) => x.found).length}`;
+      if (mk !== this.marksKey) {
+        this.marksKey = mk;
+        this.onSeen?.(seenTiles(this.col, cl));
+        this.drawMarks(cl);
+      }
+      this.drawPlacing(cl, placing, hover);
       // Where the chosen one can go this turn: two soft rings.
       const rk = `${u ? `${u.id}:${u.x},${u.z}:${u.ap}` : ''}:${cl.turn}:${cl.units.map((x) => `${x.x},${x.z},${x.state}`).join(';')}:${h.spirits.map((s) => s.fate[0]).join('')}:${cl.wards.length}`;
       let reach: Reach | null = null;
@@ -231,7 +312,6 @@ export class ClearingView {
           const frac = x.nerve / x.maxNerve;
           this.rings.add(this.ring(x.x, x.z, 0.5, x.id === selUnit ? '#ffffff' : frac < 0.35 ? '#ff7a6a' : frac < 0.65 ? '#ffd06a' : '#8af0c8', 0.9, x.id === selUnit ? 0.1 : 0.07));
         }
-        for (const wd of cl.wards) this.rings.add(this.ring(wd.x, wd.z, wd.r + 0.6, '#ffcf7a', 0.55, 0.1));
         for (const s of h.spirits) if (s.kind === 'hollow' && s.fate === 'present' && s.known >= 1) this.rings.add(this.ring(tileX(w, s.tx), tileZ(w, s.tz), 4.6, '#8a5ad0', 0.45, 0.12));
       }
       this.reach.mesh.visible = !!reach;
@@ -413,3 +493,4 @@ class ReachOverlay {
     this.mesh.geometry = geo;
   }
 }
+

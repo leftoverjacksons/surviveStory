@@ -52,6 +52,8 @@ export class VeilGrid {
   readonly n: number;
   private walk: Uint8Array;
   private opaque: Uint8Array;
+  /** Which ruin a tile is part of (its index + 1; 0: none). */
+  private ruin: Int32Array;
   /** Standing trees: round, so the ground between them isn't cut into squares. */
   private tree: Uint8Array;
   constructor(private w: World, cx: number, cz: number, radius: number) {
@@ -60,6 +62,7 @@ export class VeilGrid {
     this.n = r * 2 + 1;
     this.walk = new Uint8Array(this.n * this.n);
     this.opaque = new Uint8Array(this.n * this.n);
+    this.ruin = new Int32Array(this.n * this.n);
     this.tree = new Uint8Array(this.n * this.n);
     const heapAt = new Set(w.heaps.map((h) => `${h.tx},${h.tz}`));
     for (let j = 0; j < this.n; j++) for (let i = 0; i < this.n; i++) {
@@ -68,11 +71,13 @@ export class VeilGrid {
       const k = j * this.n + i, wi = idx(w, tx, tz);
       const tree = w.treeAt[wi] >= 0 && !w.trees[w.treeAt[wi]].felled;
       const heap = heapAt.has(`${tx},${tz}`);
-      const ruin = w.blocked[wi] ? !!ruinAtTile(w, tx, tz) : false;
+      const r = w.blocked[wi] ? ruinAtTile(w, tx, tz) : undefined;
+      const ruin = !!r;
+      if (r) this.ruin[k] = w.ruins.indexOf(r) + 1;
       // A tree's tile is walkable ground; its trunk is kept clear of in `fits`.
       this.walk[k] = w.ground[wi] !== Ground.Water && !heap && (!w.blocked[wi] || ruin) ? 1 : 0;
       this.tree[k] = tree ? 1 : 0;
-      this.opaque[k] = tree || heap || ruin ? 1 : 0;
+      this.opaque[k] = tree || heap ? 1 : 0;
     }
   }
   private at(x: number, z: number, a: Uint8Array): number {
@@ -81,7 +86,18 @@ export class VeilGrid {
     return a[j * this.n + i];
   }
   walkable(x: number, z: number): boolean { return this.at(x, z, this.walk) === 1; }
-  blocksSight(x: number, z: number): boolean { return this.at(x, z, this.opaque) === 1; }
+  /** Trees and wrecks block sight; a ruin's walls block it unless one end is inside that ruin (a doorway sees in, and out). */
+  blocksSight(x: number, z: number, from = 0, to = 0): boolean {
+    if (this.at(x, z, this.opaque) === 1) return true;
+    const r = this.ruinAt(x, z);
+    return r > 0 && r !== from && r !== to;
+  }
+  /** The ruin a point is in (index + 1), or 0. */
+  ruinAt(x: number, z: number): number {
+    const i = toTileX(this.w, x) - this.tx0, j = toTileZ(this.w, z) - this.tz0;
+    if (i < 0 || j < 0 || i >= this.n || j >= this.n) return 0;
+    return this.ruin[j * this.n + i];
+  }
   /** A person (a little wider than a point) fits here: on walkable ground, clear of tree trunks. */
   fits(x: number, z: number): boolean {
     const e = 0.18;
@@ -108,10 +124,11 @@ export function standable(g: VeilGrid, occ: Occupant[], x: number, z: number): b
 export function lineOfSight(g: VeilGrid, a: Pt, b: Pt): boolean {
   const d = Math.hypot(b.x - a.x, b.z - a.z);
   const n = Math.ceil(d / 0.25);
+  const ra = g.ruinAt(a.x, a.z), rb = g.ruinAt(b.x, b.z);
   for (let i = 1; i < n; i++) {
     const t = i / n;
     if (t * d < 0.6 || (1 - t) * d < 0.6) continue;
-    if (g.blocksSight(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) return false;
+    if (g.blocksSight(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, ra, rb)) return false;
   }
   return true;
 }

@@ -54,6 +54,7 @@ reference: Tiny Glade.
   Playwright with swiftshader (about 1 fps). `shot.mjs` takes JSON steps;
   `compare.mjs` does before/after; `layers.mjs` finds which layer causes an
   artefact.
+- Clearings: `npx vite-node scripts/clearprobe.ts -- [kind] [seeds] [--log] [--poor]` (the test bot on many seeds).
 - Balance: `npx vite-node scripts/soak.ts -- [colonies] [years]` (multi-year,
   autopilot), `npm run balance`, `npm run sim -- <days>`; in game, the
   chronicle (key C).
@@ -282,6 +283,13 @@ reference: Tiny Glade.
     = cells within 12 of fires and homes). OUTLINES BY KIND (`render/outlinecats.ts`: stencil category per draw via
     Object3D.onBeforeRender, mask pass in OutlinePass; `tagOutline(mat, 'glass'|'plants')`; ground yields foot lines to
     objects; graphics panel "Outlines on…" + Built only / All presets; `GfxSettings.outlineOff`; `__game.outlineShares()`).
+    §40 MISSION STEPS 2–5 BUILT (not published; `sim/veilkit.ts`): kit (tin lantern/torch with fuel, 2 slots from
+    the stores, hearthstone), the dark (seen = lit now + last turn's `dusk`; unseen goes violet-dark via fog tex G +
+    `uVeilDark`; senseRange 3+Sight/25), lanterns (raise/shutter/set down=pool/relight/refuel/aim; Hollow drinks; dark
+    costs Nerve), signs, sounding (sound 9 / call 18, exact/circle/arc, triangulation, heard), bells, radio, salt/iron
+    lines, rowan, iron vs Folk. Ruins no longer block sight into themselves. Bot plays on knowledge only;
+    `scripts/clearprobe.ts` (suburbs ~50% cleared). Menus: right-click a team member. Next: packing screen, debrief,
+    light pools drawn, map layouts, then §38.8 step 2 (ties with reasons).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
