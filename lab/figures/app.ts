@@ -11,6 +11,7 @@ interface Figure {
   id: string; name: string; body: 'man' | 'woman' | 'child'; status?: string; error?: string | null;
   params: Record<string, string | number>; files: string[]; slots: Slot[]; names: Record<string, string>;
   done: string[]; stamp?: number; library?: string; game?: string; front: string; back?: string;
+  source?: { generator: string; licence: string; source_url?: string };
 }
 interface LibEntry { file: string; name: string; body: string; generator: string; licence: string; added: string }
 interface State { env: Record<string, unknown>; figures: Figure[]; library: LibEntry[]; queue: number }
@@ -81,7 +82,34 @@ function refreshStage() {
 }
 
 // ---------------------------------------------------------------- new figure form
-const picked: { front?: string; back?: string } = {};
+const picked: { front?: string; back?: string; mesh?: string } = {};
+function updateSourceForm() {
+  const backend = $<HTMLSelectElement>('backend').value;
+  const importing = backend === 'import', triposr = backend === 'triposr';
+  $('importFields').hidden = !importing;
+  $('qualityField').hidden = importing || triposr;
+  $('seedField').hidden = importing || triposr;
+  $('detailField').hidden = importing;
+  $('chunkField').hidden = !triposr;
+  $('sourceHint').textContent = importing
+    ? 'Bring a character mesh from Blender or a hosted generator. Use a Y-up GLB facing +Z and a matching front image. It will be re-rigged and recoloured.'
+    : triposr ? 'One front image makes the shape; a back image helps colour it. Start at resolution 192 on an 8 GB GPU. No seed or diffusion steps.'
+    : 'Hunyuan prototype backend. Its output licence restricts distribution in the EU, UK and South Korea.';
+  $<HTMLButtonElement>('make').textContent = importing ? 'Import and rig' : 'Make figure';
+  $<HTMLButtonElement>('make').disabled = !picked.front || (importing && !picked.mesh);
+}
+$('backend').addEventListener('change', updateSourceForm);
+$('mesh').addEventListener('change', () => {
+  delete picked.mesh;
+  updateSourceForm();
+  const file = $<HTMLInputElement>('mesh').files?.[0];
+  if (!file) return;
+  if (file.size > 64 * 1024 * 1024) { alertBox('Use a GLB under 64 MB.'); return; }
+  const reader = new FileReader();
+  reader.onload = () => { picked.mesh = reader.result as string; updateSourceForm(); };
+  reader.readAsDataURL(file);
+});
+updateSourceForm();
 function dropZone(id: string, key: 'front' | 'back') {
   const el = $(id), input = el.querySelector('input')!;
   const take = (file?: File | null) => {
@@ -92,7 +120,7 @@ function dropZone(id: string, key: 'front' | 'back') {
       el.style.backgroundImage = `url(${picked[key]})`;
       el.classList.add('has');
       if (key === 'front' && !$<HTMLInputElement>('name').value) $<HTMLInputElement>('name').value = file.name.replace(/\.[^.]+$/, '');
-      $<HTMLButtonElement>('make').disabled = !picked.front;
+      updateSourceForm();
     };
     r.readAsDataURL(file);
   };
@@ -117,12 +145,16 @@ $('make').addEventListener('click', async () => {
   try {
     const r = await api('figures', {
       name: $<HTMLInputElement>('name').value || 'figure', body: $<HTMLSelectElement>('body').value, front: picked.front, back: picked.back,
-      params: { backend: $<HTMLSelectElement>('backend').value, preset: $<HTMLSelectElement>('preset').value, octree: num('octree'), seed: num('seed'), tris: num('tris'), k: num('k') },
+      mesh: picked.mesh,
+      source: { generator: $<HTMLInputElement>('sourceGenerator').value, licence: $<HTMLInputElement>('sourceLicence').value, source_url: $<HTMLInputElement>('sourceUrl').value },
+      params: { backend: $<HTMLSelectElement>('backend').value, preset: $<HTMLSelectElement>('preset').value, octree: num('octree'), chunk_size: num('chunk'), seed: num('seed'), tris: num('tris'), k: num('k') },
     });
     select(r.id);
     for (const id of ['dropFront', 'dropBack']) { $(id).style.backgroundImage = ''; $(id).classList.remove('has'); }
-    delete picked.front; delete picked.back;
+    delete picked.front; delete picked.back; delete picked.mesh;
+    $<HTMLInputElement>('mesh').value = '';
     $<HTMLInputElement>('name').value = '';
+    updateSourceForm();
   } catch (e) {
     alertBox(String(e));
     btn.disabled = false;
@@ -136,10 +168,10 @@ function alertBox(msg: string) { $('detail').insertAdjacentHTML('afterbegin', `<
 function statusClass(s = '') { return s.startsWith('running') || s === 'queued' ? 'running' : s; }
 function renderLists() {
   const e = state.env as Record<string, string | number | boolean>;
-  $('env').innerHTML = e.error ? `<span style="color:var(--bad)">${esc(e.error)}</span>`
+  $('env').innerHTML = (e.error ? '<span>Local image generation is not configured.</span>'
     : e.torch === undefined ? 'Checking the environment…'
-    : `${e.cuda ? `GPU <b>${esc(e.gpu)}</b>, ${e.vram} GB${Number(e.vram) < 7 ? ' (offloading)' : ''}` : '<b>CPU only</b> (about 1–4 min a figure)'}`
-      + `<br>Hunyuan code ${e.hy3d_repo ? '✓' : '✗ (run setup.py)'} · Blender ${e.blender ? '✓' : '✗'} · HF token ${e.hf_token ? '✓' : '—'}`
+    : `${e.cuda ? `GPU <b>${esc(e.gpu)}</b>, ${e.vram} GB` : '<b>CPU only</b>'}`)
+      + `<br>TripoSR ${e.triposr ? '✓' : '—'} · GLB import ${e.import ? '✓' : '—'} · Blender ${e.blender ? '✓' : '—'}`
       + (state.queue ? `<br>${state.queue} job(s) waiting` : '');
   $('figures').innerHTML = state.figures.map((f) => `
     <div class="item ${f.id === selected ? 'sel' : ''}" data-id="${esc(f.id)}">
@@ -178,6 +210,7 @@ function renderDetail() {
   detailKey = key;
   if (!f) { $('detail').innerHTML = '<div class="empty">Select or make a figure.</div>'; return; }
   const busy = !!f.status && (f.status.startsWith('running') || f.status === 'queued');
+  const hunyuan = !f.params.backend || ['local', 'space'].includes(String(f.params.backend));
   const imgs = [f.front, f.back, f.files.includes('front.png') ? 'front.png' : '', f.files.includes('back.png') ? 'back.png' : ''].filter(Boolean) as string[];
   const rgb = (c: number[]) => `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`;
   $('detail').innerHTML = `
@@ -198,7 +231,7 @@ function renderDetail() {
       <div class="actions"><button id="aNames" ${busy ? 'disabled' : ''}>Apply slot names</button></div>`
       : '<div class="sub">After rigging.</div>'}
     <h2>Redo</h2>
-    <div class="row">
+    <div class="row" ${hunyuan ? '' : 'hidden'}>
       <div><label>Seed</label><input id="dSeed" type="number" value="${esc(f.params.seed ?? 1234)}" /></div>
       <div><label>Quality</label><select id="dPreset">${['turbo', 'full'].map((p) => `<option ${p === (f.params.preset ?? 'turbo') ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
     </div>
@@ -207,11 +240,12 @@ function renderDetail() {
       <div><label>Colour slots</label><input id="dK" type="number" value="${esc(f.params.k ?? 5)}" min="3" max="8" /></div>
     </div>
     <div class="actions">
-      <button id="aGen" ${busy ? 'disabled' : ''}>Generate again</button>
+      <button id="aGen" ${busy ? 'disabled' : ''}>${f.params.backend === 'import' ? 'Re-import and rig' : 'Generate again'}</button>
       <button id="aRig" ${busy || !f.done.includes('generate') ? 'disabled' : ''}>Rig again</button>
     </div>
     <h2>Keep it</h2>
-    <div class="note">Hunyuan3D outputs are for prototypes: its licence forbids showing them in the EU, UK or South Korea.</div>
+    <div class="note">${esc(f.source?.generator ?? 'Hunyuan3D')} · ${esc(f.source?.licence ?? 'Tencent Hunyuan 3D community licence; prototype only.')}</div>
+    <div class="sub">Exported whole figures appear in the game's <code>?classic</code> pool. The default adult outfits use workshop parts.</div>
     <div class="actions">
       <button class="primary" id="aLib" ${busy || !f.files.includes('packed.glb') ? 'disabled' : ''}>${f.library ? 'Update in library' : 'Add to library'}</button>
       <button id="aGame" class="${armed.has('game') ? 'warn' : ''}" ${busy || !f.library ? 'disabled' : ''}>${armed.has('game') ? 'Click again: copy into src/assets/people' : f.game ? 'Update in game' : 'Send to game'}</button>
