@@ -145,7 +145,7 @@ function sizeComposer() {
 let pixelScale = PIXEL || 1;
 const gfx = new GfxPanel({
   pixel: !!PIXEL,
-  defaults: { px: PIXEL || 1, outline: true, outlineOff: [], outlinePx: 0, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
+  defaults: { px: PIXEL || 1, outline: true, outlineOff: [], outlinePx: 0, leafCards: false, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
   apply(s, changed) {
     if (PIXEL && (changed === null || changed === 'px')) {
       pixelScale = s.px;
@@ -173,6 +173,8 @@ const gfx = new GfxPanel({
     }
     const tufts = scene.getObjectByName('tufts');
     if (tufts) tufts.visible = s.tufts;
+    // Leaf cards in place of solid canopies (DESIGN §41), once the trees exist.
+    (scene.getObjectByName('trees')?.userData.field as TreeField | undefined)?.setCards(!!s.leafCards);
   },
 });
 renderer.localClippingEnabled = true;
@@ -229,7 +231,9 @@ function syncSiteGone() {
 }
 const trees = new TreeField(world);
 trees.group.name = 'trees';
+trees.group.userData.field = trees;
 scene.add(trees.group);
+trees.setCards(!!gfx.s.leafCards);
 const bushes = new Bushes(world);
 bushes.group.name = 'bushes';
 scene.add(bushes.group);
@@ -1594,8 +1598,11 @@ function probeRender(opts: { shadows?: boolean; composer?: boolean } = {}) {
   renderer.shadowMap.enabled = opts.shadows ?? was;
   renderer.shadowMap.needsUpdate = true;
   renderer.info.reset();
+  const t0 = performance.now();
   if (opts.composer === false) renderer.render(scene, iso.camera); else composer.render();
-  const out = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+  // Wait for the GPU, so the time includes drawing the pixels (overdraw, cut-outs), not just issuing calls.
+  renderer.getContext().finish();
+  const out = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, ms: Math.round((performance.now() - t0) * 10) / 10 };
   renderer.shadowMap.enabled = was;
   return out;
 }

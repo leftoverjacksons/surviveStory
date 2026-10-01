@@ -22,6 +22,8 @@ export interface GfxSettings {
   outlineOff: string[];
   /** Size of an outline pixel on screen (0: the same as the scene's pixel size). */
   outlinePx: number;
+  /** Broadleaf canopies as clouds of cut-out leaf cards instead of solid blobs (DESIGN §41). */
+  leafCards: boolean;
   steps: number;
   surface: number;
   bloom: number;
@@ -123,6 +125,7 @@ export class GfxPanel {
       ${range('bloom', 'Glow (bloom)', 0, 2, 0.05)}
       ${range('exposure', 'Exposure', 0.7, 1.7, 0.02)}
       ${check('shadows', 'Shadows')}
+      ${check('leafCards', 'Leaf cards (trees)', 'Prototype: broadleaf crowns drawn as clouds of small cut-out leaf cards instead of solid blobs')}
       ${check('tufts', 'Grass tufts (geometry)', 'The small triangles in the grass')}
       ${range('grassPaint', 'Grass painted in the turf', 0, 1, 0.05, 'Clumps drawn into the ground itself: no geometry')}
       <div class="row"><button type="button" id="gfx-reset">Reset</button></div>`;

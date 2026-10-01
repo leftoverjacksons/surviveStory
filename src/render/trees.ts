@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Zone, heightAt, type Tree, type World } from '../sim/world';
 import { SOFT, enhance, ghostTwin, makeRand, soften, type EnhanceOptions } from './util';
 import { clumpOverlaps, fitClump, trunkBlocked, type Obstacle } from './clearance';
+import { leafCardDepth, leafCardGeometry, leafCardMaterial } from './leafcards';
 
 interface Slot { mesh: THREE.InstancedMesh; index: number }
 
@@ -200,6 +201,12 @@ export class TreeField {
   private trunkMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), this.opts.trunk);
   private leafMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), this.opts.blob);
   private pineMat = enhance(new THREE.MeshLambertMaterial({ flatShading: !SOFT }), this.opts.cone);
+  /** Leaf cards in place of the broadleaf blobs (DESIGN §41; graphics panel). */
+  private cards = false;
+  private cardGeo = leafCardGeometry();
+  private cardMat = leafCardMaterial(this.opts.blob);
+  /** Every broadleaf canopy mesh, wild and planted, so cards can be swapped in and out. */
+  private blobMeshes = new Set<THREE.InstancedMesh>();
   /** Translucent twins of every tree mesh, shown while see-through woods is on. */
   private ghosts = new THREE.Group();
   /** Each chunk's ghost twins and the tiles its trees stand on (to show only chunks touching the Wild). */
@@ -271,6 +278,7 @@ export class TreeField {
         const gh = ghostTwin(mesh, this.opts[k as Part['geo']]);
         chunk.ghosts.push(gh);
         this.ghosts.add(gh);
+        if (k === 'blob') this.blobMeshes.add(mesh);
       }
     }
     this.group.add(this.ghosts);
@@ -284,6 +292,26 @@ export class TreeField {
     this.stumps.castShadow = this.stumps.receiveShadow = true;
     this.stumps.frustumCulled = false;
     this.group.add(this.stumps);
+  }
+
+  /**
+   * Leaf cards on or off (DESIGN §41): the broadleaf canopies swap between
+   * solid blobs and clouds of cut-out cards. Same instances, same draw calls.
+   * (Their see-through ghosts and falling trees stay blobs for now.)
+   */
+  setCards(on: boolean) {
+    if (on === this.cards) return;
+    this.cards = on;
+    for (const m of this.blobMeshes) this.dress(m);
+  }
+
+  private dress(mesh: THREE.InstancedMesh) {
+    mesh.geometry = this.cards ? this.cardGeo : this.geos.blob;
+    mesh.material = this.cards ? this.cardMat : this.leafMat;
+    // Shadows cut out like the cards; the blobs keep the ghost-aware depth material ghostTwin gave them.
+    if (this.cards) { mesh.userData.blobDepth ??= mesh.customDepthMaterial; mesh.customDepthMaterial = leafCardDepth(); }
+    else if (mesh.userData.blobDepth) mesh.customDepthMaterial = mesh.userData.blobDepth;
+    mesh.computeBoundingSphere();
   }
 
   /** Hide a standing tree and play it falling in direction (dirX, dirZ). */
@@ -346,7 +374,7 @@ export class TreeField {
     const key = planted.map((t) => `${t.id}:${Math.round(t.growth * 20)}`).join(',');
     if (key === this.youngKey) return;
     this.youngKey = key;
-    for (const m of this.young) { this.group.remove(m); if (m.userData.ghost) this.ghosts.remove(m.userData.ghost); }
+    for (const m of this.young) { this.group.remove(m); this.blobMeshes.delete(m); if (m.userData.ghost) this.ghosts.remove(m.userData.ghost); }
     this.young = [];
     if (!planted.length) return;
     const all = planted.map((t) => fitted(grown(recipe(t, this.world), t.growth), this.obs));
@@ -366,6 +394,7 @@ export class TreeField {
       this.group.add(mesh);
       this.ghosts.add(ghostTwin(mesh, this.opts[geo]));
       this.young.push(mesh);
+      if (geo === 'blob') { this.blobMeshes.add(mesh); this.dress(mesh); }
     }
   }
 

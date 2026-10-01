@@ -5038,3 +5038,45 @@ full-resolution picture.
 
 **Caveat:** at pixel size 1 the camera isn't snapped to whole pixels, so the
 blocks can shimmer slightly while panning.
+
+## 41. Leaf cards for broadleaf canopies (prototype; not published)
+
+The user asked whether sprites or flat pieces could make trees and grass look
+less geometric. This is the prototype for broadleaf crowns. It is off by
+default; the graphics panel (key G) has a "Leaf cards (trees)" checkbox.
+
+**How it works** (`src/render/leafcards.ts`):
+- Each canopy clump becomes 32 small cards instead of a solid lumpy ball.
+- The cards always face the camera. All four corners of a card start at the
+  card's centre, and the vertex shader pushes them apart in view space.
+- Normals point out from the clump's middle, so a clump is lit as one round
+  mass, not as flat paper.
+- The leaf texture is drawn in code: 26 small leaves, near-white, so the tree's
+  own colour and the season tint it. It uses alpha cut-out (`alphaTest` 0.5)
+  and nearest filtering. Because the cut-out writes depth, outlines, fog and
+  the Veil's dark all work unchanged.
+- A matching depth material casts leaf-shaped shadows.
+- In winter (`uBare`) the cards shrink with the crown.
+- It swaps the geometry and material on the existing instanced blob meshes, so
+  instances, colours and draw calls stay the same (`TreeField.setCards`).
+
+**Not yet carded:** pines (cones), the see-through ghost twins in the Wild,
+and falling trees. These stay as solid shapes.
+
+**Cost** (`scripts/shots/cardsperf.mjs`): the densest wooded view near the
+start of seed 3, at midday, rendered both ways.
+
+| Pixel size | Canopy | Draw calls | Triangles (trees) | Frame ms |
+|---|---|---|---|---|
+| 3 | solid | 414 (80) | 2.78 M | 6.1 |
+| 3 | cards | 415 (81) | 2.48 M | 6.4 |
+| 1 | solid | 414 (80) | 2.78 M | 6.4 |
+| 1 | cards | 415 (81) | 2.48 M | 6.8 |
+
+- Cards use about 11% fewer tree triangles, and one more draw call (the leaf
+  shadow material).
+- Frame time is about 5% longer, from cut-out fragments (overdraw).
+- The machine is software GL (swiftshader), so the times only compare with
+  each other. On a real GPU, alpha-tested overdraw usually costs more than
+  this, relative to the rest of the frame; it still looks small.
+- `probeRender` now also returns `ms`, with the GPU waited on (`gl.finish`).
