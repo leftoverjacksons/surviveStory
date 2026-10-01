@@ -290,6 +290,9 @@ reference: Tiny Glade.
     lines, rowan, iron vs Folk. Ruins no longer block sight into themselves. Bot plays on knowledge only;
     `scripts/clearprobe.ts` (suburbs ~50% cleared). Menus: right-click a team member. Next: packing screen, debrief,
     light pools drawn, map layouts, then §38.8 step 2 (ties with reasons).
+    PUBLISHED v48 (§39 + §40) from a TEMPORARY LOCAL MERGE of origin/claude/lucid-ride-z7pvg6 (the user's character
+    branch, which published v47 with workshop-dressed survivors) + this branch; the merge was NOT pushed. Any future
+    publish must include the character branch the same way (or the user merges it), or it would drop their figures.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.
