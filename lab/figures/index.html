@@ -85,13 +85,16 @@
       <div><label>Head (face)</label><select id="head"><option value="keep" selected>generated</option><option value="face">workshop: face</option><option value="soft">workshop: soft</option><option value="broad">workshop: broad</option><option value="long">workshop: long</option><option value="elder">workshop: elder</option></select></div>
       <div><label>Hair</label><select id="hair"><option value="curly" selected>curly</option><option value="bun">bun</option><option value="swept">swept</option><option value="none">none</option></select></div>
     </div>
+    <div class="row">
+      <div><label>Working detail (triangles)</label><input id="tris" type="number" value="30000" min="2000" max="80000" step="5000" title="Weights, colours and the parts cut are decided at this detail" /></div>
+      <div><label>Saved detail (triangles)</label><input id="final" type="number" value="12000" min="0" max="80000" step="1000" title="The figure, and each part its share (cut edges kept), are reduced to this at the end; 0 = as worked" /></div>
+    </div>
     <details><summary>More settings</summary>
       <div class="row">
         <div><label>Detail (octree)</label><input id="octree" type="number" value="192" min="96" max="384" step="32" /></div>
         <div><label>Seed</label><input id="seed" type="number" value="1234" /></div>
       </div>
       <div class="row">
-        <div><label>Triangles</label><input id="tris" type="number" value="12000" min="800" max="30000" step="1000" /></div>
         <div><label>Colour slots</label><input id="k" type="number" value="10" min="3" max="14" /></div>
       </div>
     </details>

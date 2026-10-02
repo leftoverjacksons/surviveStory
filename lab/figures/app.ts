@@ -121,7 +121,7 @@ $('make').addEventListener('click', async () => {
   try {
     const r = await api('figures', {
       name: $<HTMLInputElement>('name').value || 'figure', body: $<HTMLSelectElement>('body').value, front: picked.front, back: picked.back,
-      params: { backend: $<HTMLSelectElement>('backend').value, preset: $<HTMLSelectElement>('preset').value, octree: num('octree'), seed: num('seed'), tris: num('tris'), k: num('k'), head: $<HTMLSelectElement>('head').value, hair: $<HTMLSelectElement>('hair').value },
+      params: { backend: $<HTMLSelectElement>('backend').value, preset: $<HTMLSelectElement>('preset').value, octree: num('octree'), seed: num('seed'), tris: num('tris'), final: num('final'), k: num('k'), head: $<HTMLSelectElement>('head').value, hair: $<HTMLSelectElement>('hair').value },
     });
     select(r.id);
     for (const id of ['dropFront', 'dropBack']) { $(id).style.backgroundImage = ''; $(id).classList.remove('has'); }
@@ -207,7 +207,8 @@ function renderDetail() {
       <div><label>Quality</label><select id="dPreset">${['turbo', 'full'].map((p) => `<option ${p === (f.params.preset ?? 'turbo') ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
     </div>
     <div class="row">
-      <div><label>Triangles</label><input id="dTris" type="number" value="${esc(f.params.tris ?? 12000)}" step="1000" /></div>
+      <div><label>Working triangles</label><input id="dTris" type="number" value="${esc(f.params.tris ?? 30000)}" step="5000" /></div>
+      <div><label>Saved triangles</label><input id="dFinal" type="number" value="${esc(f.params.final ?? 12000)}" step="1000" /></div>
       <div><label>Colour slots</label><input id="dK" type="number" value="${esc(f.params.k ?? 10)}" min="3" max="14" /></div>
     </div>
     <div class="row">
@@ -234,7 +235,7 @@ function renderDetail() {
 
   const act = async (path: string, body: unknown = {}) => { try { await api(`figures/${f.id}/${path}`, body); } catch (e) { alertBox(String(e)); } void poll(); };
   const num = (id: string) => Number($<HTMLInputElement>(id).value);
-  const params = () => ({ seed: num('dSeed'), preset: $<HTMLSelectElement>('dPreset').value, tris: num('dTris'), k: num('dK'), head: $<HTMLSelectElement>('dHead').value, hair: $<HTMLSelectElement>('dHair').value });
+  const params = () => ({ seed: num('dSeed'), preset: $<HTMLSelectElement>('dPreset').value, tris: num('dTris'), final: num('dFinal'), k: num('dK'), head: $<HTMLSelectElement>('dHead').value, hair: $<HTMLSelectElement>('dHair').value });
   const edit = () => act('edit', { name: $<HTMLInputElement>('dName').value, body: $<HTMLSelectElement>('dBody').value });
   $('dName').addEventListener('change', edit);
   $('dBody').addEventListener('change', edit);

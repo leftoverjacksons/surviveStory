@@ -2,7 +2,7 @@
 Lab (not part of the game): rig a generated character mesh onto the game's
 survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 
-    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 12000] [--voxel auto] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head keep|face|soft|broad|long|elder] [--hair curly|bun|swept|none] [--shade 1] [--fit] [--parts <parts.glb> --name <name>]
+    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 30000] [--final 12000] [--voxel auto] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head keep|face|soft|broad|long|elder] [--hair curly|bun|swept|none] [--shade 1] [--fit] [--parts <parts.glb> --name <name>]
         [--names 0=skin,1=hair,...] [--slots <json>] [--preview <png>]
 
 (with Blender's Python module: `pip install bpy`).
@@ -10,8 +10,9 @@ survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 Steps:
   1. Import the generated mesh (Hunyuan3D / TRELLIS output), join, stand it
      on the ground at the survivors' height (Head bone tip 1.69), centred.
-  2. Decimate to about --tris triangles (optionally voxel-remesh first, --voxel,
-     which rounds off detail).
+  2. Decimate to about --tris triangles, the working detail (optionally voxel-remesh first,
+     --voxel, which rounds off detail). Everything is decided at this detail; the figure and
+     each part are reduced to --final at the end (parts with their cut edges locked).
   3. Build the game's skeleton (bone table copied from
      scripts/blender/survivor.py), fitted to the mesh's measured proportions.
   4. Skin with Blender's automatic (heat) weights; fall back to distance
@@ -29,7 +30,8 @@ argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:]
 def opt(name, default):
     return type(default)(argv[argv.index(name) + 1]) if name in argv else default
 MESH, IMAGE, OUT = argv[0], argv[1], argv[2]
-TRIS = opt('--tris', 12000)  # the generated detail: hair tufts, belt, satchel, cloak tatters (3000 lost them)
+TRIS = opt('--tris', 30000)  # working detail: weights, colours and the parts cut are decided at this resolution
+FINAL = opt('--final', 12000)  # saved detail: the figure, and each part (its share, cut edges locked); 0 = as worked
 K = opt('--k', 10)  # at most this many colour slots (look-alikes merge, see MERGE)
 SMOOTH = opt('--smooth', 1)  # neighbour passes over colours and over cluster labels
 LIGHT = opt('--light', 0.7)  # slot colour: this luminance percentile of the group's samples
@@ -510,6 +512,34 @@ if HEAD != 'keep':
         p.use_smooth = False
     print(f'new head: {HEAD} + hair {HAIR}, skin {pal["skin"]}, hair {pal["hair"]}')
 
+# ---------------------------------------------------------------- reduce to the final detail
+def reduce(o, faces):
+    """Collapse-decimate o to about `faces`, keeping its open edges (a part's cut) exactly where they are,
+    so neighbouring parts reduced separately still meet. Vertex groups, materials and _shade carry over."""
+    n = len(o.data.polygons)
+    if not faces or faces >= n: return
+    bm = bmesh.new(); bm.from_mesh(o.data)
+    edge = {v.index for v in bm.verts if v.is_boundary}
+    bm.free()
+    g = o.vertex_groups.new(name='_reduce')
+    g.add([v.index for v in o.data.vertices if v.index not in edge], 1.0, 'REPLACE')
+    arms = [(m.name, m.object) for m in o.modifiers if m.type == 'ARMATURE']
+    for name, _ in arms: o.modifiers.remove(o.modifiers[name])
+    d = o.modifiers.new('reduce', 'DECIMATE')
+    d.ratio = faces / n; d.use_collapse_triangulate = True
+    d.vertex_group = '_reduce'; d.vertex_group_factor = 1000  # the edges are outside the group: kept
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.modifier_apply(modifier='reduce')
+    o.vertex_groups.remove(o.vertex_groups['_reduce'])
+    for name, target in arms:
+        m = o.modifiers.new(name, 'ARMATURE'); m.object = target
+
+ob_hi = ob.copy(); ob_hi.data = ob.data.copy(); bpy.context.scene.collection.objects.link(ob_hi)  # (parts cut from this)
+worked = len(ob.data.polygons)
+reduce(ob, FINAL)
+if len(ob.data.polygons) < worked:
+    print(f'reduced {worked} -> {len(ob.data.polygons)} faces (worked at {worked})')
+
 # ---------------------------------------------------------------- export
 ob.name = 'figure'
 bpy.ops.object.select_all(action='DESELECT')
@@ -533,7 +563,7 @@ REGION = {'Head': 'head', 'Neck': 'head', 'Chest': 'top', 'Torso': 'top', 'Abdom
 if PARTS_OUT:
     if FIT:
         print('WARNING: --parts with --fit: the parts will not share the workshop skeleton exactly')
-    gname = {g.index: g.name for g in ob.vertex_groups}
+    gname = {g.index: g.name for g in ob_hi.vertex_groups}
     wrists = [(Vector(h), Vector(t)) for n, h, t, _ in BONES if n.startswith('Wrist')]
     def near_hand(p):  # cloth hanging at the wrist follows the wrist bone too, but is not the hand
         def d(a, b):
@@ -550,22 +580,24 @@ if PARTS_OUT:
         return 'top' if r == 'hands' and not near_hand(v.co) else r
     ankle_z = J['ankle'][2] * 1.15
     chin_z = (_HC[2] - _HR[2] * 0.85) * _k
-    vreg = [region(v) for v in ob.data.vertices]
-    freg = [max(set(r), key=r.count) for r in ([vreg[i] for i in p.vertices] for p in ob.data.polygons)]
+    vreg = [region(v) for v in ob_hi.data.vertices]
+    freg = [max(set(r), key=r.count) for r in ([vreg[i] for i in p.vertices] for p in ob_hi.data.polygons)]
     import re
     slug = re.sub(r'[^a-z0-9]+', '_', NAME.lower()).strip('_') or 'figure'  # (as the studio's server.py#slug)
     cut = []
     for r in ('head', 'top', 'bottom', 'feet', 'hands'):
         keep = {i for i, x in enumerate(freg) if x == r}
         if not keep: continue
-        o = ob.copy(); o.data = ob.data.copy(); bpy.context.scene.collection.objects.link(o)
+        o = ob_hi.copy(); o.data = ob_hi.data.copy(); bpy.context.scene.collection.objects.link(o)
         bm = bmesh.new(); bm.from_mesh(o.data); bm.faces.ensure_lookup_table()
         bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.index not in keep], context='FACES')
         bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
         bm.to_mesh(o.data); bm.free()
         o.name = f'{r}.gen_{slug}'
         cut.append(o)
-        print(f'part {o.name}: {len(o.data.polygons)} faces')
+        n = len(o.data.polygons)
+        reduce(o, round(FINAL * n / worked) if FINAL else 0)  # its share of the final detail
+        print(f'part {o.name}: {n} -> {len(o.data.polygons)} faces')
     bpy.ops.object.select_all(action='DESELECT')
     rig.select_set(True)
     for o in cut: o.select_set(True)

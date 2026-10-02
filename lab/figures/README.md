@@ -89,7 +89,13 @@ figure. For the Hugging Face Space backend, set `HF_TOKEN` before
     and every vertex keeps its brightness relative to that colour as `_SHADE`
     (`--shade 1`; 0 = flat). The game multiplies the survivor's slot colour by it
     (`characters.ts#makeCharacter`), so re-colouring still works.
-  - Detail: `--tris 12000` and no voxel remesh by default (`--voxel 0`; the
+  - Detail, in two stages (the studio's "Working detail" and "Saved detail"):
+    `--tris 30000` is the working detail, where weights, colours and the parts
+    cut are decided; `--final 12000` is what is saved: the figure is reduced to
+    it, and each part to its share with its cut edges locked (Decimate with the
+    interior as its vertex group), so parts reduced separately still meet
+    exactly (checked: every cut-edge vertex meets its neighbour). No voxel
+    remesh by default above 6000 working triangles (`--voxel auto`; the
     generated surface is already watertight). At 3000 triangles after a 1.2 cm
     voxel remesh the hair tufts, belt, satchel and cloak tatters were lost:
     `shots/rig-detail-3k-vs-12k.png`. Vertices that miss the image (thin tips)
