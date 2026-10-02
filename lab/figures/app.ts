@@ -202,7 +202,7 @@ function renderDetail() {
   $('detail').innerHTML = `
     <h1>${esc(f.name)}</h1>
     <div class="sub">${esc(f.id)} · <span class="st ${statusClass(f.status)}">${esc(f.status)}</span></div>
-    ${f.error ? `<div class="note" style="border-color:var(--bad);margin-top:8px">${esc(f.error)}</div>` : ''}
+    ${f.error ? `<div class="note" style="border-color:var(--bad);margin-top:8px;white-space:pre-wrap;font-family:monospace;font-size:11px">${esc(f.error)}</div>` : ''}
     <div class="row" style="margin-top:8px">
       <div><label>Name</label><input id="dName" type="text" value="${esc(f.name)}" /></div>
       <div><label>Body</label><select id="dBody">${['man', 'woman', 'child'].map((b) => `<option ${b === f.body ? 'selected' : ''}>${b}</option>`).join('')}</select></div>

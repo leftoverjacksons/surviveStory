@@ -620,7 +620,7 @@ if LABELS:
         A = 0 if a_is([idx[j] for j in range(len(idx)) if grp[j] == 0], [idx[j] for j in range(len(idx)) if grp[j] == 1]) else 1
         for j, i in enumerate(idx):
             G[i] = a_name if grp[j] == A else b_name
-        print(f'garments: {name} split by colour into {a_name} and {b_name} (ΔE {d2(c[0], c[1]) ** 0.5:.0f})')
+        print(f'garments: {name} split by colour into {a_name} and {b_name} (colour difference {d2(c[0], c[1]) ** 0.5:.0f})')
     co = [v.co.copy() for v in ob.data.vertices]
     mean = lambda ids, f: sum(f(co[i]) for i in ids) / max(1, len(ids))
     split('top', 'outer', 'top', lambda a, b: mean(a, lambda p: abs(p.x)) > mean(b, lambda p: abs(p.x)), hue_only=True)

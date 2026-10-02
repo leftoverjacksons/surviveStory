@@ -91,13 +91,22 @@ jobs = queue.Queue()
 
 def run(fid, step, cmd, env=None):
     log = os.path.join(fdir(fid), 'log.txt')
-    with open(log, 'a') as f:
+    with open(log, 'a', encoding='utf-8') as f:
         f.write(f'\n=== {step}: {" ".join(cmd)}\n'); f.flush()
         t = time.time()
-        p = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, cwd=REPO, env={**os.environ, **(env or {})})
+        start = f.tell()
+        # UTF-8 for every Python we start: on Windows, output redirected to a file is otherwise encoded in the
+        # locale's code page (cp1252), and any character outside it (Δ, →, a non-English name) crashes the step.
+        utf8 = {'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
+        p = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, cwd=REPO, env={**os.environ, **utf8, **(env or {})})
         f.write(f'=== {step} exit {p.returncode} after {time.time() - t:.0f}s\n')
     if p.returncode != 0:
-        raise RuntimeError(f'{step} failed (exit {p.returncode}); see the log')
+        # The step's last lines, so the error shows where it is reported (not only in the log).
+        with open(log, encoding='utf-8', errors='replace') as f:
+            f.seek(start)
+            lines = [l.split('\r')[-1].rstrip() for l in f.read().splitlines()]
+        tail = [l for l in lines if l.strip() and not l.startswith('===') and 'INFO' not in l][-8:]
+        raise RuntimeError(f'{step} failed (exit {p.returncode}):\n' + '\n'.join(tail))
 
 def step_generate(fid, m):
     d, prm = fdir(fid), m['params']
@@ -127,7 +136,7 @@ def step_rig(fid, m):
             args += ['--labels', os.path.join(d, 'labels_front.png')]
             if os.path.exists(os.path.join(d, 'labels_back.png')): args += ['--labels-back', os.path.join(d, 'labels_back.png')]
         except RuntimeError as e:  # e.g. the parser's first download failed: cut by bones this time
-            with open(os.path.join(d, 'log.txt'), 'a') as f: f.write(f'garment labels unavailable ({e}); cutting parts by bones\n')
+            with open(os.path.join(d, 'log.txt'), 'a', encoding='utf-8') as f: f.write(f'garment labels unavailable ({e}); cutting parts by bones\n')
     rig = os.path.join(HERE, 'rig.py')
     if CFG.get('bpy_python'): cmd = [CFG['bpy_python'], rig, *args]
     elif CFG.get('blender'): cmd = [CFG['blender'], '-b', '--factory-startup', '-P', rig, '--', *args]

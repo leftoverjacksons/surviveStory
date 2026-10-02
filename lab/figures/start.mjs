@@ -10,7 +10,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const venv = ['.venv-gen/Scripts/python.exe', '.venv-gen/bin/python'].map((p) => path.join(here, p)).find((p) => fs.existsSync(p));
 const python = process.env.PYTHON ?? venv ?? (process.platform === 'win32' ? 'python' : 'python3');
 const kids = [
-  spawn(python, [path.join(here, 'server.py')], { stdio: 'inherit' }),
+  spawn(python, [path.join(here, 'server.py')], { stdio: 'inherit', env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' } }),
   spawn(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['vite', '--config', path.join(here, 'vite.config.ts')], { stdio: 'inherit', shell: process.platform === 'win32' }),
 ];
 const stop = () => { for (const k of kids) k.kill(); process.exit(); };
