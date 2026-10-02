@@ -7,7 +7,7 @@ import { Stage, REFS, type StageFigure } from './stage';
 import { Composer } from './compose';
 
 /** rig.py --head / --hair: workshop faces (lab/workshop/faces.py) and hair, or keep the generated head. */
-const HEADS = ['face', 'soft', 'broad', 'long', 'elder', 'keep'];
+const HEADS = ['keep', 'face', 'soft', 'broad', 'long', 'elder'];
 const HAIRS = ['curly', 'bun', 'swept', 'none'];
 
 interface Slot { index: number; name: string; label: string; color: [number, number, number]; count: number }
@@ -207,11 +207,11 @@ function renderDetail() {
       <div><label>Quality</label><select id="dPreset">${['turbo', 'full'].map((p) => `<option ${p === (f.params.preset ?? 'turbo') ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
     </div>
     <div class="row">
-      <div><label>Triangles</label><input id="dTris" type="number" value="${esc(f.params.tris ?? 3000)}" step="200" /></div>
+      <div><label>Triangles</label><input id="dTris" type="number" value="${esc(f.params.tris ?? 12000)}" step="1000" /></div>
       <div><label>Colour slots</label><input id="dK" type="number" value="${esc(f.params.k ?? 10)}" min="3" max="14" /></div>
     </div>
     <div class="row">
-      <div><label>Head (face)</label><select id="dHead">${HEADS.map((h) => `<option value="${h}" ${h === (f.params.head ?? 'face') ? 'selected' : ''}>${h === 'keep' ? 'generated (no face)' : h}</option>`).join('')}</select></div>
+      <div><label>Head (face)</label><select id="dHead">${HEADS.map((h) => `<option value="${h}" ${h === (f.params.head ?? 'keep') ? 'selected' : ''}>${h === 'keep' ? 'generated' : `workshop: ${h}`}</option>`).join('')}</select></div>
       <div><label>Hair</label><select id="dHair">${HAIRS.map((h) => `<option ${h === (f.params.hair ?? 'curly') ? 'selected' : ''}>${h}</option>`).join('')}</select></div>
     </div>
     <div class="actions">

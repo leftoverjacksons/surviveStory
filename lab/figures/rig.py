@@ -2,7 +2,7 @@
 Lab (not part of the game): rig a generated character mesh onto the game's
 survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 
-    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 3000] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head face|soft|broad|long|elder|keep] [--hair curly|bun|swept|none] [--shade 1]
+    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 12000] [--voxel 0] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head keep|face|soft|broad|long|elder] [--hair curly|bun|swept|none] [--shade 1]
         [--names 0=skin,1=hair,...] [--slots <json>] [--preview <png>]
 
 (with Blender's Python module: `pip install bpy`).
@@ -10,8 +10,8 @@ survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 Steps:
   1. Import the generated mesh (Hunyuan3D / TRELLIS output), join, stand it
      on the ground at the survivors' height (Head bone tip 1.69), centred.
-  2. Voxel-remesh (watertight, which heat weighting wants) and decimate to
-     about --tris triangles.
+  2. Decimate to about --tris triangles (optionally voxel-remesh first, --voxel,
+     which rounds off detail).
   3. Build the game's skeleton (bone table copied from
      scripts/blender/survivor.py), fitted to the mesh's measured proportions.
   4. Skin with Blender's automatic (heat) weights; fall back to distance
@@ -29,7 +29,7 @@ argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:]
 def opt(name, default):
     return type(default)(argv[argv.index(name) + 1]) if name in argv else default
 MESH, IMAGE, OUT = argv[0], argv[1], argv[2]
-TRIS = opt('--tris', 3000)
+TRIS = opt('--tris', 12000)  # the generated detail: hair tufts, belt, satchel, cloak tatters (3000 lost them)
 K = opt('--k', 10)  # at most this many colour slots (look-alikes merge, see MERGE)
 SMOOTH = opt('--smooth', 1)  # neighbour passes over colours and over cluster labels
 LIGHT = opt('--light', 0.7)  # slot colour: this luminance percentile of the group's samples
@@ -38,7 +38,7 @@ PREVIEW = opt('--preview', '')
 BACK = opt('--back', '')  # optional back view (cut-out) for the colours
 NAMES = opt('--names', '')
 SLOTS_OUT = opt('--slots', '')  # write the slots (index, name, sRGB colour, vertices) as JSON
-VOXEL = opt('--voxel', 0.012)
+VOXEL = opt('--voxel', 0.0)  # 0: decimate the generated surface directly (it is already watertight)
 TOP = 1.69  # Head bone tip in the game's skeleton
 
 # ---------------------------------------------------------------- skeleton (from scripts/blender/survivor.py)
@@ -59,10 +59,10 @@ _J, _HC, _HR = kit.derive(kit.BUILDS[BUILD])
 _k = TOP / (_HC[2] + _HR[2] * 1.12)  # kit units -> this figure (the mesh's top includes some hair)
 J = {n: tuple(c * _k for c in v) for n, v in _J.items()}
 HEAD_RX = _HR[0] * _k  # head half-width
-# --head: replace the generated head with a workshop face (lab/workshop/faces.py: face, soft, broad,
-# long, elder) and --hair (curly, bun, swept, none), coloured from the image. A generated head at a
-# few thousand triangles has no face (eyes and mouth are smaller than a triangle). 'keep' keeps it.
-HEAD = opt('--head', 'face')
+# --head: 'keep' (default) keeps the generated head; or replace it with a workshop face
+# (lab/workshop/faces.py: face, soft, broad, long, elder) and --hair (curly, bun, swept, none),
+# coloured from the image.
+HEAD = opt('--head', 'keep')
 HAIR = opt('--hair', 'curly')
 
 def sym(name, h, t, parent):
@@ -123,9 +123,10 @@ ob.data.update()
 print(f'imported {len(ob.data.polygons)} faces, scale {s:.3f}')
 
 # ---------------------------------------------------------------- 2. remesh and decimate
-rm = ob.modifiers.new('remesh', 'REMESH')
-rm.mode = 'VOXEL'; rm.voxel_size = VOXEL
-bpy.ops.object.modifier_apply(modifier='remesh')
+if VOXEL > 0:  # voxel remesh: watertight and even, but it rounds off detail finer than the voxel
+    rm = ob.modifiers.new('remesh', 'REMESH')
+    rm.mode = 'VOXEL'; rm.voxel_size = VOXEL
+    bpy.ops.object.modifier_apply(modifier='remesh')
 # Keep the largest connected piece (voxel remesh can leave specks).
 bm = bmesh.new(); bm.from_mesh(ob.data)
 seen, islands = set(), []
@@ -262,7 +263,7 @@ class View:
                 xx, yy = min(W - 1, max(0, x + dx)), min(H - 1, max(0, y + dy))
                 if alpha[yy * W + xx] > 0.5:
                     return self.patch(xx, yy)
-        return (0.5, 0.5, 0.5)
+        return None  # off the silhouette (thin tips): filled from neighbouring vertices below
 
     def patch(self, x, y):
         """The median colour of the opaque pixels around (x, y): painted concept art is full of brush
@@ -298,13 +299,21 @@ def colour(v):
         if v.co.z > neck_z: return front.sample(front.top_of(v.co))
     return front.sample(v.co)
 cols = [colour(v) for v in ob.data.vertices]
-raw = [list(c) for c in cols]  # unsmoothed: the slots' final colours come from these
 
 # Neighbours on the mesh, for smoothing colours before clustering and labels after.
 nbr = [[] for _ in ob.data.vertices]
 for e in ob.data.edges:
     a, b = e.vertices
     nbr[a].append(b); nbr[b].append(a)
+# Vertices that missed the image (thin tips past the silhouette) take their neighbours' colour.
+for _ in range(50):
+    missing = [i for i, c in enumerate(cols) if c is None]
+    if not missing: break
+    for i in missing:
+        got = [cols[n] for n in nbr[i] if cols[n] is not None]
+        if got: cols[i] = [sorted(c[j] for c in got)[len(got) // 2] for j in range(3)]
+cols = [c if c is not None else [0.5, 0.5, 0.5] for c in cols]
+raw = [list(c) for c in cols]  # unsmoothed: the slots' final colours come from these
 for _ in range(SMOOTH):
     cols = [[(cols[i][j] * 2 + sum(cols[n][j] for n in nbr[i])) / (2 + len(nbr[i])) for j in range(3)] for i in range(len(cols))]
 
@@ -443,8 +452,8 @@ if HEAD != 'keep':
     hexc = lambda c: '#%02x%02x%02x' % tuple(int(max(0, min(1, x)) * 255) for x in c)
     mix = lambda a, b, t: [a[j] + (b[j] - a[j]) * t for j in range(3)]
     # Skin from the middle of the face, below the eyes; hair from the top of the head (image colours).
-    skin = front.sample(Vector((HCm.x, 0, HCm.z - HRm.z * HS * 0.35)))
-    hair = front.sample(Vector((HCm.x, 0, FULL[1].z - 0.03)))
+    skin = front.sample(Vector((HCm.x, 0, HCm.z - HRm.z * HS * 0.35))) or [0.7, 0.5, 0.35]
+    hair = front.sample(Vector((HCm.x, 0, FULL[1].z - 0.03))) or [0.2, 0.15, 0.1]
     pal = {'skin': hexc(skin), 'hair': hexc(hair), 'skin_blush': hexc(mix(skin, (0.78, 0.31, 0.28), 0.3)),
            'skin_lip': hexc([x * 0.82 for x in mix(skin, (0.78, 0.31, 0.28), 0.35)]), 'skin_shade': hexc([x * 0.72 for x in skin]),
            'eye': '#20140c', 'eye_white': '#efe6d6', 'hat_band': '#d8c070'}

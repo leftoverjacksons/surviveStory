@@ -89,14 +89,16 @@ figure. For the Hugging Face Space backend, set `HF_TOKEN` before
     and every vertex keeps its brightness relative to that colour as `_SHADE`
     (`--shade 1`; 0 = flat). The game multiplies the survivor's slot colour by it
     (`characters.ts#makeCharacter`), so re-colouring still works.
-  - Head swap (`--head face|soft|broad|long|elder`, default `face`; `keep` = the
-    generated head; `--hair curly|bun|swept|none`): a generated head at ~3k
-    triangles has no face, so it is cut away above the chin and replaced by a
-    workshop head and hair (`lab/workshop/faces.py`, `parts.py`), fitted to the
-    generated head's width and top, coloured from the image's face and hair, bound
-    rigidly to the Head bone. The studio has Head and Hair choices.
-    `shots/rig-head-and-colours.png`: the source, before, after, the hand-built
-    workshop scout.
+  - Detail: `--tris 12000` and no voxel remesh by default (`--voxel 0`; the
+    generated surface is already watertight). At 3000 triangles after a 1.2 cm
+    voxel remesh the hair tufts, belt, satchel and cloak tatters were lost:
+    `shots/rig-detail-3k-vs-12k.png`. Vertices that miss the image (thin tips)
+    take their neighbours' colour.
+  - Head: the generated head is kept (`--head keep`, default). Optionally
+    `--head face|soft|broad|long|elder` (+ `--hair`) swaps in a workshop head
+    (`lab/workshop/faces.py`), fitted to the generated head's width and top and
+    coloured from the image; the studio has Head and Hair choices.
+    `shots/rig-head-and-colours.png`.
 - **`pack.mjs`**: the game's slot and meshopt packing (as in
   `scripts/characters.mjs`).
 - **`app.ts`, `stage.ts`, `index.html`, `vite.config.ts`**: the page. It uses
