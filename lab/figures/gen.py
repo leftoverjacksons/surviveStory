@@ -19,6 +19,7 @@ for the colour step (rig.py). Licence: Hunyuan3D outputs may not be used or
 shown in the EU, UK or South Korea (see README.md): prototypes only.
 """
 import argparse, json, os, shutil, sys, time
+os.environ.setdefault('HF_HUB_DISABLE_PROGRESS_BARS', '1')  # see the download note below
 
 ap = argparse.ArgumentParser()
 ap.add_argument('--front', required=True)
@@ -101,12 +102,44 @@ steps = 5 if a.preset == 'turbo' else 30
 log(f'device {dev}' + (f' ({torch.cuda.get_device_name(0)}, {vram:.1f} GB)' if dev == 'cuda' else '')
     + f', model {repo}/{sub}, {steps} steps, offload {offload}')
 
+# First run: the weights download from Hugging Face. Each model folder holds them twice (.ckpt and
+# .safetensors, about 3.8 GB each); only .safetensors is loaded, so skip the .ckpt copies. The library's
+# progress bars only move per finished file (and garble the studio's log), so report bytes instead.
+import threading, huggingface_hub
+from huggingface_hub import constants as hf_constants
+_snapshot = huggingface_hub.snapshot_download
+def _snapshot_safetensors(*args, **kw):
+    kw.setdefault('ignore_patterns', ['*.ckpt'])
+    return _snapshot(*args, **kw)
+huggingface_hub.snapshot_download = _snapshot_safetensors  # hy3dgen imports it at call time
+
+def _watch_download(stop):
+    blobs = [os.path.join(hf_constants.HF_HUB_CACHE, 'models--' + r.replace('/', '--'), 'blobs')
+             for r in (repo, 'tencent/Hunyuan3D-2')]
+    size = lambda: sum(os.path.getsize(os.path.join(d, f)) for d in blobs if os.path.isdir(d) for f in os.listdir(d))
+    start = last = size()
+    quiet = 0
+    while not stop.wait(15):
+        now = size()
+        if now != last:
+            log(f'downloading model weights (first run only): {(now - start) / 2 ** 30:.2f} GB so far, '
+                f'{(now - last) / 2 ** 20 / 15:.1f} MB/s')
+            quiet = 0
+        else:
+            quiet += 1
+            if quiet % 4 == 0:  # a minute without download progress: the weights are being read into memory
+                log('still loading the model into memory (minutes on a CPU, seconds on a GPU)')
+        last = now
+_stop = threading.Event()
+threading.Thread(target=_watch_download, args=(_stop,), daemon=True).start()
+log('loading the model (the first run downloads about 4 GB)')
 pipe = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(repo, subfolder=sub, variant='fp16',
                                                         device='cpu' if offload else dev, dtype=dtype)
 pipe.enable_flashvdm(mc_algo='mc')  # hierarchical decoding: seconds instead of minutes
 pipe.vae.to('cpu' if offload else dev, dtype)
 if offload:
     pipe.enable_model_cpu_offload()
+_stop.set()
 log('model loaded')
 
 image = {'front': front, 'back': back} if model == 'mv' else front
