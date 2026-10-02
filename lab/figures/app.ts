@@ -204,7 +204,7 @@ function renderDetail() {
     </div>
     <div class="row">
       <div><label>Triangles</label><input id="dTris" type="number" value="${esc(f.params.tris ?? 3000)}" step="200" /></div>
-      <div><label>Colour slots</label><input id="dK" type="number" value="${esc(f.params.k ?? 5)}" min="3" max="8" /></div>
+      <div><label>Colour slots</label><input id="dK" type="number" value="${esc(f.params.k ?? 10)}" min="3" max="14" /></div>
     </div>
     <div class="actions">
       <button id="aGen" ${busy ? 'disabled' : ''}>Generate again</button>

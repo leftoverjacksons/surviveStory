@@ -65,6 +65,8 @@ def cutout(path, name):
 
 front_path, front = cutout(a.front, 'front.png')
 back_path, back = cutout(a.back, 'back.png') if a.back else (None, None)
+rembg = None  # free the background remover (about 1 GB) before the shape model loads
+import gc; gc.collect()
 log('cut-outs saved')
 
 # ---------------------------------------------------------------- space
@@ -116,7 +118,13 @@ huggingface_hub.snapshot_download = _snapshot_safetensors  # hy3dgen imports it 
 def _watch_download(stop):
     blobs = [os.path.join(hf_constants.HF_HUB_CACHE, 'models--' + r.replace('/', '--'), 'blobs')
              for r in (repo, 'tencent/Hunyuan3D-2')]
-    size = lambda: sum(os.path.getsize(os.path.join(d, f)) for d in blobs if os.path.isdir(d) for f in os.listdir(d))
+    def size():  # files are renamed as they finish, so tolerate ones that vanish mid-count
+        n = 0
+        for d in blobs:
+            for f in (os.listdir(d) if os.path.isdir(d) else []):
+                try: n += os.path.getsize(os.path.join(d, f))
+                except OSError: pass
+        return n
     start = last = size()
     quiet = 0
     while not stop.wait(15):

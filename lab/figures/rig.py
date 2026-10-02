@@ -2,7 +2,7 @@
 Lab (not part of the game): rig a generated character mesh onto the game's
 survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 
-    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 3000] [--k 5] [--smooth 4]
+    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 3000] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--build hero|adult|stout]
         [--names 0=skin,1=hair,...] [--slots <json>] [--preview <png>]
 
 (with Blender's Python module: `pip install bpy`).
@@ -18,7 +18,7 @@ Steps:
      weights if heat weighting fails.
   5. Colour: project the input image onto the mesh from the front (and the
      back view, if given, onto the back), cluster
-     the vertex colours into --k groups and turn each group into a named
+     the vertex colours (CIELAB, farthest-point seeds, look-alikes merged) into up to --k groups and turn each group into a named
      material (skin / hair / boot / cloth_N). scripts/characters.mjs turns
      material names into the game's recolour slots.
 """
@@ -30,8 +30,9 @@ def opt(name, default):
     return type(default)(argv[argv.index(name) + 1]) if name in argv else default
 MESH, IMAGE, OUT = argv[0], argv[1], argv[2]
 TRIS = opt('--tris', 3000)
-K = opt('--k', 5)
-SMOOTH = opt('--smooth', 4)  # neighbour passes over colours and over cluster labels
+K = opt('--k', 10)  # at most this many colour slots (look-alikes merge, see MERGE)
+SMOOTH = opt('--smooth', 1)  # neighbour passes over colours and over cluster labels
+PATCH = opt('--patch', 8)  # colour sample window, per mille of the figure's height in the image
 PREVIEW = opt('--preview', '')
 BACK = opt('--back', '')  # optional back view (cut-out) for the colours
 NAMES = opt('--names', '')
@@ -45,6 +46,20 @@ J = dict(
     hip=(0.1, 0.005, 0.82), knee=(0.108, 0.0, 0.46), ankle=(0.112, 0.015, 0.1), toe=(0.112, -0.1, 0.045),
     shoulder=(0.195, 0, 1.31), elbow=(0.25, 0.01, 1.06), wrist=(0.27, -0.02, 0.84), hand=(0.277, -0.035, 0.76),
 )
+
+# --build: the joint table's proportions. 'adult' is the game's old 1:7 figure (above); 'hero' and
+# 'stout' are the workshop's chibi builds (lab/workshop/kit.py: head about a quarter of the height),
+# which keep every bone's direction, so the game's clips still fit. Generated figures from chibi
+# concept art need 'hero', or the neck and shoulders land inside the head.
+BUILD = opt('--build', 'hero')
+HEAD_RX = 0.108  # head half-width
+if BUILD != 'adult':
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'workshop'))
+    import kit
+    _J, _HC, _HR = kit.derive(kit.BUILDS[BUILD])
+    _k = TOP / (_HC[2] + _HR[2] * 1.12)  # the mesh's top includes some hair
+    J = {n: tuple(c * _k for c in v) for n, v in _J.items()}
+    HEAD_RX = _HR[0] * _k
 
 def sym(name, h, t, parent):
     out = []
@@ -146,6 +161,9 @@ sh_w = width_at(J['shoulder'][2] - 0.04) * 0.78
 kx_hip = hip_w / J['hip'][0] if hip_w else 1
 kx_sh = sh_w / J['shoulder'][0] if sh_w else 1
 print(f'fit: hip x {kx_hip:.2f}, shoulder x {kx_sh:.2f}')
+if width_at(J['shoulder'][2]) > 0.42 * TOP:
+    print('WARNING: the arms look straight out (a T-pose). The game\'s clips expect arms angled down '
+          '(an A-pose, 30-45 degrees); a T-pose image gives twisted arms and cloth. Use an A-pose image.')
 LEG = {'hip', 'knee', 'ankle', 'toe'}
 ARM = {'shoulder', 'elbow', 'wrist', 'hand'}
 def fit(k, p):
@@ -216,9 +234,24 @@ class View:
         for r in range(0, 40, 2):
             for dx, dy in ((0, 0), (r, 0), (-r, 0), (0, r), (0, -r)):
                 xx, yy = min(W - 1, max(0, x + dx)), min(H - 1, max(0, y + dy))
-                i = yy * W + xx
-                if alpha[i] > 0.5: return px[i * 4:i * 4 + 3]
+                if alpha[yy * W + xx] > 0.5:
+                    return self.patch(xx, yy)
         return (0.5, 0.5, 0.5)
+
+    def patch(self, x, y):
+        """The median colour of the opaque pixels around (x, y): painted concept art is full of brush
+        texture and stains, and single pixels make neighbouring vertices of one cloth disagree."""
+        W, H, alpha, px = self.W, self.H, self.alpha, self.px
+        r = max(2, PATCH * (self.y1 - self.y0) // 1000)
+        got = []
+        for yy in range(max(0, y - r), min(H, y + r + 1), max(1, r // 3)):
+            for xx in range(max(0, x - r), min(W, x + r + 1), max(1, r // 3)):
+                i = yy * W + xx
+                if alpha[i] > 0.5: got.append(px[i * 4:i * 4 + 3])
+        if not got:
+            i = y * W + x
+            return px[i * 4:i * 4 + 3]
+        return [sorted(c[j] for c in got)[len(got) // 2] for j in range(3)]
 
     def top_of(self, p):
         """The silhouette's top in this column: hair (or hat), for the back of the head."""
@@ -249,16 +282,52 @@ for e in ob.data.edges:
 for _ in range(SMOOTH):
     cols = [[(cols[i][j] * 2 + sum(cols[n][j] for n in nbr[i])) / (2 + len(nbr[i])) for j in range(3)] for i in range(len(cols))]
 
-# k-means (deterministic seeding: spread along luminance).
-cs = sorted(cols, key=lambda c: sum(c))
-cent = [list(cs[int((i + 0.5) * len(cs) / K)]) for i in range(K)]
-lab = [0] * len(cols)
-for _ in range(20):
-    for i, c in enumerate(cols):
-        lab[i] = min(range(K), key=lambda k: sum((c[j] - cent[k][j]) ** 2 for j in range(3)))
-    for k in range(K):
-        m = [cols[i] for i in range(len(cols)) if lab[i] == k]
-        if m: cent[k] = [sum(c[j] for c in m) / len(m) for j in range(3)]
+# Group the colours in CIELAB (distances there follow what the eye sees, so a muted green and a brown
+# of the same brightness stay apart). Seeds: farthest-point (each new seed the colour least like the
+# seeds so far), so distinct hues each get one; then k-means; then clusters closer than MERGE (ΔE)
+# are merged, so --k is an upper bound and a plain figure ends with fewer slots.
+def lab_of(c):
+    l = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+    X = (0.4124 * l[0] + 0.3576 * l[1] + 0.1805 * l[2]) / 0.9505
+    Y = 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2]
+    Z = (0.0193 * l[0] + 0.1192 * l[1] + 0.9505 * l[2]) / 1.089
+    f = lambda t: t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+    return [116 * f(Y) - 16, 500 * (f(X) - f(Y)), 200 * (f(Y) - f(Z))]
+d2 = lambda a, b: sum((a[j] - b[j]) ** 2 for j in range(3))
+labs = [lab_of(c) for c in cols]
+cent = [list(min(labs, key=lambda c: c[0]))]  # start from the darkest colour
+while len(cent) < K:
+    far = max(labs, key=lambda c: min(d2(c, s) for s in cent))
+    if min(d2(far, s) for s in cent) < 4: break  # nothing left that differs
+    cent.append(list(far))
+def kmeans(cent):
+    lab = [0] * len(labs)
+    for _ in range(20):
+        for i, c in enumerate(labs):
+            lab[i] = min(range(len(cent)), key=lambda k: d2(c, cent[k]))
+        for k in range(len(cent)):
+            m = [labs[i] for i in range(len(labs)) if lab[i] == k]
+            if m: cent[k] = [sum(c[j] for c in m) / len(m) for j in range(3)]
+    return lab
+lab = kmeans(cent)
+# Drop seeds that ended up (nearly) empty, and merge look-alikes.
+MERGE = opt('--merge', 7.0)
+while True:
+    counts = [sum(1 for x in lab if x == k) for k in range(len(cent))]
+    small = [k for k in range(len(cent)) if counts[k] < max(8, len(labs) // 200)]
+    pairs = [(d2(cent[a], cent[b]), a, b) for a in range(len(cent)) for b in range(a + 1, len(cent))]
+    close = min(pairs) if pairs else None
+    if small and len(cent) > 2:
+        cent.pop(small[0])
+    elif close and close[0] < MERGE ** 2 and len(cent) > 2:
+        a, b = close[1], close[2]
+        cent[a] = [(cent[a][j] * counts[a] + cent[b][j] * counts[b]) / (counts[a] + counts[b]) for j in range(3)]
+        cent.pop(b)
+    else:
+        break
+    lab = kmeans(cent)
+K = len(cent)
+print('colour groups:', K)
 # Majority filter: specks of one colour inside another join their surroundings.
 for _ in range(SMOOTH):
     new = lab[:]
@@ -270,7 +339,7 @@ for _ in range(SMOOTH):
 # averages drift towards neighbouring regions, e.g. a white shirt towards hair).
 for k in range(K):
     m = [raw[i] for i in range(len(raw)) if lab[i] == k]
-    if m: cent[k] = [sorted(c[j] for c in m)[len(m) // 2] for j in range(3)]
+    cent[k] = [sorted(c[j] for c in m)[len(m) // 2] for j in range(3)] if m else [0.5, 0.5, 0.5]  # (was CIELAB)
 
 # Name the clusters by where they sit: skin = the front of the face,
 # hair = the top of the head, boot = the feet; the rest is clothing.
@@ -278,7 +347,7 @@ zs = {k: [ob.data.vertices[i].co for i in range(len(cols)) if lab[i] == k] for k
 def share(k, pred):
     return sum(1 for p in zs[k] if pred(p)) / max(1, len(zs[k]))
 # The face: front-centre of the lower head (above the neck, below the fringe).
-face = lambda p: neck_z + 0.2 * (TOP - neck_z) < p.z < neck_z + 0.5 * (TOP - neck_z) and abs(p.x) < 0.045 and p.y < 0
+face = lambda p: neck_z + 0.2 * (TOP - neck_z) < p.z < neck_z + 0.5 * (TOP - neck_z) and abs(p.x) < HEAD_RX * 0.4 and p.y < 0
 top = lambda p: p.z > TOP * 0.93
 feet = lambda p: p.z < TOP * 0.07
 names = {}

@@ -74,6 +74,16 @@ figure. For the Hugging Face Space backend, set `HF_TOKEN` before
   the game's skeleton, applies heat weights, and colours from the front (and
   back) view, clustered into named slots (`--names` overrides them; `--slots`
   writes them out for the UI).
+  - Skeleton proportions: `--build hero` (default; the workshop's chibi build,
+    head about a quarter of the height), `stout`, or `adult` (the old 1:7).
+    Input should be an A-pose; a T-pose prints a warning (the arms and cloth
+    twist under the game's clips).
+  - Colours: each vertex takes the median of a small patch of the image
+    (`--patch`, painted art is noisy), one smoothing pass, then up to `--k 10`
+    groups in CIELAB with farthest-point seeds, merging groups closer than
+    `--merge 7` (ΔE). The old version (5 groups seeded by brightness, 4
+    smoothing passes) turned a green cloak brown:
+    `shots/rig-colours-before-after.png`.
 - **`pack.mjs`**: the game's slot and meshopt packing (as in
   `scripts/characters.mjs`).
 - **`app.ts`, `stage.ts`, `index.html`, `vite.config.ts`**: the page. It uses

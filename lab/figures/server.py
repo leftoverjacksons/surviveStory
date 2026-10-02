@@ -103,7 +103,7 @@ def step_generate(fid, m):
 def step_rig(fid, m):
     d, prm = fdir(fid), m['params']
     args = [os.path.join(d, 'mesh.glb'), os.path.join(d, 'front.png'), os.path.join(d, 'rigged.glb'),
-            '--tris', str(prm.get('tris', 3000)), '--k', str(prm.get('k', 5)), '--slots', os.path.join(d, 'slots.json')]
+            '--tris', str(prm.get('tris', 3000)), '--k', str(prm.get('k', 10)), '--slots', os.path.join(d, 'slots.json')]
     if os.path.exists(os.path.join(d, 'back.png')): args += ['--back', os.path.join(d, 'back.png')]
     if m.get('names'): args += ['--names', ','.join(f'{k}={v}' for k, v in m['names'].items())]
     rig = os.path.join(HERE, 'rig.py')
