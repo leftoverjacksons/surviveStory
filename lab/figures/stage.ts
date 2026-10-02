@@ -177,6 +177,24 @@ export class Stage {
   }
   holdStill = false;
 
+  /** Show one unrigged object (a garment from a sheet: vertex colours), standing on the ground, or nothing. */
+  async showObject(url: string | null) {
+    const token = ++this.token;
+    this.holdStill = true;
+    const g = url ? await this.loader.loadAsync(url).catch(() => null) : null;
+    if (token !== this.token) return;
+    this.group.clear(); this.chars = [];
+    if (!g) return;
+    const o = g.scene;
+    o.traverse((m) => { if ((m as THREE.Mesh).isMesh) (m as THREE.Mesh).material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }); });
+    const b = new THREE.Box3().setFromObject(o), size = b.getSize(new THREE.Vector3());
+    const k = 1.2 / Math.max(size.x, size.y, size.z, 1e-6);
+    o.scale.setScalar(k);
+    o.position.set(-(b.min.x + size.x / 2) * k, -b.min.y * k, -(b.min.z + size.z / 2) * k);
+    this.group.add(o);
+    this.look.set(0, size.y * k / 2, 0);
+  }
+
   play() {
     if (this.holdStill) return;
     const clip = this.clips.get(this.opts.clip);

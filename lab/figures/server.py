@@ -72,6 +72,43 @@ def figures():
             out.append(m)
     return out
 
+SHEETS = os.path.join(WORK, '_sheets')  # (not a figure: figures() only lists dirs with a meta.json)
+
+def sheets():
+    out = []
+    if os.path.isdir(SHEETS):
+        for sid in sorted(os.listdir(SHEETS), reverse=True):
+            p = os.path.join(SHEETS, sid, 'sheet.json')
+            if os.path.exists(p):
+                sh = json.load(open(p))
+                ip = os.path.join(SHEETS, sid, 'items.json')
+                if os.path.exists(ip):
+                    sh['items'] = json.load(open(ip))['items']
+                out.append(sh)
+    return out
+
+def write_sheet(sid, **kw):
+    p = os.path.join(SHEETS, sid, 'sheet.json')
+    with lock:
+        sh = json.load(open(p)) if os.path.exists(p) else {}
+        sh.update(kw)
+        with open(p, 'w') as f: json.dump(sh, f, indent=1)
+
+def split_sheet(sid):
+    """Cut the sheet into items (intake.py, in the generation environment: it uses CLIP to guess categories)."""
+    d = os.path.join(SHEETS, sid)
+    sh = json.load(open(os.path.join(d, 'sheet.json')))
+    write_sheet(sid, status='splitting', error=None)
+    cmd = [CFG['gen_python'], os.path.join(HERE, 'intake.py'), os.path.join(d, sh['front']), d, '--gap', str(sh.get('gap', 1))]
+    if sh.get('back'): cmd += ['--back', os.path.join(d, sh['back'])]
+    with open(os.path.join(d, 'log.txt'), 'a', encoding='utf-8') as f:
+        p = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, cwd=REPO, env={**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'})
+    if p.returncode:
+        tail = open(os.path.join(d, 'log.txt'), encoding='utf-8', errors='replace').read().splitlines()[-6:]
+        write_sheet(sid, status='error', error='splitting failed:\n' + '\n'.join(tail))
+    else:
+        write_sheet(sid, status='ready')
+
 BUILDS_JSON = os.path.join(REPO, 'lab', 'workshop', 'builds.json')
 BODIES = os.path.join(LIB, 'bodies')
 
@@ -179,7 +216,14 @@ def step_body(fid, m):
     rest.append({'name': name, 'file': f'bodies/{name}.glb', 'build': name, 'from': fid, 'added': time.strftime('%Y-%m-%d %H:%M')})
     with open(os.path.join(BODIES, 'bodies.json'), 'w') as f: json.dump(rest, f, indent=1)
 
-STEPS = {'generate': step_generate, 'rig': step_rig, 'pack': step_pack, 'parts': step_parts, 'body': step_body}
+def step_garment(fid, m):
+    """A garment (or loose item) from a sheet: coloured from its front (and back) drawing, unrigged (garment.py)."""
+    d = fdir(fid)
+    cmd = [os.path.join(d, 'mesh.glb'), os.path.join(d, 'front.png'), os.path.join(d, 'garment.glb')]
+    if os.path.exists(os.path.join(d, 'back.png')): cmd += ['--back', os.path.join(d, 'back.png')]
+    run(fid, 'garment', bpy_cmd(os.path.join(HERE, 'garment.py'), *cmd))
+
+STEPS = {'generate': step_generate, 'rig': step_rig, 'pack': step_pack, 'parts': step_parts, 'body': step_body, 'garment': step_garment}
 
 def worker():
     while True:
@@ -247,11 +291,12 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path).path
         if u == '/api/state':
-            return self.send(200, {'env': ENV, 'figures': figures(), 'library': library(), 'bodies': bodies(), 'queue': jobs.qsize()})
+            return self.send(200, {'env': ENV, 'figures': figures(), 'library': library(), 'bodies': bodies(), 'sheets': sheets(), 'queue': jobs.qsize()})
         if u == '/api/builds':
             return self.send(200, json.load(open(BUILDS_JSON)))
         if u.startswith('/api/work/'): return self.file(WORK, u[len('/api/work/'):])
         if u.startswith('/api/library/'): return self.file(LIB, u[len('/api/library/'):])
+        if u.startswith('/api/sheets/'): return self.file(SHEETS, u[len('/api/sheets/'):])
         self.send(404, {'error': 'not found'})
 
     def do_POST(self):
@@ -272,6 +317,51 @@ class H(BaseHTTPRequestHandler):
                 with open(meta_path(fid), 'w') as f: json.dump(m, f, indent=1)
                 enqueue(fid, ['generate', 'rig', 'pack'])
                 return self.send(200, {'id': fid})
+            if u == ['api', 'sheets']:  # {name, front, back?}: a sheet of items to cut up
+                sid = time.strftime('%Y%m%d-%H%M%S') + '-' + slug(b.get('name', 'sheet'))[:24]
+                d = os.path.join(SHEETS, sid); os.makedirs(d)
+                ext = lambda url: '.' + url.split(';')[0].split('/')[-1].replace('jpeg', 'jpg')
+                sh = {'id': sid, 'name': b.get('name') or 'sheet', 'created': time.time(), 'gap': 1.0, 'made': {}}
+                sh['front'] = 'sheet_front' + ext(b['front']); save_data_url(b['front'], os.path.join(d, sh['front']))
+                if b.get('back'):
+                    sh['back'] = 'sheet_back' + ext(b['back']); save_data_url(b['back'], os.path.join(d, sh['back']))
+                with open(os.path.join(d, 'sheet.json'), 'w') as f: json.dump(sh, f, indent=1)
+                threading.Thread(target=split_sheet, args=(sid,), daemon=True).start()
+                return self.send(200, {'id': sid})
+            if len(u) == 4 and u[:2] == ['api', 'sheets']:
+                sid, act = u[2], u[3]
+                d = os.path.join(SHEETS, sid)
+                if not os.path.exists(os.path.join(d, 'sheet.json')): return self.send(404, {'error': 'no such sheet'})
+                sh = json.load(open(os.path.join(d, 'sheet.json')))
+                if act == 'split':  # {gap}: cut again with another separation
+                    write_sheet(sid, gap=float(b.get('gap', 1)))
+                    threading.Thread(target=split_sheet, args=(sid,), daemon=True).start()
+                elif act == 'make':  # {items: [{index, category, name}], params}: a figure per chosen item
+                    its = {i['index']: i for i in json.load(open(os.path.join(d, 'items.json')))['items']}
+                    made = dict(sh.get('made', {}))
+                    for want in b.get('items', []):
+                        it = its.get(int(want['index']))
+                        if not it: continue
+                        cat = want.get('category') or it.get('guess') or 'other'
+                        name = want.get('name') or f"{sh['name']} {cat}"
+                        fid = time.strftime('%Y%m%d-%H%M%S') + f"-{int(want['index']):02d}-" + slug(name)[:20]
+                        os.makedirs(fdir(fid))
+                        kind = 'body' if cat == 'body' else 'garment'
+                        params = {**b.get('params', {}), **({'build': 'auto', 'cut': 'bones'} if kind == 'body' else {})}
+                        m = {'id': fid, 'name': name, 'body': 'man', 'kind': kind, 'category': cat, 'sheet': sid,
+                             'params': params, 'created': time.time(), 'done': [], 'names': {}}
+                        m['front'] = 'source_front.png'; shutil.copy(os.path.join(d, it['front']), os.path.join(fdir(fid), m['front']))
+                        if it.get('back'):
+                            m['back'] = 'source_back.png'; shutil.copy(os.path.join(d, it['back']), os.path.join(fdir(fid), m['back']))
+                        with open(meta_path(fid), 'w') as f: json.dump(m, f, indent=1)
+                        enqueue(fid, ['generate', 'rig', 'pack'] if kind == 'body' else ['generate', 'garment'])
+                        made[str(want['index'])] = fid
+                    write_sheet(sid, made=made)
+                elif act == 'delete':
+                    shutil.rmtree(d)
+                else:
+                    return self.send(404, {'error': 'unknown action'})
+                return self.send(200, {'ok': True})
             if len(u) == 4 and u[:2] == ['api', 'figures']:
                 fid, act = u[2], u[3]
                 if not os.path.exists(meta_path(fid)): return self.send(404, {'error': 'no such figure'})
@@ -333,7 +423,8 @@ class H(BaseHTTPRequestHandler):
 # Anything left mid-run when the server stopped is queued again.
 for m in figures():
     if m.get('status', '').startswith(('running', 'queued')):
-        enqueue(m['id'], [s for s in ('generate', 'rig', 'pack') if s not in m.get('done', [])] or ['pack'])
+        chain = ('generate', 'garment') if m.get('kind') == 'garment' else ('generate', 'rig', 'pack')
+        enqueue(m['id'], [s for s in chain if s not in m.get('done', [])] or [chain[-1]])
 
 print(f'figure studio backend on http://localhost:{PORT} (work: {WORK})', flush=True)
 ThreadingHTTPServer(('127.0.0.1', PORT), H).serve_forever()

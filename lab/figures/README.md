@@ -60,6 +60,27 @@ figure. For the Hugging Face Space backend, set `HF_TOKEN` before
    the game's figure pools pick it up. Nothing reaches the game without that
    step.
 
+**The view.** Drag to rotate, right-drag to move up and down, wheel to zoom.
+
+### From a sheet (bodies and garments drawn separately)
+
+1. Under **New from a sheet**, drop a front sheet (separate items on a plain
+   white or transparent background) and, if you have one, a back sheet drawn
+   in the same layout. Name it and choose **Split sheet** (`intake.py`).
+2. The sheet opens in the right panel as a grid of items, each with a
+   category guessed by CLIP (`openai/clip-vit-base-patch32`; 16 of 18 right on
+   the test kit sheet). Untick what you don't want, correct categories and
+   names. If an item falls into pieces raise **Separation** and **Split
+   again**; if two items come out as one, lower it.
+3. **Make selected** turns each ticked item into a figure. A `body` goes
+   generate → rig (auto build) → pack, and is then ready for **Proportions**.
+   Everything else is a **garment** (`garment.py`): generated, scraps dropped,
+   coloured from its drawing (back from the back sheet, else filled from the
+   sides), unrigged, shown standing on the ground. Fitting garments onto
+   bodies is the next step.
+4. Back items pair with front items by position and size; an unpaired item
+   is made from its front only.
+
 ## Pieces
 
 - **`server.py`**: the backend, standard library only. Holds figures in

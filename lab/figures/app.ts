@@ -15,11 +15,13 @@ interface Slot { index: number; name: string; label: string; color: [number, num
 interface Figure {
   id: string; name: string; body: 'man' | 'woman' | 'child'; status?: string; error?: string | null;
   params: Record<string, string | number>; files: string[]; slots: Slot[]; names: Record<string, string>;
-  done: string[]; stamp?: number; library?: string; game?: string; parts?: string; front: string; back?: string;
+  done: string[]; stamp?: number; library?: string; game?: string; parts?: string; front: string; back?: string; kind?: 'body' | 'garment'; category?: string;
 }
 interface LibEntry { file: string; name: string; body: string; generator: string; licence: string; added: string }
 interface Body { name: string; file: string; build: string; from: string; added: string }
-interface State { env: Record<string, unknown>; figures: Figure[]; library: LibEntry[]; bodies: Body[]; queue: number }
+interface SheetItem { index: number; front: string; back: string | null; guess?: string; parser?: Record<string, number>; size: [number, number] }
+interface Sheet { id: string; name: string; status?: string; error?: string | null; gap: number; front: string; back?: string; items?: SheetItem[]; made: Record<string, string> }
+interface State { env: Record<string, unknown>; figures: Figure[]; library: LibEntry[]; bodies: Body[]; sheets: Sheet[]; queue: number }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -31,7 +33,8 @@ const api = async (path: string, body?: unknown) => {
 };
 const work = (f: Figure, file: string) => `/api/work/${f.id}/${file}?v=${f.stamp ?? 0}`;
 
-let state: State = { env: {}, figures: [], library: [], bodies: [], queue: 0 };
+let state: State = { env: {}, figures: [], library: [], bodies: [], sheets: [], queue: 0 };
+let sheetSel: string | null = null;  // a selected sheet owns the right-hand column
 let selected: string | null = localStorage.getItem('studio.sel');
 let shownKey = '';
 let detailKey = '';
@@ -65,6 +68,33 @@ $('show').addEventListener('input', async () => {
   render();
 });
 $('refs').addEventListener('input', () => refreshStage());
+// Mouse: drag turns the view (left/right) and tilts it (up/down); right- or shift-drag moves it up and down;
+// the wheel zooms (kept in step with the slider).
+{
+  const cv = $<HTMLCanvasElement>('c');
+  let drag: { x: number; y: number; pan: boolean } | null = null;
+  cv.addEventListener('contextmenu', (e) => e.preventDefault());
+  cv.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey }; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointerup', () => { drag = null; });
+  cv.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    drag.x = e.clientX; drag.y = e.clientY;
+    if (drag.pan) stage.look.y += dy * 0.05 / stage.opts.zoom;
+    else {
+      stage.yaw -= dx * 0.01;
+      stage.pitch = Math.min(1.45, Math.max(-0.3, stage.pitch + dy * 0.008));
+    }
+  });
+  cv.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const z = $<HTMLInputElement>('zoom');
+    const v = Math.min(Number(z.max), Math.max(Number(z.min), stage.opts.zoom * Math.pow(1.1, -e.deltaY / 100)));
+    z.value = String(v);
+    z.dispatchEvent(new Event('input'));
+  }, { passive: false });
+}
+
 // Pixel mode snaps the zoom to the game's range, and back to a close-up when it's off.
 $('pixel').addEventListener('input', () => {
   const z = $<HTMLInputElement>('zoom');
@@ -74,6 +104,12 @@ $('pixel').addEventListener('input', () => {
 
 function refreshStage() {
   if (proportioning()) { shownKey = 'proportions'; void props.sync(); return; }
+  const gf = $<HTMLSelectElement>('show').value === 'figure' ? state.figures.find((x) => x.id === selected) : undefined;
+  if (gf?.kind === 'garment') {  // unrigged: shown as an object, not on the skeleton
+    const key = 'garment:' + gf.id + (gf.stamp ?? 0) + gf.files.includes('garment.glb');
+    if (key !== shownKey) { shownKey = key; void stage.showObject(gf.files.includes('garment.glb') ? work(gf, 'garment.glb') : null); }
+    return;
+  }
   if (stage.holdStill) { stage.holdStill = false; shownKey = ''; }
   const refs = $<HTMLInputElement>('refs').checked ? REFS.map((n) => Stage.ref(n)) : [];
   let figs: StageFigure[];
@@ -94,8 +130,8 @@ function refreshStage() {
 }
 
 // ---------------------------------------------------------------- new figure form
-const picked: { front?: string; back?: string } = {};
-function dropZone(id: string, key: 'front' | 'back') {
+const picked: { front?: string; back?: string; sheet?: string; sheetBack?: string } = {};
+function dropZone(id: string, key: 'front' | 'back' | 'sheet' | 'sheetBack') {
   const el = $(id), input = el.querySelector('input')!;
   const take = (file?: File | null) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -105,7 +141,9 @@ function dropZone(id: string, key: 'front' | 'back') {
       el.style.backgroundImage = `url(${picked[key]})`;
       el.classList.add('has');
       if (key === 'front' && !$<HTMLInputElement>('name').value) $<HTMLInputElement>('name').value = file.name.replace(/\.[^.]+$/, '');
+      if (key === 'sheet' && !$<HTMLInputElement>('sheetName').value) $<HTMLInputElement>('sheetName').value = file.name.replace(/\.[^.]+$/, '');
       $<HTMLButtonElement>('make').disabled = !picked.front;
+      $<HTMLButtonElement>('splitSheet').disabled = !picked.sheet;
     };
     r.readAsDataURL(file);
   };
@@ -118,6 +156,20 @@ function dropZone(id: string, key: 'front' | 'back') {
 }
 const takeFront = dropZone('dropFront', 'front');
 const takeBack = dropZone('dropBack', 'back');
+dropZone('dropSheet', 'sheet');
+dropZone('dropSheetBack', 'sheetBack');
+$('splitSheet').addEventListener('click', async () => {
+  const btn = $<HTMLButtonElement>('splitSheet');
+  btn.disabled = true;
+  try {
+    const r = await api('sheets', { name: $<HTMLInputElement>('sheetName').value || 'sheet', front: picked.sheet, back: picked.sheetBack });
+    for (const id of ['dropSheet', 'dropSheetBack']) { $(id).style.backgroundImage = ''; $(id).classList.remove('has'); }
+    delete picked.sheet; delete picked.sheetBack;
+    $<HTMLInputElement>('sheetName').value = '';
+    selectSheet(r.id);
+  } catch (e) { alertBox(String(e)); btn.disabled = false; }
+  void poll();
+});
 // Paste: the first image goes to the front view, the next to the back.
 addEventListener('paste', (e) => {
   const f = [...(e.clipboardData?.files ?? [])].find((x) => x.type.startsWith('image/'));
@@ -160,6 +212,10 @@ function renderLists() {
       <div><div>${esc(f.name)} <span class="sub">· ${esc(f.body)}</span></div>
       <div class="st ${statusClass(f.status)}">${esc(f.status ?? '')}${f.library ? ' · in library' : ''}${f.game ? ' · in game' : ''}</div></div>
     </div>`).join('') || '<div class="empty">No figures yet.</div>';
+  $('sheets').innerHTML = (state.sheets ?? []).map((sh) => `
+    <div class="item ${sh.id === sheetSel ? 'sel' : ''}" data-sheet="${esc(sh.id)}"><img src="/api/sheets/${esc(sh.id)}/${esc(sh.front)}" alt="" />
+    <div><div>${esc(sh.name)}</div><div class="st ${statusClass(sh.status)}">${esc(sh.status ?? '')} · ${sh.items?.length ?? 0} items · ${Object.keys(sh.made ?? {}).length} made</div></div></div>`).join('')
+    || '<div class="empty">None yet.</div>';
   $('bodies').innerHTML = (state.bodies ?? []).map((b) => `
     <div class="item" data-body="${esc(b.name)}"><img src="/api/library/${esc(b.file.replace('.glb', '.png'))}" alt="" />
     <div><div>${esc(b.name)}</div><div class="st">build ${esc(b.build)} · ${esc(b.added)}</div></div></div>`).join('')
@@ -175,9 +231,15 @@ $('figures').addEventListener('click', (e) => {
 });
 $('library').addEventListener('click', () => { $<HTMLSelectElement>('show').value = 'library'; refreshStage(); });
 $('bodies').addEventListener('click', () => { $<HTMLSelectElement>('show').value = 'bodies'; render(); });
+$('sheets').addEventListener('click', (e) => {
+  const id = (e.target as HTMLElement).closest<HTMLElement>('[data-sheet]')?.dataset.sheet;
+  if (id) selectSheet(id);
+});
+function selectSheet(id: string) { sheetSel = id; detailKey = ''; render(); }
 
 function select(id: string) {
   selected = id;
+  sheetSel = null;
   try { localStorage.setItem('studio.sel', id); } catch { /* private mode */ }
   if (!proportioning()) $<HTMLSelectElement>('show').value = 'figure';  // (Proportions stays: it shows the selected figure)
   detailKey = '';
@@ -188,8 +250,75 @@ function select(id: string) {
 const SLOT_NAMES = ['skin', 'hair', 'cloth', 'boot', 'hat', 'pack', 'strap', 'eye'];
 const armed = new Set<string>(); // two-click confirmations (browser dialogs are blocked in some frames)
 
+// ---------------------------------------------------------------- sheet panel
+const CATS = ['body', 'hair', 'hat', 'scarf', 'cloak', 'top', 'belt', 'bag', 'backpack', 'gloves', 'trousers', 'wraps', 'boots', 'bedroll', 'other'];
+const edits = new Map<string, { use: boolean; cat: string; name: string }>();  // per sheet:item, kept across refreshes
+function renderSheet(sh: Sheet) {
+  const key = JSON.stringify(sh) + [...armed].join();
+  if (key === detailKey) return;
+  detailKey = key;
+  const busy = sh.status === 'splitting';
+  const items = sh.items ?? [];
+  const count: Record<string, number> = {};
+  const ed = (it: SheetItem) => {
+    const k = `${sh.id}:${it.index}`;
+    if (!edits.has(k)) {
+      const cat = it.guess ?? 'other';
+      count[cat] = (count[cat] ?? 0) + 1;
+      edits.set(k, { use: true, cat, name: `${sh.name} ${cat}${count[cat] > 1 ? ' ' + count[cat] : ''}` });
+    }
+    return edits.get(k)!;
+  };
+  const made = (it: SheetItem) => state.figures.find((f) => f.id === sh.made?.[String(it.index)]);
+  $('detail').innerHTML = `
+    <h1>${esc(sh.name)}</h1>
+    <div class="sub">${esc(sh.id)} · <span class="st ${statusClass(sh.status)}">${esc(sh.status)}</span>${sh.back ? ' · with a back sheet' : ''}</div>
+    ${sh.error ? `<div class="note" style="border-color:var(--bad);margin-top:8px;white-space:pre-wrap;font-family:monospace;font-size:11px">${esc(sh.error)}</div>` : ''}
+    <div class="imgs" style="margin-top:8px"><img src="/api/sheets/${esc(sh.id)}/${esc(sh.front)}" alt="" />${sh.back ? `<img src="/api/sheets/${esc(sh.id)}/${esc(sh.back)}" alt="" />` : ''}</div>
+    <label>Separation <span class="sub">${sh.gap}: raise it if an item falls into pieces, lower it if two items come out as one</span></label>
+    <div class="row"><input id="sGap" type="range" min="0.5" max="10" step="0.5" value="${sh.gap}" /><button id="sSplit" ${busy ? 'disabled' : ''}>Split again</button></div>
+    <h2>${items.length} items</h2>
+    <div class="sub">Untick what you don't want; check each one's category (a guess). A body becomes a figure (rigged, fitted, ready for Proportions); everything else a garment (generated and coloured, unrigged until fitting).</div>
+    <div class="grid">${items.map((it) => {
+      const e = ed(it), f = made(it);
+      return `<div class="cell ${e.use ? '' : 'off'}">
+        <div class="pics"><img src="/api/sheets/${esc(sh.id)}/${esc(it.front)}" alt="" />${it.back ? `<img src="/api/sheets/${esc(sh.id)}/${esc(it.back)}" alt="" title="back" />` : ''}</div>
+        <label style="margin-top:4px"><input type="checkbox" data-use="${it.index}" ${e.use ? 'checked' : ''} /> make #${it.index}</label>
+        <select data-cat="${it.index}">${CATS.map((c) => `<option ${c === e.cat ? 'selected' : ''}>${c}</option>`).join('')}</select>
+        <input type="text" data-name="${it.index}" value="${esc(e.name)}" />
+        ${f ? `<div class="st ${statusClass(f.status)}" data-open="${esc(f.id)}" style="cursor:pointer">→ ${esc(f.status)}</div>` : ''}
+      </div>`;
+    }).join('')}</div>
+    <div class="actions">
+      <button class="primary" id="sMake" ${busy || !items.length ? 'disabled' : ''}>Make selected</button>
+      <button id="sDel" class="warn">${armed.has('sdel') ? 'Click again to delete the sheet' : 'Delete sheet'}</button>
+    </div>
+    <div class="sub">Generation takes about a minute an item on a GPU (much longer on a CPU); items queue one at a time. With a back sheet, each item is generated from both views.</div>`;
+  const get = (i: number) => edits.get(`${sh.id}:${i}`)!;
+  $('detail').querySelectorAll<HTMLInputElement>('[data-use]').forEach((el) => { el.onchange = () => { get(+el.dataset.use!).use = el.checked; el.closest('.cell')!.classList.toggle('off', !el.checked); }; });
+  $('detail').querySelectorAll<HTMLSelectElement>('select[data-cat]').forEach((el) => { el.onchange = () => { get(+el.dataset.cat!).cat = el.value; }; });
+  $('detail').querySelectorAll<HTMLInputElement>('[data-name]').forEach((el) => { el.oninput = () => { get(+el.dataset.name!).name = el.value; }; });
+  $('detail').querySelectorAll<HTMLElement>('[data-open]').forEach((el) => { el.onclick = () => select(el.dataset.open!); });
+  $('sSplit').onclick = async () => { try { await api(`sheets/${sh.id}/split`, { gap: Number($<HTMLInputElement>('sGap').value) }); for (const k of [...edits.keys()]) if (k.startsWith(sh.id + ':')) edits.delete(k); } catch (e) { alertBox(String(e)); } void poll(); };
+  $('sMake').onclick = async () => {
+    const num = (id: string) => Number($<HTMLInputElement>(id).value);
+    const chosen = items.filter((it) => get(it.index).use).map((it) => ({ index: it.index, category: get(it.index).cat, name: get(it.index).name }));
+    try {
+      await api(`sheets/${sh.id}/make`, { items: chosen, params: { backend: $<HTMLSelectElement>('backend').value, preset: $<HTMLSelectElement>('preset').value, octree: num('octree'), seed: num('seed'), tris: num('tris'), final: num('final'), k: num('k'), head: 'keep' } });
+    } catch (e) { alertBox(String(e)); }
+    void poll();
+  };
+  $('sDel').onclick = () => {
+    if (armed.has('sdel')) { armed.delete('sdel'); void api(`sheets/${sh.id}/delete`, {}).then(() => { sheetSel = null; void poll(); }); }
+    else { armed.add('sdel'); setTimeout(() => { armed.delete('sdel'); detailKey = ''; render(); }, 4000); }
+    detailKey = ''; render();
+  };
+}
+
 function renderDetail() {
   if (composing() || proportioning()) return;  // the Compose / Proportions panel owns the right-hand column
+  const sh = sheetSel ? state.sheets?.find((x) => x.id === sheetSel) : undefined;
+  if (sh) { renderSheet(sh); return; }
   const f = state.figures.find((x) => x.id === selected);
   const key = JSON.stringify(f ?? null) + [...armed].join();
   if (key === detailKey) return;
@@ -199,6 +328,35 @@ function renderDetail() {
   const imgs = [f.front, f.back, f.files.includes('front.png') ? 'front.png' : '', f.files.includes('back.png') ? 'back.png' : '',
     ...['labels_front_vis.png', 'labels_back_vis.png'].filter((x) => f.files.includes(x))].filter(Boolean) as string[];
   const rgb = (c: number[]) => `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`;
+  if (f.kind === 'garment') {  // from a sheet: generated and coloured, unrigged (fitting onto bodies comes next)
+    $('detail').innerHTML = `
+      <h1>${esc(f.name)}</h1>
+      <div class="sub">${esc(f.category ?? 'garment')} · ${esc(f.id)} · <span class="st ${statusClass(f.status)}">${esc(f.status)}</span></div>
+      ${f.error ? `<div class="note" style="border-color:var(--bad);margin-top:8px;white-space:pre-wrap;font-family:monospace;font-size:11px">${esc(f.error)}</div>` : ''}
+      <h2>Images</h2>
+      <div class="imgs">${imgs.map((i) => `<img src="${work(f, i)}" title="${esc(i)}" alt="" />`).join('')}</div>
+      <div class="note" style="margin-top:8px">A garment: generated and coloured from its drawing${f.back ? ' (front and back)' : ' (front; the back is filled from the sides)'}, not rigged. Fitting garments onto bodies is the next step.</div>
+      <div class="row">
+        <div><label>Seed</label><input id="dSeed" type="number" value="${esc(f.params.seed ?? 1234)}" /></div>
+        <div><label>Quality</label><select id="dPreset">${['turbo', 'full'].map((p) => `<option ${p === (f.params.preset ?? 'turbo') ? 'selected' : ''}>${p}</option>`).join('')}</select></div>
+      </div>
+      <div class="actions">
+        <button id="gGen" ${busy ? 'disabled' : ''}>Generate again</button>
+        <button id="gCol" ${busy || !f.done.includes('generate') ? 'disabled' : ''}>Colour again</button>
+        <button id="aDel" class="warn" ${busy ? 'disabled' : ''}>${armed.has('del') ? 'Click again to delete' : 'Delete'}</button>
+      </div>
+      <h2>Log</h2><pre id="log">…</pre>`;
+    void loadLog(f);
+    const act = async (path: string, body: unknown = {}) => { try { await api(`figures/${f.id}/${path}`, body); } catch (e) { alertBox(String(e)); } void poll(); };
+    const params = () => ({ seed: Number($<HTMLInputElement>('dSeed').value), preset: $<HTMLSelectElement>('dPreset').value });
+    $('gGen').onclick = () => act('run', { steps: ['generate', 'garment'], params: params() });
+    $('gCol').onclick = () => act('run', { steps: ['garment'] });
+    $('aDel').onclick = () => {
+      if (armed.has('del')) { armed.delete('del'); void act('delete'); selected = null; } else { armed.add('del'); setTimeout(() => { armed.delete('del'); renderDetail(); }, 4000); }
+      renderDetail();
+    };
+    return;
+  }
   $('detail').innerHTML = `
     <h1>${esc(f.name)}</h1>
     <div class="sub">${esc(f.id)} · <span class="st ${statusClass(f.status)}">${esc(f.status)}</span></div>

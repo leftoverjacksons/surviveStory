@@ -60,6 +60,13 @@
   .note { font-size: 12px; color: var(--dim); background: #1b1e1a; border-left: 3px solid var(--accent); padding: 6px 8px; border-radius: 4px; }
   .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .empty { color: var(--dim); padding: 20px 0; text-align: center; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+  .cell { border: 1px solid var(--line); border-radius: 6px; padding: 6px; min-width: 0; }
+  .cell select, .cell input[type=text] { width: 100%; box-sizing: border-box; min-width: 0; }
+  .cell.off { opacity: .45; }
+  .cell .pics { display: flex; gap: 4px; height: 90px; }
+  .cell .pics img { flex: 1; min-width: 0; object-fit: contain; background: #fff; border-radius: 4px; }
+  .cell select, .cell input[type=text] { margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -102,6 +109,17 @@
     <div class="actions"><button class="primary" id="make" disabled>Make figure</button></div>
     <div class="sub" style="margin-top:6px">Best input: one character, full body, A-pose (arms 30–45° out), plain background, front view.</div>
 
+    <h2>New from a sheet</h2>
+    <div class="sub">A sheet of separate items (a body, garments) on a plain background; a back-view sheet with the same layout if you have one.</div>
+    <div class="drops">
+      <div class="drop" id="dropSheet"><span>Sheet (front)<br />(drop or click)</span><input type="file" accept="image/*" /></div>
+      <div class="drop" id="dropSheetBack"><span>Back sheet<br />(optional)</span><input type="file" accept="image/*" /></div>
+    </div>
+    <label>Sheet name</label><input id="sheetName" type="text" placeholder="e.g. scout kit" />
+    <div class="actions"><button class="primary" id="splitSheet" disabled>Split sheet</button></div>
+    <h2>Sheets</h2>
+    <div class="list" id="sheets"></div>
+
     <h2>Figures</h2>
     <div class="list" id="figures"></div>
     <h2>Bodies</h2>
@@ -115,10 +133,11 @@
     <div id="bar">
       <label>Show <select id="show"><option value="figure">Selected figure</option><option value="library">Whole library</option><option value="compose">Compose (parts)</option><option value="proportions">Proportions (body)</option><option value="bodies">Bodies</option></select></label>
       <label>Clip <select id="clip"></select></label>
-      <label>Zoom <input id="zoom" type="range" min="0.6" max="8" step="0.05" value="4" /></label>
+      <label>Zoom <input id="zoom" type="range" min="0.6" max="30" step="0.05" value="4" /></label>
       <label><input id="pixel" type="checkbox" /> Pixel (game)</label>
       <label><input id="raw" type="checkbox" checked /> Own colours</label>
       <label><input id="spin" type="checkbox" /> Turn</label>
+      <span class="sub" style="opacity:.7">drag: rotate · right-drag: up/down · wheel: zoom</span>
       <label><input id="refs" type="checkbox" checked /> Current figures</label>
     </div>
   </section>
