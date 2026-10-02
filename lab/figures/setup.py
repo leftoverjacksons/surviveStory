@@ -5,7 +5,7 @@ Set up the figure studio on this machine (Windows, Linux or macOS).
     python lab/figures/setup.py --cpu      (no CUDA, even with an NVIDIA GPU)
 
 Creates, inside lab/figures/ (all git-ignored):
-  .venv-gen   PyTorch (CUDA 12.4 build when an NVIDIA GPU is found, else CPU)
+  .venv-gen   PyTorch (CUDA 12.6 build when an NVIDIA GPU is found, else CPU)
               plus the Hunyuan3D shape-generation dependencies and gradio_client
   .hy3d       a clone of Tencent-Hunyuan/Hunyuan3D-2 (the shape pipeline's code)
   .venv-bpy   Blender as a Python module (bpy), for rigging, on Python 3.13 (bpy 5.1+)
@@ -47,12 +47,21 @@ if not CPU and shutil.which('nvidia-smi'):
     except Exception:
         pass
 gen = venv('.venv-gen')
-index = 'https://download.pytorch.org/whl/cu124' if gpu else 'https://download.pytorch.org/whl/cpu'
+# cu126 carries the newest PyTorch for Windows + Python 3.13 (2.14, the version tested on CPU here) and supports
+# RTX 20xx/30xx cards; cu124 stops at torch 2.6.
+index = 'https://download.pytorch.org/whl/cu126' if gpu else 'https://download.pytorch.org/whl/cpu'
 sh(gen, '-m', 'pip', 'install', '-q', 'torch', 'torchvision', '--index-url', index)
 # transformers 5.18 renamed the image encoder's weights that Hunyuan3D-2 loads (verified 2026-10-02).
 sh(gen, '-m', 'pip', 'install', '-q', 'diffusers', 'transformers<5.18', 'accelerate', 'einops', 'omegaconf', 'tqdm',
    'trimesh', 'pymeshlab', 'opencv-python-headless', 'scikit-image', 'pillow', 'rembg', 'onnxruntime',
    'huggingface_hub', 'gradio_client')
+
+if gpu:  # a later install must not have swapped the CUDA build for a CPU one
+    ok = subprocess.run([gen, '-c', 'import torch; print(torch.__version__, torch.cuda.is_available())'], capture_output=True, text=True).stdout.strip()
+    print('PyTorch:', ok)
+    if not ok.endswith('True'):
+        print('WARNING: PyTorch cannot see the GPU (old NVIDIA driver? update it from nvidia.com, then rerun). '
+              'Figures will still work on the CPU, slowly.')
 
 repo = os.path.join(HERE, '.hy3d')
 if not os.path.exists(os.path.join(repo, 'hy3dgen')):

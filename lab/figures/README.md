@@ -19,7 +19,7 @@ python lab/figures/setup.py        # add --cpu to ignore an NVIDIA GPU
 npm run figures                    # then open http://localhost:5181/
 ```
 
-`setup.py` creates `lab/figures/.venv-gen` (PyTorch with CUDA 12.4 when
+`setup.py` creates `lab/figures/.venv-gen` (PyTorch with CUDA 12.6 when
 `nvidia-smi` is present), `.venv-bpy` (Blender's module), `.hy3d` (the
 Hunyuan3D-2 code) and `config.json` (the paths; edit it to point elsewhere).
 All of these are git-ignored. Model weights (2–7 GB) download on the first

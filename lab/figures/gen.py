@@ -69,7 +69,11 @@ log('cut-outs saved')
 # ---------------------------------------------------------------- space
 if a.backend == 'space':
     from gradio_client import Client, handle_file
-    c = Client(a.space, hf_token=os.environ.get('HF_TOKEN') or None)
+    tok = os.environ.get('HF_TOKEN') or None
+    try:
+        c = Client(a.space, token=tok)  # gradio_client 1.x+ (earlier: hf_token)
+    except TypeError:
+        c = Client(a.space, hf_token=tok)
     res = c.predict(image=handle_file(front_path), mv_image_front=None,
                     mv_image_back=handle_file(back_path) if back_path else None,
                     mv_image_left=None, mv_image_right=None,
