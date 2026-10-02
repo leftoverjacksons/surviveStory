@@ -392,6 +392,7 @@ function renderDetail() {
     <div class="actions">
       <button id="aGen" ${busy ? 'disabled' : ''}>Generate again</button>
       <button id="aRig" ${busy || !f.done.includes('generate') ? 'disabled' : ''}>Rig again</button>
+      <button id="aProp" ${!f.files.includes('packed.glb') ? 'disabled' : ''}>Adjust proportions</button>
     </div>
     <h2>Keep it</h2>
     <div class="note">Hunyuan3D outputs are for prototypes: its licence forbids showing them in the EU, UK or South Korea.</div>
@@ -415,6 +416,7 @@ function renderDetail() {
   $('dBody').addEventListener('change', edit);
   $('aGen').onclick = () => act('run', { steps: ['generate', 'rig', 'pack'], params: params() });
   $('aRig').onclick = () => act('run', { steps: ['rig', 'pack'], params: params() });
+  $('aProp').onclick = () => { $<HTMLSelectElement>('show').value = 'proportions'; $('show').dispatchEvent(new Event('input')); };
   $('aParts').onclick = () => act('run', { steps: ['parts'] });
   const aNames = document.getElementById('aNames');
   if (aNames) aNames.onclick = () => {
