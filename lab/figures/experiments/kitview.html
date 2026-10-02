@@ -1,0 +1,24 @@
+<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#7a8448}canvas{display:block}</style>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const files = new URLSearchParams(location.search).get('f').split(',');
+const r = new THREE.WebGLRenderer({ antialias: true }); r.setSize(innerWidth, innerHeight); document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#7a8448');
+scene.add(new THREE.HemisphereLight('#fff8e8', '#55603a', 1.6)); const sun = new THREE.DirectionalLight('#fff', 1.6); sun.position.set(2, 4, 3); scene.add(sun);
+const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 100);
+const group = new THREE.Group(); scene.add(group);
+const loader = new GLTFLoader();
+const objs = await Promise.all(files.map((f) => loader.loadAsync('/api/work/' + f)  /* experiments/kitview.html?f=kit/cloak.glb,... (files under lab/figures/work) */));
+objs.forEach((g, i) => {
+  const o = g.scene; o.traverse((m) => { if (m.isMesh) m.material = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }); });
+  const b = new THREE.Box3().setFromObject(o); const s = 1 / Math.max(...b.getSize(new THREE.Vector3()).toArray());
+  o.scale.setScalar(s); const c = b.getCenter(new THREE.Vector3()).multiplyScalar(s); o.position.set(i * 1.25 - c.x, -c.y, -c.z);
+  const pivot = new THREE.Group(); pivot.position.x = 0; group.add(o);
+});
+const n = files.length, w = n * 1.25;
+const asp = innerWidth / innerHeight; const hh = Math.max(0.7, w / asp / 2);
+cam.left = -hh * asp; cam.right = hh * asp; cam.top = hh; cam.bottom = -hh; cam.updateProjectionMatrix();
+window.view = (yaw) => { objs.forEach((g) => { g.scene.rotation.y = yaw; }); cam.position.set((n - 1) * 1.25 / 2, 0.25, 5); cam.lookAt((n - 1) * 1.25 / 2, 0, 0); r.render(scene, cam); };
+window.view(0); window.ready = true;
+</script>
