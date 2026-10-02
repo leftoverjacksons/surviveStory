@@ -294,7 +294,7 @@ reference: Tiny Glade.
     PUBLISHED v48 (§39 + §40) from a TEMPORARY LOCAL MERGE of origin/claude/lucid-ride-z7pvg6 (the user's character
     branch, which published v47 with workshop-dressed survivors) + this branch; the merge was NOT pushed. Any future
     publish must include the character branch the same way (or the user merges it), or it would drop their figures.
-    §41 LEAF CARDS (prototype, not published): broadleaf crowns as camera-facing alpha cut-out cards
+    §41 LEAF CARDS (prototype, published v49 via the same temporary merge with the character branch): broadleaf crowns as camera-facing alpha cut-out cards
     (`render/leafcards.ts`, `TreeField.setCards`, graphics panel checkbox, off by default); measured
     ~11% fewer tree triangles, +1 draw call, ~5% frame time (`scripts/shots/cardsperf.mjs`). Pines/grass not carded.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
