@@ -286,7 +286,9 @@ reference: Tiny Glade.
     (MIT) is the candidate for shipped figures but needs a GPU. User's GPUs: RTX 2070 8 GB (home), RTX 3050 Ti 4 GB (laptop). Python 3.13 (bpy 5.1+ is 3.13-only); transformers<5.18. rig.py: --build hero skeleton, CIELAB colour groups,
     per-vertex _SHADE, optional workshop head (--head; USER PREFERS THE GENERATED HEAD, default keep), 12k tris no voxel
     (user: more generated detail, less decimation), workshop skeleton by default, --parts cuts head/top/bottom/feet/hands
-    → library/gen/ → build.py --parts mixes them with workshop parts. A-pose input (T-pose twists). User's GPU run works.
+    → library/gen/ → build.py --parts mixes them with workshop parts. GARMENTS: labels.py (segformer clothes parser) →
+    rig.py --labels cuts hair/head/neck/outer/top/waist/bag/hands/bottom/legs/feet; back filled from sides; --tris 30000 work, --final 12000
+    saved with seam-locked part reduction. Next asked: a correction panel (click to relabel); back views fix the back. A-pose input (T-pose twists). User's GPU run works.
   - CHARACTER WORKSHOP (lab, `lab/workshop/`, README there): characters authored in code in Blender on the game's
     skeleton (`kit.py` faceted parts + weighting; `characters/<name>.py`; `build.py <name>` → studio library;
     `shots.mjs` turnaround). The user proposed this route after the image-to-3D test; iterate on it with them.

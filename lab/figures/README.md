@@ -117,6 +117,21 @@ figure. For the Hugging Face Space backend, set `HF_TOKEN` before
     `parts_hero.glb` (`lab/workshop/build.py --parts`), where they mix with the
     workshop's parts in Show → Compose: `shots/compose-generated-parts.png`.
     Hunyuan3D licence applies to these parts too (prototype only).
+  - Garments (`--labels`, the studio's "Cut parts by: garments", default):
+    `labels.py` runs a clothing parser (segformer_b2_clothes) on the cut-out(s)
+    (`work/<id>/labels_front.png`, overlay `labels_front_vis.png` shown in the
+    studio); rig.py gives each vertex its garment, splits what the parser
+    merges by colour ("upper clothes" by hue into cloak `outer` and `top`;
+    "shoes" into `legs` wraps and `feet` boots), cleans specks, and cuts:
+    hair, hat, head, neck (scarf), outer, top, waist (belt), bag, hands,
+    bottom, legs, feet. Without a back view the back is filled from the
+    sides (colours too): sampling straight through put trousers and a
+    satchel on the back of a cloak. A back view (studio: Back view) is
+    labelled too and is what fixes the back properly.
+    `shots/garments-cut.png` (each garment a flat colour, front/side/back),
+    `shots/garments-mixed.png` (garments on workshop figures: wraps, boots and
+    satchel transfer cleanly; the cloak is a partial shell, with stains read as
+    tunic).
   - Low triangle counts (< 6000) voxel-remesh first (`--voxel auto`):
     decimating the raw surface that hard collapsed the boots.
 - **`pack.mjs`**: the game's slot and meshopt packing (as in

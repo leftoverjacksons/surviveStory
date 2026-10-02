@@ -2,7 +2,7 @@
 Lab (not part of the game): rig a generated character mesh onto the game's
 survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 
-    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 30000] [--final 12000] [--voxel auto] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head keep|face|soft|broad|long|elder] [--hair curly|bun|swept|none] [--shade 1] [--fit] [--parts <parts.glb> --name <name>]
+    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 30000] [--final 12000] [--voxel auto] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head keep|face|soft|broad|long|elder] [--hair curly|bun|swept|none] [--shade 1] [--fit] [--parts <parts.glb> --name <name>] [--labels <labels.png> [--labels-back <png>]]
         [--names 0=skin,1=hair,...] [--slots <json>] [--preview <png>]
 
 (with Blender's Python module: `pip install bpy`).
@@ -38,6 +38,8 @@ LIGHT = opt('--light', 0.7)  # slot colour: this luminance percentile of the gro
 PATCH = opt('--patch', 8)  # colour sample window, per mille of the figure's height in the image
 PREVIEW = opt('--preview', '')
 BACK = opt('--back', '')  # optional back view (cut-out) for the colours
+LABELS = opt('--labels', '')  # garment labels of the front view (labels.py): the parts are cut by garment
+LABELS_BACK = opt('--labels-back', '')  # ... and of the back view, if there is one
 NAMES = opt('--names', '')
 SLOTS_OUT = opt('--slots', '')  # write the slots (index, name, sRGB colour, vertices) as JSON
 VOXEL = opt('--voxel', -1.0)  # 0: decimate the generated surface directly (it is already watertight); -1: auto
@@ -320,8 +322,11 @@ neck_z = J['neck'][2] * (hi.z - lo.z) / TOP
 def colour(v):
     if v.normal.y > 0.25:  # facing away from the front view
         if back: return back.sample(v.co)
-        # No back view: the back of the head takes the colour at the top of the head.
+        # No back view: the back of the head takes the colour at the top of the head; the rest of the
+        # back is filled from the sides (below), which the front view does see. Sampling straight
+        # through would put what is in front (trousers through a cloak's opening, a satchel) on the back.
         if v.co.z > neck_z: return front.sample(front.top_of(v.co))
+        return None
     return front.sample(v.co)
 cols = [colour(v) for v in ob.data.vertices]
 
@@ -331,7 +336,7 @@ for e in ob.data.edges:
     a, b = e.vertices
     nbr[a].append(b); nbr[b].append(a)
 # Vertices that missed the image (thin tips past the silhouette) take their neighbours' colour.
-for _ in range(50):
+for _ in range(300):
     missing = [i for i, c in enumerate(cols) if c is None]
     if not missing: break
     for i in missing:
@@ -460,6 +465,97 @@ for p in ob.data.polygons:
     p.material_index = max(set(votes), key=votes.count)
 print('slots:', {names[k]: sum(1 for x in lab if x == k) for k in range(K)})
 
+# ---------------------------------------------------------------- 5c. garments (--labels)
+# Each vertex takes the garment the clothing parser saw at its place in the image (labels.py), with
+# rules for what the front view cannot see: the back of the face is hair, things worn in front (a
+# satchel) are not on the back. Labels the parser merges are split by colour: "upper clothes" into an
+# outer layer (the cloak: the group further from the body's middle) and a top, "shoes" into wraps above
+# and boots below. Then specks are cleaned up. GARMENT[i] per vertex; the parts are cut by it below.
+GARMENT_OF = {1: 'hat', 2: 'hair', 3: 'head', 4: 'top', 5: 'bottom', 6: 'bottom', 7: 'top', 8: 'waist', 9: 'feet',
+              10: 'feet', 11: 'head', 12: 'legs', 13: 'legs', 14: 'top', 15: 'top', 16: 'bag', 17: 'neck'}
+GARMENT = None
+if LABELS:
+    class LabelMap:
+        """A label image laid over a View's cut-out (same size): the majority label near a point."""
+        def __init__(self, path, view):
+            img = bpy.data.images.load(os.path.abspath(path))
+            px = img.pixels[:]
+            self.v = view
+            self.ids = [int(round(px[i * 4] * 255)) for i in range(img.size[0] * img.size[1])]
+        def sample(self, p):
+            v, ids = self.v, self.ids
+            W, H = v.W, v.H
+            x = v.col(p); y = int(v.y0 + (p.z - lo.z) / (hi.z - lo.z) * (v.y1 - v.y0))
+            r = max(2, PATCH * (v.y1 - v.y0) // 2000)
+            for grow in range(0, 40, 4):
+                rr = r + grow
+                got = [ids[yy * W + xx] for yy in range(max(0, y - rr), min(H, y + rr + 1), max(1, rr // 3))
+                       for xx in range(max(0, x - rr), min(W, x + rr + 1), max(1, rr // 3)) if ids[yy * W + xx]]
+                if got: return max(set(got), key=got.count)
+            return None
+    lf = LabelMap(LABELS, front)
+    lb = LabelMap(LABELS_BACK, back) if LABELS_BACK and back else None
+    def garment(v):
+        behind = v.normal.y > 0.25
+        if behind and lb: l = lb.sample(v.co)
+        elif behind:  # no back view: the back of the head is hair, the rest is filled from the sides
+            l = 2 if v.co.z > neck_z else None
+        else:
+            l = lf.sample(v.co)
+        return GARMENT_OF.get(l) if l else None
+    G = [garment(v) for v in ob.data.vertices]
+    behind = [not lb and v.normal.y > 0.25 for v in ob.data.vertices]
+    for _ in range(300):  # unlabelled vertices take their neighbours' garment
+        miss = [i for i, g in enumerate(G) if g is None]
+        if not miss: break
+        for i in miss:
+            got = [G[n] for n in nbr[i] if G[n] is not None and not (behind[i] and G[n] == 'bag')]  # (worn in front)
+            if got: G[i] = max(set(got), key=got.count)
+    G = [g or 'top' for g in G]
+    labs_raw = [lab_of(c) for c in raw]
+    def split(name, a_name, b_name, a_is, hue_only=False):
+        """Split garment `name` in two by colour (2-means in CIELAB; hue_only: by a*, b* alone, so a stained
+        or sunlit patch of one cloth stays with it) if the two groups really differ."""
+        idx = [i for i, g in enumerate(G) if g == name]
+        if len(idx) < 40: return
+        pts = [([0.0, q[1], q[2]] if hue_only else q) for q in (labs_raw[i] for i in idx)]
+        c = [min(pts, key=lambda q: q[1]), max(pts, key=lambda q: q[1])] if hue_only else [min(pts, key=lambda q: q[0]), max(pts, key=lambda q: q[0])]
+        for _ in range(15):
+            grp = [0 if d2(q, c[0]) <= d2(q, c[1]) else 1 for q in pts]
+            for k in (0, 1):
+                m = [pts[j] for j in range(len(pts)) if grp[j] == k]
+                if m: c[k] = [sum(q[t] for q in m) / len(m) for t in range(3)]
+        n1 = sum(grp)
+        if d2(c[0], c[1]) < (8 if hue_only else 15) ** 2 or min(n1, len(grp) - n1) < 0.08 * len(grp):
+            return
+        A = 0 if a_is([idx[j] for j in range(len(idx)) if grp[j] == 0], [idx[j] for j in range(len(idx)) if grp[j] == 1]) else 1
+        for j, i in enumerate(idx):
+            G[i] = a_name if grp[j] == A else b_name
+        print(f'garments: {name} split by colour into {a_name} and {b_name} (ΔE {d2(c[0], c[1]) ** 0.5:.0f})')
+    co = [v.co.copy() for v in ob.data.vertices]
+    mean = lambda ids, f: sum(f(co[i]) for i in ids) / max(1, len(ids))
+    split('top', 'outer', 'top', lambda a, b: mean(a, lambda p: abs(p.x)) > mean(b, lambda p: abs(p.x)), hue_only=True)
+    split('feet', 'legs', 'feet', lambda a, b: mean(a, lambda p: p.z) > mean(b, lambda p: p.z))
+    for _ in range(3):  # majority filter: specks join their surroundings
+        G = [max(set([G[i]] + [G[n] for n in nbr[i]]), key=([G[i]] + [G[n] for n in nbr[i]]).count) for i in range(len(G))]
+    # Small islands of a garment (stains read as another garment) join the garment around them.
+    seen = [False] * len(G)
+    for s0 in range(len(G)):
+        if seen[s0]: continue
+        comp, stack = [], [s0]; seen[s0] = True
+        while stack:
+            i = stack.pop(); comp.append(i)
+            for n in nbr[i]:
+                if not seen[n] and G[n] == G[s0]: seen[n] = True; stack.append(n)
+        if len(comp) < max(30, len(G) // 300):
+            around = [G[n] for i in comp for n in nbr[i] if G[n] != G[s0]]
+            if around:
+                g = max(set(around), key=around.count)
+                for i in comp: G[i] = g
+    GARMENT = G
+    from collections import Counter
+    print('garments:', dict(Counter(G).most_common()))
+
 # Per-vertex shade: each vertex's own brightness in the image over its slot's colour (stains, patches,
 # folds, painted shadow). The game multiplies the survivor's slot colour by it, so re-colouring still
 # works and the painting's light and dark survive. One smoothing pass; clamped so a speck can't blow out.
@@ -581,11 +677,23 @@ if PARTS_OUT:
     ankle_z = J['ankle'][2] * 1.15
     chin_z = (_HC[2] - _HR[2] * 0.85) * _k
     vreg = [region(v) for v in ob_hi.data.vertices]
+    if GARMENT:  # cut by garment; hands still by the bones (the parser calls them arms)
+        n0 = len(GARMENT)
+        mat_names = [m.name for m in ob_hi.data.materials]
+        for i, v in enumerate(ob_hi.data.vertices):
+            if i < n0:
+                vreg[i] = 'hands' if vreg[i] == 'hands' else GARMENT[i]
+        # vertices added by a head swap (after the garments were read): hair or head by their material
+        for p in ob_hi.data.polygons:
+            if any(i >= n0 for i in p.vertices):
+                g = 'hair' if mat_names[p.material_index].startswith('hair') else 'head'
+                for i in p.vertices:
+                    if i >= n0: vreg[i] = g
     freg = [max(set(r), key=r.count) for r in ([vreg[i] for i in p.vertices] for p in ob_hi.data.polygons)]
     import re
     slug = re.sub(r'[^a-z0-9]+', '_', NAME.lower()).strip('_') or 'figure'  # (as the studio's server.py#slug)
     cut = []
-    for r in ('head', 'top', 'bottom', 'feet', 'hands'):
+    for r in ('hair', 'hat', 'head', 'neck', 'outer', 'top', 'waist', 'bag', 'hands', 'bottom', 'legs', 'feet'):
         keep = {i for i, x in enumerate(freg) if x == r}
         if not keep: continue
         o = ob_hi.copy(); o.data = ob_hi.data.copy(); bpy.context.scene.collection.objects.link(o)

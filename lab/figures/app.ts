@@ -121,7 +121,7 @@ $('make').addEventListener('click', async () => {
   try {
     const r = await api('figures', {
       name: $<HTMLInputElement>('name').value || 'figure', body: $<HTMLSelectElement>('body').value, front: picked.front, back: picked.back,
-      params: { backend: $<HTMLSelectElement>('backend').value, preset: $<HTMLSelectElement>('preset').value, octree: num('octree'), seed: num('seed'), tris: num('tris'), final: num('final'), k: num('k'), head: $<HTMLSelectElement>('head').value, hair: $<HTMLSelectElement>('hair').value },
+      params: { backend: $<HTMLSelectElement>('backend').value, preset: $<HTMLSelectElement>('preset').value, octree: num('octree'), seed: num('seed'), tris: num('tris'), final: num('final'), k: num('k'), head: $<HTMLSelectElement>('head').value, hair: $<HTMLSelectElement>('hair').value, cut: $<HTMLSelectElement>('cut').value },
     });
     select(r.id);
     for (const id of ['dropFront', 'dropBack']) { $(id).style.backgroundImage = ''; $(id).classList.remove('has'); }
@@ -182,7 +182,8 @@ function renderDetail() {
   detailKey = key;
   if (!f) { $('detail').innerHTML = '<div class="empty">Select or make a figure.</div>'; return; }
   const busy = !!f.status && (f.status.startsWith('running') || f.status === 'queued');
-  const imgs = [f.front, f.back, f.files.includes('front.png') ? 'front.png' : '', f.files.includes('back.png') ? 'back.png' : ''].filter(Boolean) as string[];
+  const imgs = [f.front, f.back, f.files.includes('front.png') ? 'front.png' : '', f.files.includes('back.png') ? 'back.png' : '',
+    ...['labels_front_vis.png', 'labels_back_vis.png'].filter((x) => f.files.includes(x))].filter(Boolean) as string[];
   const rgb = (c: number[]) => `rgb(${c.map((x) => Math.round(x * 255)).join(',')})`;
   $('detail').innerHTML = `
     <h1>${esc(f.name)}</h1>
@@ -213,6 +214,7 @@ function renderDetail() {
     </div>
     <div class="row">
       <div><label>Head (face)</label><select id="dHead">${HEADS.map((h) => `<option value="${h}" ${h === (f.params.head ?? 'keep') ? 'selected' : ''}>${h === 'keep' ? 'generated' : `workshop: ${h}`}</option>`).join('')}</select></div>
+      <div><label>Cut parts by</label><select id="dCut">${['garments', 'bones'].map((c) => `<option ${c === (f.params.cut ?? 'garments') ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
       <div><label>Hair</label><select id="dHair">${HAIRS.map((h) => `<option ${h === (f.params.hair ?? 'curly') ? 'selected' : ''}>${h}</option>`).join('')}</select></div>
     </div>
     <div class="actions">
@@ -235,7 +237,7 @@ function renderDetail() {
 
   const act = async (path: string, body: unknown = {}) => { try { await api(`figures/${f.id}/${path}`, body); } catch (e) { alertBox(String(e)); } void poll(); };
   const num = (id: string) => Number($<HTMLInputElement>(id).value);
-  const params = () => ({ seed: num('dSeed'), preset: $<HTMLSelectElement>('dPreset').value, tris: num('dTris'), final: num('dFinal'), k: num('dK'), head: $<HTMLSelectElement>('dHead').value, hair: $<HTMLSelectElement>('dHair').value });
+  const params = () => ({ seed: num('dSeed'), preset: $<HTMLSelectElement>('dPreset').value, tris: num('dTris'), final: num('dFinal'), k: num('dK'), head: $<HTMLSelectElement>('dHead').value, hair: $<HTMLSelectElement>('dHair').value, cut: $<HTMLSelectElement>('dCut').value });
   const edit = () => act('edit', { name: $<HTMLInputElement>('dName').value, body: $<HTMLSelectElement>('dBody').value });
   $('dName').addEventListener('change', edit);
   $('dBody').addEventListener('change', edit);

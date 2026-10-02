@@ -108,6 +108,17 @@ def step_rig(fid, m):
     if m.get('names'): args += ['--names', ','.join(f'{k}={v}' for k, v in m['names'].items())]
     args += ['--head', str(prm.get('head', 'keep')), '--hair', str(prm.get('hair', 'curly'))]
     args += ['--parts', os.path.join(d, 'parts.glb'), '--name', m['name']]  # the figure cut into library parts
+    if prm.get('cut', 'garments') == 'garments':  # garment labels from the cut-out(s) (labels.py); else by bones
+        try:
+            for view in ('front', 'back'):
+                cut, lab = os.path.join(d, f'{view}.png'), os.path.join(d, f'labels_{view}.png')
+                if os.path.exists(cut) and (not os.path.exists(lab) or os.path.getmtime(lab) < os.path.getmtime(cut)):
+                    run(fid, f'labels ({view})', [CFG['gen_python'], os.path.join(HERE, 'labels.py'), cut, lab,
+                                                  os.path.join(d, f'labels_{view}_vis.png')])
+            args += ['--labels', os.path.join(d, 'labels_front.png')]
+            if os.path.exists(os.path.join(d, 'labels_back.png')): args += ['--labels-back', os.path.join(d, 'labels_back.png')]
+        except RuntimeError as e:  # e.g. the parser's first download failed: cut by bones this time
+            with open(os.path.join(d, 'log.txt'), 'a') as f: f.write(f'garment labels unavailable ({e}); cutting parts by bones\n')
     rig = os.path.join(HERE, 'rig.py')
     if CFG.get('bpy_python'): cmd = [CFG['bpy_python'], rig, *args]
     elif CFG.get('blender'): cmd = [CFG['blender'], '-b', '--factory-startup', '-P', rig, '--', *args]
