@@ -2,7 +2,7 @@
 Lab (not part of the game): rig a generated character mesh onto the game's
 survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 
-    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 30000] [--final 12000] [--voxel auto] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head keep|face|soft|broad|long|elder] [--hair curly|bun|swept|none] [--shade 1] [--fit] [--parts <parts.glb> --name <name>] [--labels <labels.png> [--labels-back <png>]]
+    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 30000] [--final 12000] [--voxel auto] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout|auto] [--head keep|face|soft|broad|long|elder] [--hair curly|bun|swept|none] [--shade 1] [--fit] [--parts <parts.glb> --name <name>] [--labels <labels.png> [--labels-back <png>]]
         [--names 0=skin,1=hair,...] [--slots <json>] [--preview <png>]
 
 (with Blender's Python module: `pip install bpy`).
@@ -23,7 +23,7 @@ Steps:
      material (skin / hair / boot / cloth_N). scripts/characters.mjs turns
      material names into the game's recolour slots.
 """
-import bpy, bmesh, math, sys, os
+import bpy, bmesh, json, math, sys, os
 from mathutils import Vector
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else sys.argv[1:]
@@ -58,9 +58,15 @@ J = dict(
 # 'stout' are the workshop's chibi builds (lab/workshop/kit.py: head about a quarter of the height),
 # which keep every bone's direction, so the game's clips still fit. Generated figures from chibi
 # concept art need 'hero', or the neck and shoulders land inside the head.
-BUILD = opt('--build', 'hero')
+BUILD = opt('--build', 'hero')  # or 'auto': a build fitted to this mesh; or a .json of factors (the studio's fit)
+AUTO = BUILD == 'auto'
+if AUTO: BUILD = 'adult'  # (replaced by the fitted build once the mesh is measured)
+CUSTOM = BUILD.endswith('.json')
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'workshop'))
 import kit  # noqa: E402  (lab/workshop: builds, and the head parts below)
+if CUSTOM:  # factors from the studio's Proportions panel (fit step): the skeleton the user placed
+    kit.BUILDS['custom'] = {**kit.BUILDS['adult'], **json.load(open(BUILD))}
+    BUILD = 'custom'
 _J, _HC, _HR = kit.derive(kit.BUILDS[BUILD])
 # --fit: fit the joints to this mesh (widths, depths) at the game's old height (1.69). Default: the
 # workshop's skeleton exactly, at the workshop's scale, so the figure (and the parts cut from it, --parts)
@@ -160,6 +166,89 @@ dec = ob.modifiers.new('dec', 'DECIMATE')
 dec.ratio = min(1.0, TRIS / max(tris, 1)); dec.use_collapse_triangulate = True
 bpy.ops.object.modifier_apply(modifier='dec')
 print(f'remeshed {tris} tris -> {len(ob.data.polygons)} (islands dropped: {len(islands) - 1})')
+# ---------------------------------------------------------------- 2b. --build auto: a build fitted to this body
+# The figure is measured (crotch, neck, head, hands, feet, shoulder and hip width) and a build is solved
+# in the same terms as lab/workshop/builds.json, so its joints land on the measurements while every
+# bone keeps the game skeleton's direction (the clips fit). Best on bodies (a cloak or long tunic hides
+# the crotch). The fitted factors are written beside the output (<out>.build.json) for the studio's
+# Proportions panel, which starts from them.
+if AUTO:
+    import numpy as np
+    n_ = len(ob.data.vertices)
+    co = np.empty(n_ * 3); ob.data.vertices.foreach_get('co', co); P = co.reshape(-1, 3)
+    H = P[:, 2].max()
+    A = kit.ADULT; AH = kit.ADULT_HEAD_C[2] + kit.ADULT_HEAD_R[2] * 1.12  # the adult figure's height (1.70)
+    P = P * (AH / H)  # measure in adult units
+    band = lambda z, w=0.008: P[np.abs(P[:, 2] - z) < w * AH]
+    crotch = next((z for z in np.arange(0.3, 0.75, 0.004) * AH if (np.abs(band(z)[:, 0]) < 0.012 * AH).any()), 0.47 * AH)
+    zs = np.arange(0.68, 0.93, 0.004) * AH
+    core = lambda z: (lambda b: np.abs(b[:, 0]).max() if len(b) else 9)(band(z)[np.abs(band(z)[:, 0]) < 0.12 * AH])
+    neck = zs[int(np.argmin([core(z) for z in zs]))]
+    feet = P[P[:, 2] < 0.04 * AH]
+    foot = float(np.clip((feet[:, 1].max() - feet[:, 1].min()) / 0.17, 0.6, 2.2)) if len(feet) else 1.0
+    side = P[(np.abs(P[:, 0]) > 0.14 * AH) & (P[:, 2] < neck) & (P[:, 2] > 0.3 * AH)]  # hands (not the feet)
+    shz = neck - 0.07
+    sb = band(shz); sb = sb[np.abs(sb[:, 0]) < 0.2 * AH]
+    shx = float(np.abs(sb[:, 0]).max()) * 0.85 if len(sb) else 0.195
+    # Arms: the game skeleton's arms hang almost straight down; concept art's A-pose holds them 20-45
+    # degrees out. Rotate each arm (blended in from the shoulder) down to the skeleton's angle, so the
+    # arm bones run through the arms; then measure the arm length.
+    if len(side):
+        down = np.array([A['hand'][0] - A['shoulder'][0], A['hand'][2] - A['shoulder'][2]])
+        down /= np.linalg.norm(down)
+        for sgn in (1, -1):
+            arm_pts = side[np.sign(side[:, 0]) == sgn]
+            if not len(arm_pts): continue
+            h = arm_pts[np.argmin(arm_pts[:, 2])]
+            sh = np.array([sgn * shx, shz])
+            d = np.array([h[0], h[2]]) - sh; L = np.linalg.norm(d)
+            if L < 1e-6: continue
+            ang = np.arctan2(sgn * down[0], down[1]) - np.arctan2(d[0], d[1])  # angle from the arm to the skeleton's
+            rel = np.stack([P[:, 0] - sh[0], P[:, 2] - sh[1]], 1)
+            t = rel @ (d / L) / L  # position along the arm (0 shoulder, 1 hand)
+            perp = np.abs(rel @ np.array([-d[1], d[0]]) / L)
+            on = (np.sign(P[:, 0]) == sgn) & (np.abs(P[:, 0]) > shx * 0.75) & (t > -0.05) & (t < 1.15) & (perp < 0.075 * AH)
+            w = np.clip(t / 0.18, 0, 1); w = w * w * (3 - 2 * w); w = np.where(on, w, 0)
+            a = ang * w; ca, sa = np.cos(a), np.sin(a)
+            nx = sh[0] + ca * rel[:, 0] + sa * rel[:, 1]; nz = sh[1] - sa * rel[:, 0] + ca * rel[:, 1]
+            P[:, 0] = np.where(w > 0, nx, P[:, 0]); P[:, 2] = np.where(w > 0, nz, P[:, 2])
+            print(f'arm {"L" if sgn > 0 else "R"}: turned {np.degrees(ang):+.0f} degrees to the skeleton\'s rest angle ({int(on.sum())} vertices)')
+        side = P[(np.abs(P[:, 0]) > 0.14 * AH) & (P[:, 2] < neck) & (P[:, 2] > 0.3 * AH)]
+        for i, v in enumerate(ob.data.vertices):  # write the turned arms back (adult units → mesh units)
+            v.co = Vector(P[i] * (H / AH))
+    # The hand: the arm's lowest point after turning (arms now hang close to the body, so look near it).
+    side = P[(np.abs(P[:, 0]) > shx * 1.05) & (P[:, 2] < neck - 0.1) & (P[:, 2] > 0.3 * AH)]
+    hand = side[np.argmin(side[:, 2])] if len(side) else np.array([0.277, 0, 0.76])
+    knee_z = (crotch + 0.1 * foot) / 2
+    kb = band(knee_z); kb = kb[np.abs(kb[:, 0]) < 0.14 * AH]
+    legx = float(np.median(np.abs(kb[:, 0]))) if len(kb) else 0.105
+    hip_z = crotch + 0.03; ankle_z = 0.1 * foot
+    leg = (hip_z - ankle_z) / (A['hip'][2] - A['ankle'][2])
+    pelvis = hip_z + (A['pelvis'][2] - A['hip'][2])
+    head_j = neck + (A['head'][2] - A['neck'][2])
+    arm = float(np.hypot(abs(hand[0]) - shx, hand[2] - shz)) / ((A['hand'][0] - A['shoulder'][0]) ** 2 + (A['hand'][2] - A['shoulder'][2]) ** 2) ** 0.5
+    F = dict(kit.BUILDS['adult'])
+    F.update(upper_leg=leg, lower_leg=leg, foot=foot, spine=(neck - pelvis) / (A['neck'][2] - A['pelvis'][2]),
+             head=(AH - head_j) / (AH - A['head'][2]), shoulder_x=shx / A['shoulder'][0], hip_x=legx / 0.105,
+             upper_arm=arm, lower_arm=arm, hand=arm)
+    F = {k: round(float(v), 3) for k, v in F.items()}
+    kit.BUILDS['auto'] = F
+    BUILD = 'auto'
+    _J, _HC, _HR = kit.derive(F)
+    TOP = _HC[2] + _HR[2] * 1.12
+    sc = TOP / H
+    for v in ob.data.vertices: v.co *= sc
+    _k = 1.0
+    J = {n: tuple(v) for n, v in _J.items()}
+    HEAD_RX = _HR[0]
+    print('fitted build:', ', '.join(f'{k} {v}' for k, v in F.items() if k not in ('head_lift', 'shoulder_z', 'limb', 'torso', 'belly', 'neck')))
+    print(f'  measured (adult units): crotch {crotch:.3f}, neck {neck:.3f}, hand ({hand[0]:.3f}, {hand[2]:.3f}), shoulder x {shx:.3f}, leg x {legx:.3f}')
+    with open(os.path.splitext(OUT)[0] + '.build.json', 'w') as f_:
+        json.dump(F, f_, indent=1)
+else:
+    with open(os.path.splitext(OUT)[0] + '.build.json', 'w') as f_:  # the build this figure is rigged on
+        json.dump({k: v for k, v in kit.BUILDS[BUILD].items()}, f_, indent=1)
+
 _zs = [v.co.z for v in ob.data.vertices]
 if max(_zs) - min(_zs) < 0.9 * TOP:
     print(f'WARNING: decimation lost part of the figure (height {max(_zs) - min(_zs):.2f} of {TOP:.2f}); '

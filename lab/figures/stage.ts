@@ -168,7 +168,17 @@ export class Stage {
     this.look.set(this.chars.length ? this.chars[this.chars.length - 1].root.position.x * (shown.length > 1 ? 0.5 : 1) : 0, 0.9, 0);
   }
 
+  /** Show one figure standing still in its rest pose (the Proportions panel reshapes it), or null. */
+  async still(url: string): Promise<Character | null> {
+    this.holdStill = true;
+    await this.show([{ name: 'body', url }]);
+    for (const c of this.chars) { c.mixer.stopAllAction(); c.mesh.skeleton.pose(); }
+    return this.chars[0] ?? null;
+  }
+  holdStill = false;
+
   play() {
+    if (this.holdStill) return;
     const clip = this.clips.get(this.opts.clip);
     for (const c of this.chars) { c.mixer.stopAllAction(); if (clip) c.mixer.clipAction(clip).play(); }
   }

@@ -1,0 +1,163 @@
+{
+ "_doc": "Builds for the workshop and the figure studio (kit.py, lab/figures/proportions.ts, lab/figures/body.py). adult: the game's joint table; a build scales each segment's offset (joint = parent + adult offset x factor), keeping bone directions so the game's clips fit. Bodies saved from the studio's Proportions panel add builds here.",
+ "adult": {
+  "pelvis": [
+   0,
+   0,
+   0.86
+  ],
+  "waist": [
+   0,
+   0,
+   0.98
+  ],
+  "belly": [
+   0,
+   0,
+   1.1
+  ],
+  "chest": [
+   0,
+   0,
+   1.24
+  ],
+  "neck": [
+   0,
+   0,
+   1.38
+  ],
+  "head": [
+   0,
+   0,
+   1.44
+  ],
+  "hip": [
+   0.1,
+   0.005,
+   0.82
+  ],
+  "knee": [
+   0.108,
+   0.0,
+   0.46
+  ],
+  "ankle": [
+   0.112,
+   0.015,
+   0.1
+  ],
+  "toe": [
+   0.112,
+   -0.1,
+   0.045
+  ],
+  "shoulder": [
+   0.195,
+   0,
+   1.31
+  ],
+  "elbow": [
+   0.25,
+   0.01,
+   1.06
+  ],
+  "wrist": [
+   0.27,
+   -0.02,
+   0.84
+  ],
+  "hand": [
+   0.277,
+   -0.035,
+   0.76
+  ]
+ },
+ "adult_head_c": [
+  0,
+  -0.005,
+  1.555
+ ],
+ "adult_head_r": [
+  0.108,
+  0.117,
+  0.13
+ ],
+ "builds": {
+  "adult": {
+   "spine": 1,
+   "neck": 1,
+   "upper_leg": 1,
+   "lower_leg": 1,
+   "foot": 1,
+   "upper_arm": 1,
+   "lower_arm": 1,
+   "hand": 1,
+   "head": 1,
+   "head_lift": 0,
+   "shoulder_x": 1,
+   "shoulder_z": 1,
+   "hip_x": 1,
+   "limb": 1,
+   "torso": 1,
+   "belly": 1,
+   "_doc": "The game's current figures (DESIGN \u00a724.14): head about 1:7."
+  },
+  "hero": {
+   "spine": 1.09,
+   "neck": 0.67,
+   "upper_leg": 0.71,
+   "lower_leg": 0.61,
+   "foot": 1.3,
+   "upper_arm": 0.9,
+   "lower_arm": 0.9,
+   "hand": 1.6,
+   "head": 1.35,
+   "head_lift": 0.03,
+   "shoulder_x": 1.05,
+   "shoulder_z": 0.8,
+   "hip_x": 1.1,
+   "limb": 1.3,
+   "torso": 1.15,
+   "belly": 1,
+   "_doc": "The user's in-game references (concepts/*_ingame.png): head with hair about 0.24 of the height, legs about 0.34, shoulders at 0.67, hands about 0.09; about four heads tall."
+  },
+  "stout": {
+   "spine": 1.09,
+   "neck": 0.6,
+   "upper_leg": 0.7,
+   "lower_leg": 0.6,
+   "foot": 1.3,
+   "upper_arm": 0.9,
+   "lower_arm": 0.9,
+   "hand": 1.7,
+   "head": 1.35,
+   "head_lift": 0.03,
+   "shoulder_x": 1.18,
+   "shoulder_z": 0.8,
+   "hip_x": 1.2,
+   "limb": 1.45,
+   "torso": 1.3,
+   "belly": 1.45,
+   "_doc": "Heavier: broad shoulders, thick limbs, a belly (concepts/builder_ingame.png)."
+  },
+  "kit_hero": {
+   "spine": 1.09,
+   "neck": 0.67,
+   "upper_leg": 0.71,
+   "lower_leg": 0.61,
+   "foot": 1.3,
+   "upper_arm": 0.9,
+   "lower_arm": 0.9,
+   "hand": 1.6,
+   "head": 1.35,
+   "head_lift": 0.03,
+   "shoulder_x": 1.05,
+   "shoulder_z": 0.8,
+   "hip_x": 1.1,
+   "limb": 1,
+   "torso": 1,
+   "belly": 1,
+   "_doc": "Saved from the figure studio (base base)."
+  }
+ }
+}

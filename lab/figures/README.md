@@ -134,6 +134,22 @@ figure. For the Hugging Face Space backend, set `HF_TOKEN` before
     tunic).
   - Low triangle counts (< 6000) voxel-remesh first (`--voxel auto`):
     decimating the raw surface that hard collapsed the boots.
+- **Proportions** (Show → Proportions, `proportions.ts`, `body.py`): make base bodies.
+  1. *Fit skeleton*: the build the figure is rigged on is drawn over it (yellow lines);
+     sliders move the joints; "Auto-fit" re-rigs with `rig.py --build auto` (measures
+     crotch, neck, head, hands, feet, shoulder and hip width, and turns A-pose arms down
+     to the skeleton's rest angle so the arm bones run through the arms); "Apply fit"
+     re-rigs on the sliders (`fit.json`, `--build <file>`). Clothing confuses the
+     measurements (shorts read as a low crotch): check the lines.
+  2. *Reshape*: the same sliders change the body, live; presets start from any build.
+     Each bone moves to its joint in the new build and stretches along its length
+     (thickness across it), heads, hands and feet scale whole, vertices blend by their
+     weights. "Save body to library" bakes exactly that in Blender (`body.py`; checked:
+     the preview and the saved body measure the same), rebuilds the skeleton as the new
+     build (added to `lab/workshop/builds.json`, so the workshop can make parts for it)
+     and files `library/bodies/<name>.glb` (Show → Bodies).
+  Builds now live in `lab/workshop/builds.json` (kit.py, proportions.ts and body.py read it).
+  Shots: `shots/proportions-fit.png`, `-reshape.png`, `-saved-walk.png`.
 - **`pack.mjs`**: the game's slot and meshopt packing (as in
   `scripts/characters.mjs`).
 - **`app.ts`, `stage.ts`, `index.html`, `vite.config.ts`**: the page. It uses

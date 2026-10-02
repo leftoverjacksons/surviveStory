@@ -72,6 +72,13 @@ def figures():
             out.append(m)
     return out
 
+BUILDS_JSON = os.path.join(REPO, 'lab', 'workshop', 'builds.json')
+BODIES = os.path.join(LIB, 'bodies')
+
+def bodies():
+    p = os.path.join(BODIES, 'bodies.json')
+    return json.load(open(p)) if os.path.exists(p) else []
+
 def library():
     p = os.path.join(LIB, 'library.json')
     return json.load(open(p)) if os.path.exists(p) else []
@@ -108,6 +115,8 @@ def step_rig(fid, m):
     if m.get('names'): args += ['--names', ','.join(f'{k}={v}' for k, v in m['names'].items())]
     args += ['--head', str(prm.get('head', 'keep')), '--hair', str(prm.get('hair', 'curly'))]
     args += ['--parts', os.path.join(d, 'parts.glb'), '--name', m['name']]  # the figure cut into library parts
+    build = prm.get('build', 'hero')  # hero/stout/adult, auto (fitted to the mesh), or fit (the Proportions panel's fit.json)
+    args += ['--build', os.path.join(d, 'fit.json') if build == 'fit' else build]
     if prm.get('cut', 'garments') == 'garments':  # garment labels from the cut-out(s) (labels.py); else by bones
         try:
             for view in ('front', 'back'):
@@ -146,7 +155,22 @@ def step_parts(fid, m):
     write_meta(fid, parts=file)
     run(fid, 'parts', bpy_cmd(os.path.join(REPO, 'lab', 'workshop', 'build.py'), '--parts', '--build', 'hero'))
 
-STEPS = {'generate': step_generate, 'rig': step_rig, 'pack': step_pack, 'parts': step_parts}
+def step_body(fid, m):
+    """Save the figure, re-proportioned (the Proportions panel's shape.json), as a base body with its own build
+    (body.py), packed into library/bodies/."""
+    d, req = fdir(fid), m.get('body_req') or {}
+    name = slug(req.get('name') or m['name'])
+    os.makedirs(BODIES, exist_ok=True)
+    raw = os.path.join(d, f'body_{name}.glb')
+    run(fid, 'body', bpy_cmd(os.path.join(HERE, 'body.py'), os.path.join(d, 'rigged.glb'), os.path.join(d, 'rigged.build.json'),
+                             os.path.join(d, 'shape.json'), name, raw))
+    run(fid, 'pack body', [CFG['node'], os.path.join(HERE, 'pack.mjs'), raw, '--out', os.path.join(BODIES, f'{name}.glb')])
+    shutil.copy(os.path.join(d, 'front.png'), os.path.join(BODIES, f'{name}.png'))
+    rest = [b for b in bodies() if b['name'] != name]
+    rest.append({'name': name, 'file': f'bodies/{name}.glb', 'build': name, 'from': fid, 'added': time.strftime('%Y-%m-%d %H:%M')})
+    with open(os.path.join(BODIES, 'bodies.json'), 'w') as f: json.dump(rest, f, indent=1)
+
+STEPS = {'generate': step_generate, 'rig': step_rig, 'pack': step_pack, 'parts': step_parts, 'body': step_body}
 
 def worker():
     while True:
@@ -214,7 +238,9 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path).path
         if u == '/api/state':
-            return self.send(200, {'env': ENV, 'figures': figures(), 'library': library(), 'queue': jobs.qsize()})
+            return self.send(200, {'env': ENV, 'figures': figures(), 'library': library(), 'bodies': bodies(), 'queue': jobs.qsize()})
+        if u == '/api/builds':
+            return self.send(200, json.load(open(BUILDS_JSON)))
         if u.startswith('/api/work/'): return self.file(WORK, u[len('/api/work/'):])
         if u.startswith('/api/library/'): return self.file(LIB, u[len('/api/library/'):])
         self.send(404, {'error': 'not found'})
@@ -247,6 +273,14 @@ class H(BaseHTTPRequestHandler):
                 elif act == 'names':  # {names: {index: name}} → re-colour
                     write_meta(fid, names=b.get('names', {}))
                     enqueue(fid, ['rig', 'pack'])
+                elif act == 'fit':  # {factors}: the skeleton placed in the Proportions panel → rig on it
+                    with open(os.path.join(fdir(fid), 'fit.json'), 'w') as f: json.dump(b.get('factors', {}), f, indent=1)
+                    write_meta(fid, params={**m['params'], 'build': 'fit'})
+                    enqueue(fid, ['rig', 'pack'])
+                elif act == 'body':  # {name, factors}: save as a base body (re-proportioned) in library/bodies
+                    with open(os.path.join(fdir(fid), 'shape.json'), 'w') as f: json.dump(b.get('factors', {}), f, indent=1)
+                    write_meta(fid, body_req={'name': b.get('name') or m['name']})
+                    enqueue(fid, ['body'])
                 elif act == 'edit':  # {name, body}
                     write_meta(fid, **{k: b[k] for k in ('name', 'body') if k in b})
                 elif act == 'library':

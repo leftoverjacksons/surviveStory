@@ -10,7 +10,7 @@ slot: `skin*`, `hair*` (re-coloured per survivor), `eye*`, `boot*`, `strap*`,
 `pack*`, `roll*`, `hat*` (colours kept), anything else is clothing (re-hued per
 survivor at the same lightness; near-greys and whites stay as authored).
 """
-import bpy, bmesh, math, random
+import bpy, bmesh, json, math, os, random
 from mathutils import Vector, Matrix
 
 # ---------------------------------------------------------------- skeleton and builds
@@ -18,27 +18,13 @@ from mathutils import Vector, Matrix
 # every bone's DIRECTION and change only lengths (joint = parent + adult offset
 # × a factor per segment), so the bones' rest rotations, and with them the
 # game's shared clips (anims.glb, which key rotations), fit every build.
-ADULT = dict(
-    pelvis=(0, 0, 0.86), waist=(0, 0, 0.98), belly=(0, 0, 1.1), chest=(0, 0, 1.24), neck=(0, 0, 1.38), head=(0, 0, 1.44),
-    hip=(0.1, 0.005, 0.82), knee=(0.108, 0.0, 0.46), ankle=(0.112, 0.015, 0.1), toe=(0.112, -0.1, 0.045),
-    shoulder=(0.195, 0, 1.31), elbow=(0.25, 0.01, 1.06), wrist=(0.27, -0.02, 0.84), hand=(0.277, -0.035, 0.76),
-)
-ADULT_HEAD_C, ADULT_HEAD_R = (0, -0.005, 1.555), (0.108, 0.117, 0.13)
-
-# Builds: segment length factors, head/hand/foot size, and thickness (limbs, torso).
-BUILDS = {
-    # The game's current figures (DESIGN §24.14): head about 1:7.
-    'adult': dict(spine=1, neck=1, upper_leg=1, lower_leg=1, foot=1, upper_arm=1, lower_arm=1, hand=1,
-                  head=1, head_lift=0, shoulder_x=1, shoulder_z=1, hip_x=1, limb=1, torso=1, belly=1),
-    # The user's in-game references (lab/workshop/concepts/*_ingame.png), measured: head with hair
-    # about 0.24 of the height, legs (crotch to sole) about 0.34, shoulders at about 0.67, hands
-    # about 0.09, boots 0.13-0.16. Stocky and about four heads tall.
-    'hero': dict(spine=1.09, neck=0.67, upper_leg=0.71, lower_leg=0.61, foot=1.3, upper_arm=0.9, lower_arm=0.9, hand=1.6,
-                 head=1.35, head_lift=0.03, shoulder_x=1.05, shoulder_z=0.8, hip_x=1.1, limb=1.3, torso=1.15, belly=1),
-    # Heavier: broad shoulders, thick limbs, a belly (the builder, concepts/builder_ingame.png).
-    'stout': dict(spine=1.09, neck=0.6, upper_leg=0.7, lower_leg=0.6, foot=1.3, upper_arm=0.9, lower_arm=0.9, hand=1.7,
-                  head=1.35, head_lift=0.03, shoulder_x=1.18, shoulder_z=0.8, hip_x=1.2, limb=1.45, torso=1.3, belly=1.45),
-}
+# The adult joint table, head and builds live in builds.json (shared with the figure studio's
+# Proportions panel, which adds builds there when a body is saved). A build: segment length factors,
+# head/hand/foot size, thickness (limbs, torso). See builds.json for each build's notes.
+_BJ = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builds.json')))
+ADULT = {k: tuple(v) for k, v in _BJ['adult'].items()}
+ADULT_HEAD_C, ADULT_HEAD_R = tuple(_BJ['adult_head_c']), tuple(_BJ['adult_head_r'])
+BUILDS = {n: {k: v for k, v in b.items() if not k.startswith('_')} for n, b in _BJ['builds'].items()}
 
 def derive(b):
     """Joint table, head centre and radii for build b (a BUILDS entry)."""

@@ -5,6 +5,7 @@
  */
 import { Stage, REFS, type StageFigure } from './stage';
 import { Composer } from './compose';
+import { ProportionsPanel } from './proportions';
 
 /** rig.py --head / --hair: workshop faces (lab/workshop/faces.py) and hair, or keep the generated head. */
 const HEADS = ['keep', 'face', 'soft', 'broad', 'long', 'elder'];
@@ -17,7 +18,8 @@ interface Figure {
   done: string[]; stamp?: number; library?: string; game?: string; parts?: string; front: string; back?: string;
 }
 interface LibEntry { file: string; name: string; body: string; generator: string; licence: string; added: string }
-interface State { env: Record<string, unknown>; figures: Figure[]; library: LibEntry[]; queue: number }
+interface Body { name: string; file: string; build: string; from: string; added: string }
+interface State { env: Record<string, unknown>; figures: Figure[]; library: LibEntry[]; bodies: Body[]; queue: number }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -29,7 +31,7 @@ const api = async (path: string, body?: unknown) => {
 };
 const work = (f: Figure, file: string) => `/api/work/${f.id}/${file}?v=${f.stamp ?? 0}`;
 
-let state: State = { env: {}, figures: [], library: [], queue: 0 };
+let state: State = { env: {}, figures: [], library: [], bodies: [], queue: 0 };
 let selected: string | null = localStorage.getItem('studio.sel');
 let shownKey = '';
 let detailKey = '';
@@ -39,6 +41,8 @@ const stage = new Stage($<HTMLCanvasElement>('c'));
 await stage.init();
 const composer = new Composer($('detail'), () => { detailKey = ''; refreshStage(); });
 const composing = () => $<HTMLSelectElement>('show').value === 'compose';
+const proportioning = () => $<HTMLSelectElement>('show').value === 'proportions';
+const props = new ProportionsPanel($('detail'), stage, api, () => state.figures.find((x) => x.id === selected));
 for (const n of stage.clips.keys()) $<HTMLSelectElement>('clip').add(new Option(n, n, n === 'Walk', n === 'Walk'));
 const bind = (id: string, key: 'zoom' | 'pixel' | 'raw' | 'spin' | 'clip', after?: () => void) => {
   const el = $<HTMLInputElement>(id);
@@ -57,6 +61,7 @@ bind('spin', 'spin');
 bind('clip', 'clip', () => stage.play());
 $('show').addEventListener('input', async () => {
   if (composing()) { await composer.load(); composer.render(); } else detailKey = '';
+  if (!proportioning()) props.leave();
   render();
 });
 $('refs').addEventListener('input', () => refreshStage());
@@ -68,9 +73,13 @@ $('pixel').addEventListener('input', () => {
 });
 
 function refreshStage() {
+  if (proportioning()) { shownKey = 'proportions'; void props.sync(); return; }
+  if (stage.holdStill) { stage.holdStill = false; shownKey = ''; }
   const refs = $<HTMLInputElement>('refs').checked ? REFS.map((n) => Stage.ref(n)) : [];
   let figs: StageFigure[];
-  if (composing()) {
+  if ($<HTMLSelectElement>('show').value === 'bodies') {
+    figs = [...refs, ...(state.bodies ?? []).map((b) => ({ name: b.name, url: `/api/library/${b.file}` }))];
+  } else if (composing()) {
     figs = [...(composer.mode === 'crowd' ? [] : refs), ...composer.figures()];
   } else if ($<HTMLSelectElement>('show').value === 'library') {
     figs = [...refs, ...state.library.map((e) => ({ name: e.file, url: `/api/library/${e.file}`, child: e.body === 'child' }))];
@@ -151,6 +160,10 @@ function renderLists() {
       <div><div>${esc(f.name)} <span class="sub">· ${esc(f.body)}</span></div>
       <div class="st ${statusClass(f.status)}">${esc(f.status ?? '')}${f.library ? ' · in library' : ''}${f.game ? ' · in game' : ''}</div></div>
     </div>`).join('') || '<div class="empty">No figures yet.</div>';
+  $('bodies').innerHTML = (state.bodies ?? []).map((b) => `
+    <div class="item" data-body="${esc(b.name)}"><img src="/api/library/${esc(b.file.replace('.glb', '.png'))}" alt="" />
+    <div><div>${esc(b.name)}</div><div class="st">build ${esc(b.build)} · ${esc(b.added)}</div></div></div>`).join('')
+    || '<div class="empty">None yet: Show → Proportions, then "Save body".</div>';
   $('library').innerHTML = state.library.map((l) => `
     <div class="item" data-lib="${esc(l.file)}"><img src="/api/library/${esc(l.file.replace('.glb', '.png'))}" alt="" />
     <div><div>${esc(l.name)} <span class="sub">· ${esc(l.body)}</span></div><div class="st">${esc(l.file)}</div></div></div>`).join('')
@@ -161,11 +174,12 @@ $('figures').addEventListener('click', (e) => {
   if (id) select(id);
 });
 $('library').addEventListener('click', () => { $<HTMLSelectElement>('show').value = 'library'; refreshStage(); });
+$('bodies').addEventListener('click', () => { $<HTMLSelectElement>('show').value = 'bodies'; render(); });
 
 function select(id: string) {
   selected = id;
   try { localStorage.setItem('studio.sel', id); } catch { /* private mode */ }
-  $<HTMLSelectElement>('show').value = 'figure';
+  if (!proportioning()) $<HTMLSelectElement>('show').value = 'figure';  // (Proportions stays: it shows the selected figure)
   detailKey = '';
   render();
 }
@@ -175,7 +189,7 @@ const SLOT_NAMES = ['skin', 'hair', 'cloth', 'boot', 'hat', 'pack', 'strap', 'ey
 const armed = new Set<string>(); // two-click confirmations (browser dialogs are blocked in some frames)
 
 function renderDetail() {
-  if (composing()) return;  // the Compose panel owns the right-hand column
+  if (composing() || proportioning()) return;  // the Compose / Proportions panel owns the right-hand column
   const f = state.figures.find((x) => x.id === selected);
   const key = JSON.stringify(f ?? null) + [...armed].join();
   if (key === detailKey) return;

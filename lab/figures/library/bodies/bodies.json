@@ -1,0 +1,9 @@
+[
+ {
+  "name": "kit_hero",
+  "file": "bodies/kit_hero.glb",
+  "build": "kit_hero",
+  "from": "20261002-170000-kit_body",
+  "added": "2026-10-02 16:25"
+ }
+]

@@ -288,7 +288,11 @@ reference: Tiny Glade.
     (user: more generated detail, less decimation), workshop skeleton by default, --parts cuts head/top/bottom/feet/hands
     → library/gen/ → build.py --parts mixes them with workshop parts. GARMENTS: labels.py (segformer clothes parser) →
     rig.py --labels cuts hair/head/neck/outer/top/waist/bag/hands/bottom/legs/feet; back filled from sides; --tris 30000 work, --final 12000
-    saved with seam-locked part reduction. Next asked: a correction panel (click to relabel); back views fix the back. A-pose input (T-pose twists). User's GPU run works.
+    saved with seam-locked part reduction. Next asked: a correction panel (click to relabel); back views fix the back.
+    USER'S DIRECTION (after the kit-sheet test): base body + garments generated separately from sheets (front/back pairs),
+    fitted to bodies; studio panels: Proportions (BUILT: fit skeleton + reshape + save body → library/bodies, builds in
+    lab/workshop/builds.json; rig.py --build auto turns A-pose arms down), then clothes library + fitting, a dress-up
+    panel, a population panel. Sheet intake: split, pair front/back, user confirms categories. A-pose input (T-pose twists). User's GPU run works.
   - CHARACTER WORKSHOP (lab, `lab/workshop/`, README there): characters authored in code in Blender on the game's
     skeleton (`kit.py` faceted parts + weighting; `characters/<name>.py`; `build.py <name>` → studio library;
     `shots.mjs` turnaround). The user proposed this route after the image-to-3D test; iterate on it with them.
