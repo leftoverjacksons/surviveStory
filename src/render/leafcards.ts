@@ -20,7 +20,7 @@
  * turn only about the vertical so the blades stay rooted and sway in the wind.
  */
 import * as THREE from 'three';
-import { enhance, makeRand, worldUniforms, type EnhanceOptions } from './util';
+import { THIN_VERT, enhance, makeRand, worldUniforms, type EnhanceOptions } from './util';
 
 /** Cards per clump. */
 const N = 32;
@@ -279,7 +279,9 @@ export function cardMaterial(opts: EnhanceOptions, kind: CardKind): THREE.MeshLa
   // only a front (it faces whatever is looking: here, the sun), so without this
   // the cards cast no shadow at all.
   m.shadowSide = THREE.DoubleSide;
-  enhance(m, { ...opts, surface: 'none', thin: undefined });
+  // Keeps opts.thin: on the Folk's Wild (see-through woods) the cards are cut away
+  // like the solid shapes were, and the tree's ghost twin shows instead.
+  enhance(m, { ...opts, surface: 'none' });
   const inner = m.onBeforeCompile;
   m.onBeforeCompile = (shader, r) => {
     inner.call(m, shader, r); // enhance declares uBare among the world uniforms
@@ -305,11 +307,22 @@ export function cardDepth(kind: CardKind): THREE.MeshDepthMaterial {
   const hit = depthCache.get(kind);
   if (hit) return hit;
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: cardTexture(kind), alphaTest: 0.5 });
+  // Trees ghosted on the Wild cast no shadow (as with thinDepth in util.ts); grass is never ghosted.
+  const ghostable = kind !== 'grass';
   m.onBeforeCompile = (shader) => {
-    shader.uniforms.uBare = worldUniforms.uBare;
+    Object.assign(shader.uniforms, { uBare: worldUniforms.uBare, uZoneTex: worldUniforms.uZoneTex, uThin: worldUniforms.uThin, uFogSize: worldUniforms.uFogSize });
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\n${ATTRS} uniform float uBare;`)
-      .replace('#include <project_vertex>', vertexFor(kind).replace('gl_Position', `mvPosition.z -= ${PUSH[kind].toFixed(2)} * cardScale;\n  gl_Position`));
+      .replace('#include <common>', `#include <common>\n${ATTRS} uniform float uBare;${ghostable ? `\nuniform sampler2D uZoneTex; uniform float uThin; uniform float uFogSize; varying float vThin;\n${THIN_VERT}` : ''}`)
+      .replace('#include <project_vertex>', vertexFor(kind).replace('gl_Position', `mvPosition.z -= ${PUSH[kind].toFixed(2)} * cardScale;\n  gl_Position`)
+        + (ghostable ? `
+  #ifdef USE_INSTANCING
+    vThin = thinAt(vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]));
+  #else
+    vThin = 0.0;
+  #endif` : ''));
+    if (ghostable) shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vThin;')
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n  if (vThin > 0.5) discard;');
   };
   m.customProgramCacheKey = () => `card-depth-${kind}`;
   depthCache.set(kind, m);

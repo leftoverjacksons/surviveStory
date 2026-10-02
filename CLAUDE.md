@@ -299,6 +299,7 @@ reference: Tiny Glade.
     ~11% fewer tree triangles, +1 draw call (`scripts/shots/cardsperf.mjs`). §41.1 (published v50, temporary merge with character branch 354f921): PINES as hybrid tiers
     (slimmer solid cone + bough cards, `needleCardGeometry`), GRASS CARDS (upright, `setGrassCards`, own checkbox), SHADOW FIX
     (cards need `shadowSide = DoubleSide`; v49 leaf cards cast almost no shadow) + shadow-pass push (`PUSH`). `cardlook.mjs`.
+    §41.2 FIX (not published): see-through woods work with cards (card materials keep `thin`, card shadows discard).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

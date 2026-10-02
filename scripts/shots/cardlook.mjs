@@ -2,6 +2,7 @@
  * Close look at cards (DESIGN §41): the densest stand of one kind of tree,
  * zoomed in, with solid shapes and with cards (and grass cards).
  * KIND=grass looks at open ground beside the start instead.
+ * WOODS=1 presses O once before the first shot (Wild ghosted → all ghosted).
  *   KIND=pine ZOOM=3 node scripts/shots/cardlook.mjs <outdir>
  */
 import { open, noHud } from './pw.mjs';
@@ -29,7 +30,11 @@ await page.evaluate(([kind, zoom]) => {
 await noHud(page);
 await page.waitForTimeout(4000);
 for (const [cards, grass] of [[false, false], [true, true]]) {
-  await page.evaluate(([cards, grass]) => { const g = window.__game; g.gfx.s.leafCards = cards; g.gfx.s.grassCards = grass; g.gfx.refresh(); }, [cards, grass]);
+  await page.evaluate(([cards, grass]) => {
+    const g = window.__game; g.gfx.s.leafCards = cards; g.gfx.s.grassCards = grass; g.gfx.refresh();
+  }, [cards, grass]);
+  // WOODS: press O (see-through woods: Wild only → everywhere → off).
+  if (!cards && process.env.WOODS) { await page.mouse.move(700, 430); await page.keyboard.press('o'); }
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${out}/${kind}-${cards ? 'cards' : 'solid'}.png`, timeout: 120000 });
 }

@@ -5131,3 +5131,15 @@ round each tree.
   the browser's frame timer, is needed for that.
 - New script: `scripts/shots/cardlook.mjs` (`KIND=pine|oak|birch|grass`, `ZOOM`)
   takes close shots of the densest stand of one kind, both ways.
+
+### 41.2 Fix: see-through woods with cards (after v50)
+
+The user reported that tree ghosting (key O) stopped working. The cards
+were built with the Wild-discard option off (`thin: undefined`), so the solid
+cards stayed drawn over their ghost twins, and their shadow material didn't
+discard either. Fixed: card materials keep `thin: 'solid'`, and the card
+shadow material discards ghosted trees like `thinDepth` (`THIN_VERT` is now
+exported from `util.ts`). The ghosts themselves keep the solid shapes.
+Checked with `WOODS=1 node scripts/shots/cardlook.mjs` (all trees ghosted,
+solid vs cards). `cardlook.mjs` uses a real key press; a dispatched
+KeyboardEvent did not reach the game's handler.

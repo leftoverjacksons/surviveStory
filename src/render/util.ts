@@ -185,7 +185,7 @@ export interface EnhanceOptions {
 /** Wild's zone colour as the shader reads it from uZoneTex. */
 const WILD_RGB = '0.314, 0.784, 0.667';
 /** Vertex-shader test: is this instance ghosted? One decision per instance, from where it stands. */
-const THIN_VERT = `
+export const THIN_VERT = `
   float thinAt(vec3 ip) {
     vec4 zc = texture2D(uZoneTex, (ip.xz + uFogSize * 0.5) / uFogSize);
     float wild = step(0.5, zc.a) * step(distance(zc.rgb, vec3(${WILD_RGB})), 0.03);
