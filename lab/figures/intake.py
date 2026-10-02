@@ -72,8 +72,18 @@ def crop(rgb, lab, i, x, y, w, h, path):
     H, W = lab.shape
     x0, y0, x1, y1 = max(0, x - pad), max(0, y - pad), min(W, x + w + pad), min(H, y + h + pad)
     c = rgb[y0:y1, x0:x1].copy()
-    c[lab[y0:y1, x0:x1] != i] = 255  # neighbours (and gaps) white
-    Image.fromarray(c).save(path)
+    mine = lab[y0:y1, x0:x1] == i
+    c[~mine] = 255  # neighbours (and gaps) white
+    # The item's own mask as alpha: generation then skips the background remover, which can eat drawings
+    # (an empty picture gives the model nothing: "No surface found"). Small holes (near-white highlights)
+    # are filled; large ones (the loop of a strap) stay transparent.
+    m = ndimage.binary_closing(mine, iterations=2) | mine
+    holes, n = ndimage.label(ndimage.binary_fill_holes(m) & ~m)
+    if n:
+        sz = ndimage.sum(holes > 0, holes, range(1, n + 1))
+        m |= np.isin(holes, [k + 1 for k, v in enumerate(sz) if v < 0.01 * mine.sum()])
+    a = m * 255
+    Image.fromarray(np.dstack([c, a.astype(np.uint8)])).save(path)
 
 rgb, fg = load(front_path)
 lab, ids = split(rgb, fg)

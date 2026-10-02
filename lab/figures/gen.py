@@ -64,6 +64,12 @@ def cutout(path, name):
     return out, sq
 
 front_path, front = cutout(a.front, 'front.png')
+cover = sum(1 for v in front.getchannel('A').getdata() if v > 128) / (front.width * front.height)
+log(f'cut-out: {front.width}x{front.height}, item covers {cover:.0%}')
+if cover < 0.02:
+    log('the cut-out is (nearly) empty: the background remover took the item away. Give the picture a transparent'
+        ' background, or a plainer one.')
+    sys.exit(1)
 back_path, back = cutout(a.back, 'back.png') if a.back else (None, None)
 rembg = None  # free the background remover (about 1 GB) before the shape model loads
 import gc; gc.collect()
@@ -153,8 +159,42 @@ log('model loaded')
 image = {'front': front, 'back': back} if model == 'mv' else front
 if model == 'mv' and back is None:
     image = {'front': front}
-mesh = pipe(image=image, num_inference_steps=steps, octree_resolution=a.octree, num_chunks=20000,
-            generator=torch.manual_seed(a.seed), output_type='trimesh')[0]
+
+# An empty shape ("No surface found at the given iso value", or FlashVDM's "min(): Expected reduction dim 0")
+# means every decoded value lay below the surface level, or was NaN (fp16 overflow). Retry: the same latents
+# decoded in fp32, then another seed (fp32 decoding again), before giving up.
+def decode(latents, fp32):
+    vae_dev = next(pipe.vae.parameters()).device
+    if fp32:
+        pipe.vae.to(dtype=torch.float32); latents = latents.float()
+    try:
+        with torch.inference_mode(), torch.autocast(device_type=vae_dev.type, enabled=False):
+            out = pipe._export(latents.to(vae_dev), 'trimesh', 1.01, -1 / 512, 20000, a.octree, 'mc', enable_pbar=False)
+        return out[0] if out else None
+    except (RuntimeError, IndexError) as e:
+        log(f'decode found no surface ({"fp32" if fp32 else "fp16"}): {str(e).splitlines()[0][:120]}')
+        return None
+    finally:
+        if fp32: pipe.vae.to(dtype=dtype)
+
+mesh = None
+for attempt, seed in enumerate((a.seed, a.seed + 1)):
+    latents = pipe(image=image, num_inference_steps=steps, octree_resolution=a.octree, num_chunks=20000,
+                   generator=torch.manual_seed(seed), output_type='latent')
+    bad = (~torch.isfinite(latents)).sum().item()
+    if bad: log(f'seed {seed}: {bad} of {latents.numel()} latent values are NaN/inf (fp16 overflow)')
+    for fp32 in ((False, True) if dtype != torch.float32 and not bad else (True,)):
+        if bad and dtype != torch.float32: latents = torch.nan_to_num(latents.float())
+        mesh = decode(latents, fp32)
+        if mesh is not None and len(mesh.faces): break
+        mesh = None
+    if mesh is not None:
+        if attempt or seed != a.seed: log(f'recovered with seed {seed}')
+        break
+if mesh is None:
+    log('the model produced an empty shape for this picture twice. Check the cut-out (cut/front.png): it should show'
+        ' the whole item, opaque, on a transparent background. Try another seed, or Quality "full".')
+    sys.exit(1)
 log(f'generated: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces')
 mesh.export(a.out)
 log('wrote', a.out)
