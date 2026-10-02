@@ -1,15 +1,15 @@
 """
 Set up the figure studio on this machine (Windows, Linux or macOS).
 
-    python lab/figures/setup.py            (Python 3.10–3.12; 3.11 also installs Blender's module)
+    python lab/figures/setup.py            (Python 3.10–3.13; 3.13 or 3.11 also install Blender's module)
     python lab/figures/setup.py --cpu      (no CUDA, even with an NVIDIA GPU)
 
 Creates, inside lab/figures/ (all git-ignored):
   .venv-gen   PyTorch (CUDA 12.4 build when an NVIDIA GPU is found, else CPU)
               plus the Hunyuan3D shape-generation dependencies and gradio_client
   .hy3d       a clone of Tencent-Hunyuan/Hunyuan3D-2 (the shape pipeline's code)
-  .venv-bpy   Blender as a Python module (bpy), for rigging, only on Python 3.11;
-              otherwise an installed Blender is looked for and used instead
+  .venv-bpy   Blender as a Python module (bpy), for rigging, on Python 3.13 (bpy 5.1+)
+              or 3.11 (bpy up to 5.0); otherwise an installed Blender is used instead
   config.json the paths the studio's server uses
 
 Model weights (about 2–7 GB) download on the first figure, into the
@@ -34,8 +34,8 @@ def venv(name):
     return py
 
 v = sys.version_info
-if not ((3, 10) <= (v.major, v.minor) <= (3, 12)):
-    sys.exit(f'Python {v.major}.{v.minor}: use 3.10–3.12 (3.11 is best: Blender\'s module needs it).')
+if not ((3, 10) <= (v.major, v.minor) <= (3, 13)):
+    sys.exit(f'Python {v.major}.{v.minor}: use 3.10–3.13 (3.13 is best: Blender\'s module is built for it).')
 
 # ---------------------------------------------------------------- generation environment
 gpu = False
@@ -49,7 +49,8 @@ if not CPU and shutil.which('nvidia-smi'):
 gen = venv('.venv-gen')
 index = 'https://download.pytorch.org/whl/cu124' if gpu else 'https://download.pytorch.org/whl/cpu'
 sh(gen, '-m', 'pip', 'install', '-q', 'torch', 'torchvision', '--index-url', index)
-sh(gen, '-m', 'pip', 'install', '-q', 'diffusers', 'transformers', 'accelerate', 'einops', 'omegaconf', 'tqdm',
+# transformers 5.18 renamed the image encoder's weights that Hunyuan3D-2 loads (verified 2026-10-02).
+sh(gen, '-m', 'pip', 'install', '-q', 'diffusers', 'transformers<5.18', 'accelerate', 'einops', 'omegaconf', 'tqdm',
    'trimesh', 'pymeshlab', 'opencv-python-headless', 'scikit-image', 'pillow', 'rembg', 'onnxruntime',
    'huggingface_hub', 'gradio_client')
 
@@ -61,7 +62,7 @@ if not os.path.exists(os.path.join(repo, 'hy3dgen')):
 
 # ---------------------------------------------------------------- Blender (rigging)
 cfg = {'gen_python': gen, 'hy3d_repo': repo, 'bpy_python': None, 'blender': None, 'node': 'node'}
-if (v.major, v.minor) == (3, 11):
+if (v.major, v.minor) in ((3, 11), (3, 13)):  # the Pythons bpy is built for
     bpy = venv('.venv-bpy')
     sh(bpy, '-m', 'pip', 'install', '-q', 'bpy')
     cfg['bpy_python'] = bpy
@@ -73,7 +74,7 @@ else:
     if not found and platform.system() == 'Darwin' and os.path.exists('/Applications/Blender.app'):
         found = '/Applications/Blender.app/Contents/MacOS/Blender'
     cfg['blender'] = found
-    print('Blender:', found or 'NOT FOUND. Install Blender 4.2+ (blender.org), or rerun this with Python 3.11.')
+    print('Blender:', found or 'NOT FOUND. Install Blender 4.2+ (blender.org), or rerun this with Python 3.13.')
 
 with open(os.path.join(HERE, 'config.json'), 'w') as f:
     json.dump(cfg, f, indent=1)

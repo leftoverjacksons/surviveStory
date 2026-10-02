@@ -8,9 +8,11 @@ folder, and the game's `vite build` doesn't include it.
 
 ## Setup (once, on the machine that will generate)
 
-Needs: Python 3.11 (3.10–3.12 work, but only 3.11 installs Blender's module;
-otherwise an installed Blender 4.2+ is used), git, Node (the repo's
-`npm install`).
+Needs: Python 3.13 (3.10–3.13 work, but only 3.13 and 3.11 install Blender's
+module, bpy; otherwise an installed Blender 4.2+ is used), git, Node (the
+repo's `npm install`). Verified 2026-10-02 on Python 3.13 (bpy 5.2.2, torch
+2.14, CPU): image → mesh → rig → pack. Viewing the library and Compose needs
+no setup beyond Python itself.
 
 ```
 python lab/figures/setup.py        # add --cpu to ignore an NVIDIA GPU
