@@ -296,7 +296,7 @@ reference: Tiny Glade.
     publish must include the character branch the same way (or the user merges it), or it would drop their figures.
     §41 LEAF CARDS (prototype, published v49 via the same temporary merge with the character branch): broadleaf crowns as camera-facing alpha cut-out cards
     (`render/leafcards.ts`, `TreeField.setCards`, graphics panel checkbox, off by default); measured
-    ~11% fewer tree triangles, +1 draw call (`scripts/shots/cardsperf.mjs`). §41.1 (not published): PINES as hybrid tiers
+    ~11% fewer tree triangles, +1 draw call (`scripts/shots/cardsperf.mjs`). §41.1 (published v50, temporary merge with character branch 354f921): PINES as hybrid tiers
     (slimmer solid cone + bough cards, `needleCardGeometry`), GRASS CARDS (upright, `setGrassCards`, own checkbox), SHADOW FIX
     (cards need `shadowSide = DoubleSide`; v49 leaf cards cast almost no shadow) + shadow-pass push (`PUSH`). `cardlook.mjs`.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
