@@ -99,6 +99,20 @@ figure. For the Hugging Face Space backend, set `HF_TOKEN` before
     (`lab/workshop/faces.py`), fitted to the generated head's width and top and
     coloured from the image; the studio has Head and Hair choices.
     `shots/rig-head-and-colours.png`.
+  - Skeleton: by default the workshop's own (`kit.make_armature()`, `--build
+    hero`) at the workshop's scale, so figures share the parts library's
+    skeleton exactly; `--fit` fits joints to the mesh instead (old behaviour).
+  - Parts (`--parts <file> --name <name>`; the studio always writes
+    `work/<id>/parts.glb`): the figure cut by the bone each face mostly follows,
+    backed by geometry (below the ankle = feet, above the chin = head, the
+    hand only near the hand): `head.gen_<name>` (with hair), `top.` (torso,
+    arms, cloak), `bottom.` (hips, legs), `feet.`, `hands.`. "Add parts to
+    library" copies them to `library/gen/<name>.hero.glb` and rebuilds
+    `parts_hero.glb` (`lab/workshop/build.py --parts`), where they mix with the
+    workshop's parts in Show → Compose: `shots/compose-generated-parts.png`.
+    Hunyuan3D licence applies to these parts too (prototype only).
+  - Low triangle counts (< 6000) voxel-remesh first (`--voxel auto`):
+    decimating the raw surface that hard collapsed the boots.
 - **`pack.mjs`**: the game's slot and meshopt packing (as in
   `scripts/characters.mjs`).
 - **`app.ts`, `stage.ts`, `index.html`, `vite.config.ts`**: the page. It uses

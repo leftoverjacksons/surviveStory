@@ -50,6 +50,31 @@ if '--parts' in argv:
         meshes.append(ob)
         manifest['parts'][name] = {'category': name.split('.')[0], 'slots': [m.name for m in ob.data.materials], 'triangles': kit.triangles(ob)}
         print(f'{name:28s} {kit.triangles(ob):5d} triangles  {[m.name for m in ob.data.materials]}')
+    # Parts cut from generated figures (figure studio: rig.py --parts, filed by "Add parts to library"),
+    # rigged on this build's skeleton, so they mix with the workshop's parts: lab/figures/library/gen/*.<build>.glb
+    import glob
+    for f in sorted(glob.glob(os.path.join(LIB, 'gen', f'*.{build}.glb'))):
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=f)
+        new = [o for o in bpy.data.objects if o not in before]
+        for ob in [o for o in new if o.type == 'MESH']:
+            mw = ob.matrix_world.copy()
+            ob.parent = None
+            ob.matrix_world = mw
+            bpy.context.view_layer.objects.active = ob
+            bpy.ops.object.select_all(action='DESELECT'); ob.select_set(True)
+            bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+            for m in list(ob.modifiers): ob.modifiers.remove(m)
+            mod = ob.modifiers.new('rig', 'ARMATURE'); mod.object = rig
+            ob.parent = rig
+            name = ob.name.split('.0')[0] if '.0' in ob.name[-4:] else ob.name  # (Blender's .001 suffixes)
+            ob.name = name
+            meshes.append(ob)
+            manifest['parts'][name] = {'category': name.split('.')[0], 'slots': [m.name for m in ob.data.materials],
+                                       'triangles': kit.triangles(ob), 'generated': os.path.basename(f)}
+            print(f'{name:28s} {kit.triangles(ob):5d} triangles  (generated: {os.path.basename(f)})')
+        for o in new:
+            if o.type != 'MESH': bpy.data.objects.remove(o)
     raw = os.path.join(WORK, f'parts_{build}.glb')
     kit.export_many(raw, rig, meshes)
     pack(raw, os.path.join(LIB, f'parts_{build}.glb'))

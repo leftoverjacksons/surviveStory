@@ -2,7 +2,7 @@
 Lab (not part of the game): rig a generated character mesh onto the game's
 survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 
-    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 12000] [--voxel 0] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head keep|face|soft|broad|long|elder] [--hair curly|bun|swept|none] [--shade 1]
+    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 12000] [--voxel auto] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head keep|face|soft|broad|long|elder] [--hair curly|bun|swept|none] [--shade 1] [--fit] [--parts <parts.glb> --name <name>]
         [--names 0=skin,1=hair,...] [--slots <json>] [--preview <png>]
 
 (with Blender's Python module: `pip install bpy`).
@@ -38,7 +38,9 @@ PREVIEW = opt('--preview', '')
 BACK = opt('--back', '')  # optional back view (cut-out) for the colours
 NAMES = opt('--names', '')
 SLOTS_OUT = opt('--slots', '')  # write the slots (index, name, sRGB colour, vertices) as JSON
-VOXEL = opt('--voxel', 0.0)  # 0: decimate the generated surface directly (it is already watertight)
+VOXEL = opt('--voxel', -1.0)  # 0: decimate the generated surface directly (it is already watertight); -1: auto
+if VOXEL < 0:  # Decimating the raw surface hard (to ~3000) can collapse whole thin pieces (boots); remesh first then.
+    VOXEL = 0.0 if TRIS >= 6000 else 0.012
 TOP = 1.69  # Head bone tip in the game's skeleton
 
 # ---------------------------------------------------------------- skeleton (from scripts/blender/survivor.py)
@@ -56,6 +58,12 @@ BUILD = opt('--build', 'hero')
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'workshop'))
 import kit  # noqa: E402  (lab/workshop: builds, and the head parts below)
 _J, _HC, _HR = kit.derive(kit.BUILDS[BUILD])
+# --fit: fit the joints to this mesh (widths, depths) at the game's old height (1.69). Default: the
+# workshop's skeleton exactly, at the workshop's scale, so the figure (and the parts cut from it, --parts)
+# shares the skeleton of lab/workshop's parts library and can be mixed with those parts.
+FIT = '--fit' in argv
+if not FIT:
+    TOP = _HC[2] + _HR[2] * 1.12  # the workshop figure's height (skull top plus some hair)
 _k = TOP / (_HC[2] + _HR[2] * 1.12)  # kit units -> this figure (the mesh's top includes some hair)
 J = {n: tuple(c * _k for c in v) for n, v in _J.items()}
 HEAD_RX = _HR[0] * _k  # head half-width
@@ -148,6 +156,10 @@ dec = ob.modifiers.new('dec', 'DECIMATE')
 dec.ratio = min(1.0, TRIS / max(tris, 1)); dec.use_collapse_triangulate = True
 bpy.ops.object.modifier_apply(modifier='dec')
 print(f'remeshed {tris} tris -> {len(ob.data.polygons)} (islands dropped: {len(islands) - 1})')
+_zs = [v.co.z for v in ob.data.vertices]
+if max(_zs) - min(_zs) < 0.9 * TOP:
+    print(f'WARNING: decimation lost part of the figure (height {max(_zs) - min(_zs):.2f} of {TOP:.2f}); '
+          'use more --tris or a --voxel remesh')
 
 # ---------------------------------------------------------------- 3. fit the skeleton
 V = [v.co.copy() for v in ob.data.vertices]
@@ -175,19 +187,30 @@ def fit(k, p):
     kx = kx_hip if k in LEG else kx_sh if k in ARM else 1
     y = depth_mid(p[2]) if k not in ('toe',) else p[1] + depth_mid(p[2] + 0.05)
     return (p[0] * kx, y if k not in LEG | ARM else p[1] + depth_mid(p[2]), p[2])
-BONES = bones(fit)
-
-arm = bpy.data.armatures.new('Rig')
-rig = bpy.data.objects.new('Rig', arm)
-bpy.context.scene.collection.objects.link(rig)
-bpy.context.view_layer.objects.active = rig
-bpy.ops.object.mode_set(mode='EDIT')
-for n, h, t, p in BONES:
-    b = arm.edit_bones.new(n)
-    b.head, b.tail = Vector(h), Vector(t)
-    if p:
-        b.parent = arm.edit_bones[p]; b.use_connect = False
-bpy.ops.object.mode_set(mode='OBJECT')
+if FIT:
+    BONES = bones(fit)
+    arm = bpy.data.armatures.new('Rig')
+    rig = bpy.data.objects.new('Rig', arm)
+    bpy.context.scene.collection.objects.link(rig)
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='EDIT')
+    for n, h, t, p in BONES:
+        b = arm.edit_bones.new(n)
+        b.head, b.tail = Vector(h), Vector(t)
+        if p:
+            b.parent = arm.edit_bones[p]; b.use_connect = False
+    bpy.ops.object.mode_set(mode='OBJECT')
+else:
+    # The workshop's skeleton as it is. Move the mesh (not the bones) so its torso sits on the spine.
+    kit.set_build(BUILD)
+    dy = Vector(kit.J['chest']).y - depth_mid(J['chest'][2])
+    for v in ob.data.vertices:
+        v.co.y += dy
+    V = [v.co.copy() for v in ob.data.vertices]
+    fit = lambda k, p: p  # joints as they are
+    BONES = kit.BONES
+    rig = kit.make_armature()
+    arm = rig.data
 arm.bones['Root'].use_deform = False
 
 # ---------------------------------------------------------------- 4. skin
@@ -496,6 +519,61 @@ bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True,
                           export_apply=False, export_yup=True, export_skins=True, export_morph=False,
                           export_materials='EXPORT', export_attributes=True)  # _shade -> _SHADE
 print('wrote', OUT, len(ob.data.polygons), 'faces')
+
+# ---------------------------------------------------------------- parts for the library (--parts)
+# The figure cut into the parts library's slots by the bone each face mostly follows: head (with the
+# hair), top (torso and arms), bottom (hips and legs), feet, hands. Each is its own skinned mesh on the
+# same skeleton, named <slot>.gen_<name>; lab/workshop/build.py --parts files them into the parts
+# library next to the workshop's parts (with the default skeleton they share its bones exactly).
+PARTS_OUT = opt('--parts', '')
+NAME = opt('--name', os.path.splitext(os.path.basename(OUT))[0])
+REGION = {'Head': 'head', 'Neck': 'head', 'Chest': 'top', 'Torso': 'top', 'Abdomen': 'top', 'Shoulder': 'top',
+          'UpperArm': 'top', 'LowerArm': 'top', 'Wrist': 'hands', 'Hips': 'bottom', 'UpperLeg': 'bottom',
+          'LowerLeg': 'bottom', 'Foot': 'feet'}
+if PARTS_OUT:
+    if FIT:
+        print('WARNING: --parts with --fit: the parts will not share the workshop skeleton exactly')
+    gname = {g.index: g.name for g in ob.vertex_groups}
+    wrists = [(Vector(h), Vector(t)) for n, h, t, _ in BONES if n.startswith('Wrist')]
+    def near_hand(p):  # cloth hanging at the wrist follows the wrist bone too, but is not the hand
+        def d(a, b):
+            ab = b - a; t = max(0, min(1, (p - a).dot(ab) / max(ab.length_squared, 1e-9)))
+            return (a + ab * t - p).length
+        return min(d(a, b) for a, b in wrists) < 1.5 * min((b - a).length for a, b in wrists)
+    def region(v):
+        if not v.groups: return 'top'
+        g = max(v.groups, key=lambda g: g.weight)
+        r = REGION.get(gname[g.group].split('.')[0], 'top')
+        # Geometry backs up the weights (coarse meshes give boots to the shins, chins to the chest).
+        if r == 'bottom' and v.co.z < ankle_z: return 'feet'
+        if r == 'top' and v.co.z > chin_z and abs(v.co.x) < HEAD_RX * 1.4: return 'head'
+        return 'top' if r == 'hands' and not near_hand(v.co) else r
+    ankle_z = J['ankle'][2] * 1.15
+    chin_z = (_HC[2] - _HR[2] * 0.85) * _k
+    vreg = [region(v) for v in ob.data.vertices]
+    freg = [max(set(r), key=r.count) for r in ([vreg[i] for i in p.vertices] for p in ob.data.polygons)]
+    import re
+    slug = re.sub(r'[^a-z0-9]+', '_', NAME.lower()).strip('_') or 'figure'  # (as the studio's server.py#slug)
+    cut = []
+    for r in ('head', 'top', 'bottom', 'feet', 'hands'):
+        keep = {i for i, x in enumerate(freg) if x == r}
+        if not keep: continue
+        o = ob.copy(); o.data = ob.data.copy(); bpy.context.scene.collection.objects.link(o)
+        bm = bmesh.new(); bm.from_mesh(o.data); bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.index not in keep], context='FACES')
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+        bm.to_mesh(o.data); bm.free()
+        o.name = f'{r}.gen_{slug}'
+        cut.append(o)
+        print(f'part {o.name}: {len(o.data.polygons)} faces')
+    bpy.ops.object.select_all(action='DESELECT')
+    rig.select_set(True)
+    for o in cut: o.select_set(True)
+    bpy.ops.export_scene.gltf(filepath=PARTS_OUT, export_format='GLB', use_selection=True, export_animations=False,
+                              export_apply=False, export_yup=True, export_skins=True, export_morph=False,
+                              export_materials='EXPORT', export_attributes=True)
+    for o in cut: bpy.data.objects.remove(o)
+    print('wrote parts', PARTS_OUT)
 
 # ---------------------------------------------------------------- preview: front, side, and a posed copy
 if PREVIEW:

@@ -275,6 +275,79 @@
     "pack_mallet"
    ],
    "triangles": 68
+  },
+  "bottom.gen_folk_scout": {
+   "category": "bottom",
+   "slots": [
+    "hair.001",
+    "cloth_0",
+    "cloth_1",
+    "cloth_2",
+    "boot.001",
+    "cloth_3",
+    "cloth_4",
+    "cloth_5"
+   ],
+   "triangles": 1546,
+   "generated": "folk_scout.hero.glb"
+  },
+  "feet.gen_folk_scout": {
+   "category": "feet",
+   "slots": [
+    "hair.001",
+    "boot.001"
+   ],
+   "triangles": 568,
+   "generated": "folk_scout.hero.glb"
+  },
+  "hands.gen_folk_scout": {
+   "category": "hands",
+   "slots": [
+    "boot.001",
+    "cloth_3",
+    "cloth_5",
+    "cloth_6"
+   ],
+   "triangles": 108,
+   "generated": "folk_scout.hero.glb"
+  },
+  "head.gen_folk_scout": {
+   "category": "head",
+   "slots": [
+    "hair.001",
+    "cloth_1",
+    "cloth_2",
+    "boot.001",
+    "skin.001",
+    "cloth_4",
+    "cloth_5",
+    "cloth_6"
+   ],
+   "triangles": 1624,
+   "generated": "folk_scout.hero.glb"
+  },
+  "Icosphere": {
+   "category": "Icosphere",
+   "slots": [],
+   "triangles": 80,
+   "generated": "folk_scout.hero.glb"
+  },
+  "top.gen_folk_scout": {
+   "category": "top",
+   "slots": [
+    "hair.001",
+    "cloth_0",
+    "cloth_1",
+    "cloth_2",
+    "boot.001",
+    "cloth_3",
+    "skin.001",
+    "cloth_4",
+    "cloth_5",
+    "cloth_6"
+   ],
+   "triangles": 8153,
+   "generated": "folk_scout.hero.glb"
   }
  },
  "recipes": {

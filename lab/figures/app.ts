@@ -14,7 +14,7 @@ interface Slot { index: number; name: string; label: string; color: [number, num
 interface Figure {
   id: string; name: string; body: 'man' | 'woman' | 'child'; status?: string; error?: string | null;
   params: Record<string, string | number>; files: string[]; slots: Slot[]; names: Record<string, string>;
-  done: string[]; stamp?: number; library?: string; game?: string; front: string; back?: string;
+  done: string[]; stamp?: number; library?: string; game?: string; parts?: string; front: string; back?: string;
 }
 interface LibEntry { file: string; name: string; body: string; generator: string; licence: string; added: string }
 interface State { env: Record<string, unknown>; figures: Figure[]; library: LibEntry[]; queue: number }
@@ -225,6 +225,10 @@ function renderDetail() {
       <button id="aGame" class="${armed.has('game') ? 'warn' : ''}" ${busy || !f.library ? 'disabled' : ''}>${armed.has('game') ? 'Click again: copy into src/assets/people' : f.game ? 'Update in game' : 'Send to game'}</button>
       <button id="aDel" class="warn" ${busy ? 'disabled' : ''}>${armed.has('del') ? 'Click again to delete' : 'Delete'}</button>
     </div>
+    <div class="note">Parts: the figure cut into head, top, bottom, feet and hands on the workshop's skeleton, to mix with the workshop's parts in Show → Compose.</div>
+    <div class="actions">
+      <button id="aParts" ${busy || !f.done.includes('rig') ? 'disabled' : ''}>${f.parts ? 'Update parts in library' : 'Add parts to library'}</button>
+    </div>
     <h2>Log</h2><pre id="log">…</pre>`;
   void loadLog(f);
 
@@ -236,6 +240,7 @@ function renderDetail() {
   $('dBody').addEventListener('change', edit);
   $('aGen').onclick = () => act('run', { steps: ['generate', 'rig', 'pack'], params: params() });
   $('aRig').onclick = () => act('run', { steps: ['rig', 'pack'], params: params() });
+  $('aParts').onclick = () => act('run', { steps: ['parts'] });
   const aNames = document.getElementById('aNames');
   if (aNames) aNames.onclick = () => {
     const names: Record<string, string> = {};

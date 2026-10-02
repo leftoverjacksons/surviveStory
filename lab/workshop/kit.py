@@ -371,7 +371,7 @@ def export_many(path, rig, meshes):
         ob.select_set(True)
     bpy.ops.export_scene.gltf(filepath=path, export_format='GLB', use_selection=True, export_animations=False,
                               export_apply=False, export_yup=True, export_skins=True, export_morph=False,
-                              export_materials='EXPORT')
+                              export_materials='EXPORT', export_attributes=True)  # (generated parts' _shade)
 
 def export(path, rig, ob):
     export_many(path, rig, [ob])

@@ -62,7 +62,8 @@ yet.
 - `build.py`:
   - `build.py <recipe>...`: whole characters into the studio library
     (`lab/figures/library/<pool>_<recipe>.glb`).
-  - `build.py --parts [--build hero]`: every part as its own skinned mesh on
+  - `build.py --parts [--build hero]` (also files generated parts from
+    `lab/figures/library/gen/*.<build>.glb`, cut by the figure studio): every part as its own skinned mesh on
     one skeleton, as `parts_<build>.glb` (133 KB for 21 parts) plus
     `parts_<build>.json` (the manifest: categories, colour slots, triangle
     counts, recipes).

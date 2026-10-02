@@ -107,6 +107,7 @@ def step_rig(fid, m):
     if os.path.exists(os.path.join(d, 'back.png')): args += ['--back', os.path.join(d, 'back.png')]
     if m.get('names'): args += ['--names', ','.join(f'{k}={v}' for k, v in m['names'].items())]
     args += ['--head', str(prm.get('head', 'keep')), '--hair', str(prm.get('hair', 'curly'))]
+    args += ['--parts', os.path.join(d, 'parts.glb'), '--name', m['name']]  # the figure cut into library parts
     rig = os.path.join(HERE, 'rig.py')
     if CFG.get('bpy_python'): cmd = [CFG['bpy_python'], rig, *args]
     elif CFG.get('blender'): cmd = [CFG['blender'], '-b', '--factory-startup', '-P', rig, '--', *args]
@@ -117,7 +118,24 @@ def step_pack(fid, m):
     d = fdir(fid)
     run(fid, 'pack', [CFG['node'], os.path.join(HERE, 'pack.mjs'), os.path.join(d, 'rigged.glb'), '--out', os.path.join(d, 'packed.glb')])
 
-STEPS = {'generate': step_generate, 'rig': step_rig, 'pack': step_pack}
+def bpy_cmd(script, *args):
+    if CFG.get('bpy_python'): return [CFG['bpy_python'], script, *args]
+    if CFG.get('blender'): return [CFG['blender'], '-b', '--factory-startup', '-P', script, '--', *args]
+    raise RuntimeError('no Blender: set bpy_python or blender in config.json')
+
+def step_parts(fid, m):
+    """File the figure's parts (rig.py --parts: head, top, bottom, feet, hands on the workshop's hero
+    skeleton) in the parts library, and rebuild it (lab/workshop/build.py --parts), so they can be mixed
+    with the workshop's parts in Compose."""
+    src = os.path.join(fdir(fid), 'parts.glb')
+    if not os.path.exists(src): raise RuntimeError('no parts yet: rig the figure again')
+    os.makedirs(os.path.join(LIB, 'gen'), exist_ok=True)
+    file = f"{slug(m['name']).replace('-', '_')}.hero.glb"
+    shutil.copy(src, os.path.join(LIB, 'gen', file))
+    write_meta(fid, parts=file)
+    run(fid, 'parts', bpy_cmd(os.path.join(REPO, 'lab', 'workshop', 'build.py'), '--parts', '--build', 'hero'))
+
+STEPS = {'generate': step_generate, 'rig': step_rig, 'pack': step_pack, 'parts': step_parts}
 
 def worker():
     while True:
