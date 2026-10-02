@@ -5143,3 +5143,85 @@ exported from `util.ts`). The ghosts themselves keep the solid shapes.
 Checked with `WOODS=1 node scripts/shots/cardlook.mjs` (all trees ghosted,
 solid vs cards). `cardlook.mjs` uses a real key press; a dispatched
 KeyboardEvent did not reach the game's handler.
+
+## 42. Cards everywhere, and a leafier autumn (user's direction after v51)
+
+The user: make the leaf cards the default; "where else could we use these,
+they add a lot of texture"; more leafy effects in autumn (grass yellowing,
+leaves falling with animation, piling up in places); grass cards must not show
+in certain places, fields in particular; fields would be a good place for
+cards; maybe bunting, which could wave. Too much for one run, so this section is
+the plan, and §42.2 records what was built first.
+
+### 42.1 The plan
+
+**A. Cards as the default look** (done, §42.2).
+
+**B. Where else cards fit.** These are things that are now solid shapes or
+flat colour, and would gain broken edges and texture:
+
+| Where | Card | Notes |
+|---|---|---|
+| Crops in fields | upright, per crop and growth stage (shoots, leafy, ripe heads, stubble) | replaces `render/land.ts` crop boxes; sways; the field's season shows in its cards |
+| Hedges and bushes | leaf clumps, as on trees | `sim/hedges.ts` hedges, yard shrubs, wild bushes |
+| Ivy on ruins and houses | flat cards on the wall, a few standing off it | the ruin ivy is now flat colour; cards give the hanging edge |
+| Reeds and rushes at water | upright grass cards, tall, darker | along shores and the fishing grounds |
+| Wild flowers in meadows | small upright cards with a flower head | spring and summer only; a colour per meadow patch |
+| Garden beds in yards | upright, a vegetable per bed | ties into the household's plot |
+| Bunting and washing lines | cut-out flags along the line that wave | vertex sway per flag along the string; the user suggested this |
+| Folk works / the Wild | fern and mushroom cards; glimmering in the Veil view | uncanny edges suit the Folk |
+| Snow on boughs (winter) | white cards along the pine skirts | instead of only a shader tint |
+
+Order proposed: crops in fields → bunting → hedges/bushes → ivy → reeds →
+flowers → the rest.
+
+**C. Grass where it belongs.** No tufts on fields (done, §42.2). Next:
+none inside buildings' plots where the yard is worked, none on floors and decks,
+fewer under dense woods. Grass cards as the default once these are right.
+
+**D. Autumn.**
+1. Turf and tufts go more straw-yellow (done).
+2. Leaves fall from oaks and birches, tumbling and drifting on the breeze, and
+   lie a while (done).
+3. Leaves pile up: litter under and around broadleaf trees, drifts against
+   walls, kicked off paths, under the snow in winter, gone in early spring
+   (done, as ground flecks).
+4. Still to do:
+   - raised leaf piles (small mounds of cards) in corners and against fences;
+   - leaves on roads and pavements (asphalt and concrete use their own overlay
+     material, so there's no litter there yet);
+   - villagers raking yards (a tidy-up task in autumn: a heap and a bonfire);
+   - a gust now and then that lifts the litter;
+   - leaves on roofs and in gutters.
+
+### 42.2 Built this round (not published)
+
+- **Leaf cards are the default** (`leafCards: true`). Saved graphics settings
+  now carry a version (`GfxSettings.v`, `SETTINGS_VERSION` 2). Older saves
+  drop their `leafCards` value once, so a player who had never touched it
+  gets the new default; a later choice is kept.
+- **No grass on fields.** Field tiles are marked in the fog texture's blue
+  channel (`FogTexture`: woodlot 255, field 128; nothing else reads B). The
+  grass vertex shader collapses any tuft standing on one, blades and cards
+  alike. It follows fields as they're drawn and removed.
+- **Autumn colour.** The turf's autumn shift is stronger (×(1.22, 1.06, 0.62)
+  at 0.55, was ×(1.12, 1.0, 0.72) at 0.3), and the tufts take more of it
+  (0.42 in the pixel look, was 0.22).
+- **Falling leaves** (`render/leaffall.ts`, one draw):
+  - a pool of 280 instances (500 without the pixel look), spawned round the
+    crowns of standing oaks and birches on explored ground within 46 of the
+    view;
+  - the rate follows `seasonLook().leafFall` (late autumn) and the wind;
+  - each leaf falls slowly with a flutter, drifts downwind, lies flat for
+    6 s, then shrinks away over 3 s;
+  - autumn colours; both faces lit as if facing up, so a tumbling leaf
+    doesn't flash black.
+- **Leaf litter** (`LitterTexture` in `terrain.ts`, `uLitterTex`/`uLitter`):
+  - a per-tile map built from standing broadleaf trees (radius grows with
+    size), plus more in the lee of walls and buildings; redrawn once a game day;
+  - the ground shader draws leaf-sized flecks in four autumn colours, as
+    `seasonLook().litter` grows through leaf fall;
+  - flecks go brown in winter, lie under the snow, are cleared from worn
+    paths, and are gone by early spring.
+- `cardlook.mjs` gains `DAY=` (jump the calendar) and prints how many leaves
+  are falling.

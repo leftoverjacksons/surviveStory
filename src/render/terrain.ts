@@ -34,7 +34,8 @@ export class FogTexture {
       const z = w.zone[i];
       d[i * 4] = w.explored[i];
       d[i * 4 + 1] = !this.veilSeen || this.veilSeen.has(i) ? 255 : 0;
-      d[i * 4 + 2] = z === Zone.Woodlot ? 255 : 0;
+      // B: woodlot 255, field 128 (grass tufts read it and stay off fields).
+      d[i * 4 + 2] = z === Zone.Woodlot ? 255 : z === Zone.Field ? 128 : 0;
       d[i * 4 + 3] = z === Zone.Sacred ? 255 : 0;
     }
     this.texture.needsUpdate = true;
@@ -114,6 +115,54 @@ export class WearTexture {
     this.version = w.wearVersion;
     const d = this.data;
     for (let i = 0; i < d.length; i++) d[i] = Math.min(255, (w.wear[i] / LANE_WEAR) * 255);
+    this.texture.needsUpdate = true;
+  }
+}
+
+/**
+ * Where fallen leaves gather (DESIGN §42), per tile 0..1: under and around
+ * standing oaks and birches, and caught against walls and buildings. The
+ * ground shader scales it by how far leaf fall has gone (uLitter).
+ * Recomputed once a game day (trees are felled and planted).
+ */
+export class LitterTexture {
+  texture: THREE.DataTexture;
+  private data: Uint8Array;
+  private acc: Float32Array;
+  constructor(private world: World) {
+    this.data = new Uint8Array(world.w * world.h);
+    this.acc = new Float32Array(world.w * world.h);
+    this.texture = new THREE.DataTexture(this.data, world.w, world.h, THREE.RedFormat, THREE.UnsignedByteType);
+    this.texture.magFilter = THREE.LinearFilter;
+    this.texture.minFilter = THREE.LinearFilter;
+    this.sync();
+  }
+  sync() {
+    const w = this.world, a = this.acc;
+    a.fill(0);
+    for (const t of w.trees) {
+      if (t.felled || t.kind === 'pine' || t.growth < 0.4) continue;
+      const r = 2.2 + 2.2 * t.size * t.growth, R = Math.ceil(r);
+      for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+        const tx = t.tx + dx, tz = t.tz + dz;
+        if (tx < 0 || tz < 0 || tx >= w.w || tz >= w.h) continue;
+        const d = Math.hypot(dx, dz);
+        if (d > r) continue;
+        a[tz * w.w + tx] += 0.55 * (1 - d / r);
+      }
+    }
+    const d = this.data;
+    for (let tz = 0; tz < w.h; tz++) for (let tx = 0; tx < w.w; tx++) {
+      const i = tz * w.w + tx;
+      if (w.ground[i] === Ground.Water || w.blocked[i]) { d[i] = 0; continue; }
+      // Caught in the lee of walls: tiles beside something solid keep more of what drifts by.
+      let walls = 0;
+      for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = tx + ox, z = tz + oz;
+        if (x >= 0 && z >= 0 && x < w.w && z < w.h && w.blocked[z * w.w + x]) walls++;
+      }
+      d[i] = Math.min(255, Math.round(Math.min(1, a[i] * (1 + walls * 0.6) + (walls && a[i] > 0.05 ? 0.15 : 0)) * 255));
+    }
     this.texture.needsUpdate = true;
   }
 }

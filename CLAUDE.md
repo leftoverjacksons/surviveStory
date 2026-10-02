@@ -300,6 +300,10 @@ reference: Tiny Glade.
     (slimmer solid cone + bough cards, `needleCardGeometry`), GRASS CARDS (upright, `setGrassCards`, own checkbox), SHADOW FIX
     (cards need `shadowSide = DoubleSide`; v49 leaf cards cast almost no shadow) + shadow-pass push (`PUSH`). `cardlook.mjs`.
     §41.2 FIX (published v51, temporary merge with character branch 84584c2): see-through woods work with cards (card materials keep `thin`, card shadows discard).
+    §42 CARDS EVERYWHERE + LEAFY AUTUMN (user's direction after v51; plan in §42.1: crops/bunting/hedges/ivy/reeds/flowers as
+    cards, grass placement, autumn piles/raking/roads). BUILT §42.2 (not published): leaf cards DEFAULT (`GfxSettings.v`
+    migration), NO GRASS ON FIELDS (fog tex B = 128 on field tiles, grass vertex collapses), stronger autumn yellow, FALLING
+    LEAVES (`render/leaffall.ts`, `seasonLook().leafFall`), LEAF LITTER (`LitterTexture`, `uLitter`, `seasonLook().litter`).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

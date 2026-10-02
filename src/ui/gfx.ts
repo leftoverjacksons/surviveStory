@@ -24,6 +24,8 @@ export interface GfxSettings {
   outlinePx: number;
   /** Broadleaf canopies as clouds of cut-out leaf cards instead of solid blobs (DESIGN §41). */
   leafCards: boolean;
+  /** Saved-settings version (SETTINGS_VERSION). */
+  v?: number;
   /** Grass tufts as upright cut-out cards of a few blades (DESIGN §41). */
   grassCards?: boolean;
   steps: number;
@@ -43,6 +45,8 @@ export interface GfxHooks {
 }
 
 const KEY = 'ss-gfx';
+/** Bumped when a default changes in a way saved settings should pick up (see the constructor). */
+const SETTINGS_VERSION = 2;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 export class GfxPanel {
@@ -52,7 +56,11 @@ export class GfxPanel {
   constructor(private hooks: GfxHooks) {
     let saved: Partial<GfxSettings> = {};
     try { saved = JSON.parse(localStorage.getItem(KEY) ?? '{}'); } catch { /* ignore */ }
-    this.s = { ...hooks.defaults, ...saved };
+    // Defaults that changed after people had saved settings: drop the old saved value once,
+    // so the new default reaches them (leaf cards became the default with DESIGN §42).
+    const v = (saved as { v?: number }).v ?? 1;
+    if (v < 2) delete saved.leafCards;
+    this.s = { ...hooks.defaults, ...saved, v: SETTINGS_VERSION } as GfxSettings;
     this.el = document.createElement('section');
     this.el.id = 'gfx';
     this.el.className = 'hud panel';
@@ -63,7 +71,7 @@ export class GfxPanel {
       const b = (e.target as HTMLElement).closest('button');
       if (!b) return;
       if (b.id === 'gfx-close') this.toggle(false);
-      if (b.id === 'gfx-reset') { this.s = { ...this.hooks.defaults }; this.save(); this.hooks.apply(this.s, null); this.render(); }
+      if (b.id === 'gfx-reset') { this.s = { ...this.hooks.defaults, v: SETTINGS_VERSION }; this.save(); this.hooks.apply(this.s, null); this.render(); }
       const preset = b.dataset.preset;
       if (preset) { Object.assign(this.s, PRESETS[preset]); this.save(); this.hooks.apply(this.s, null); this.render(); }
     });
@@ -127,7 +135,7 @@ export class GfxPanel {
       ${range('bloom', 'Glow (bloom)', 0, 2, 0.05)}
       ${range('exposure', 'Exposure', 0.7, 1.7, 0.02)}
       ${check('shadows', 'Shadows')}
-      ${check('leafCards', 'Leaf cards (trees)', 'Prototype: broadleaf crowns and pine boughs drawn as clouds of small cut-out cards instead of solid shapes')}
+      ${check('leafCards', 'Leaf cards (trees)', 'Broadleaf crowns and pine boughs drawn as clouds of small cut-out cards instead of solid shapes')}
       ${check('grassCards', 'Grass cards', 'Prototype: grass tufts drawn as upright cut-out cards of a few blades instead of single geometric blades')}
       ${check('tufts', 'Grass tufts (geometry)', 'The small triangles in the grass')}
       ${range('grassPaint', 'Grass painted in the turf', 0, 1, 0.05, 'Clumps drawn into the ground itself: no geometry')}

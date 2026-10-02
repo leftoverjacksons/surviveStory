@@ -7,7 +7,8 @@ import { Zone, heightAt, idx, paintZone, reveal, tileX, tileZ, toTileX, toTileZ 
 import { createField, deleteField, fieldAtPoint } from './sim/fields';
 import { daylightHours, seasonLook, snowCold } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
-import { FogTexture, WearTexture, ZoneTexture, buildTerrain, setGrassCards } from './render/terrain';
+import { FogTexture, LitterTexture, WearTexture, ZoneTexture, buildTerrain, setGrassCards } from './render/terrain';
+import { LeafFall } from './render/leaffall';
 import { FieldsView, Precipitation } from './render/land';
 import { buildVines } from './render/station';
 import { buildSite } from './render/sites';
@@ -145,7 +146,7 @@ function sizeComposer() {
 let pixelScale = PIXEL || 1;
 const gfx = new GfxPanel({
   pixel: !!PIXEL,
-  defaults: { px: PIXEL || 1, outline: true, outlineOff: [], outlinePx: 0, leafCards: false, grassCards: false, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
+  defaults: { px: PIXEL || 1, outline: true, outlineOff: [], outlinePx: 0, leafCards: true, grassCards: false, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
   apply(s, changed) {
     if (PIXEL && (changed === null || changed === 'px')) {
       pixelScale = s.px;
@@ -186,6 +187,10 @@ const zoneTex = new ZoneTexture(world);
 worldUniforms.uZoneTex.value = zoneTex.texture;
 const wear = new WearTexture(world);
 worldUniforms.uWearTex.value = wear.texture;
+// Where fallen leaves gather (DESIGN §42); redrawn once a day as trees come and go.
+const litter = new LitterTexture(world);
+worldUniforms.uLitterTex.value = litter.texture;
+let litterDay = -1;
 /** Footprints in the snow, and how deep the snow lies (DESIGN §35). */
 const footprints = new Footprints(world);
 worldUniforms.uFootTex.value = footprints.texture;
@@ -285,6 +290,8 @@ fields.group.name = 'fields';
 scene.add(fields.group);
 const precip = new Precipitation();
 scene.add(precip.group);
+const leafFall = new LeafFall(world);
+scene.add(leafFall.mesh);
 const phenomena = new PhenomenaView(colony, document.getElementById('labels')!);
 scene.add(phenomena.group);
 const folkView = new FolkView(colony, document.getElementById('labels')!);
@@ -1377,6 +1384,9 @@ function frame() {
   worldUniforms.uAutumn.value = look.autumn;
   worldUniforms.uBare.value = look.bare;
   worldUniforms.uBlossom.value = look.blossom;
+  worldUniforms.uLitter.value = look.litter;
+  if (Math.floor(dayFrac) !== litterDay) { litterDay = Math.floor(dayFrac); if (look.litter > 0) litter.sync(); }
+  leafFall.update(dt, t, iso.target, veil ? 0 : look.leafFall, worldUniforms.uWind.value);
   const gloom = weather === 'rain' ? 1 : weather === 'snow' ? 0.7 : weather === 'overcast' ? 0.6 : weather === 'fog' ? 0.4 : 0;
   sky.follow(iso.target);
   sky.setHour(veil ? 20.75 : hour, daylightHours(dayFrac), veil ? 0 : gloom, weather === 'fog' ? 1 : weather === 'rain' ? 0.3 : 0, Math.max(snowCover, weather === 'snow' ? 0.5 : 0));

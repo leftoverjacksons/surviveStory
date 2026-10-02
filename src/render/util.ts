@@ -133,6 +133,9 @@ export const worldUniforms = {
   uRoofSnow: { value: 0 },
   /** Footprints pressed into the snow (render/footprints.ts), 4 texels a tile. */
   uFootTex: { value: null as THREE.Texture | null },
+  /** Fallen leaves (DESIGN §42): per-tile cover where they gather (terrain.ts LitterTexture), and how much has fallen (0..1). */
+  uLitterTex: { value: null as THREE.Texture | null },
+  uLitter: { value: 0 },
   uAutumn: { value: 0 },
   uBare: { value: 0 },
   uBlossom: { value: 0 },
@@ -367,14 +370,29 @@ const SEASON_GLSL: Record<SeasonStyle, string> = {
     {
       vec2 wuv = (vFowXZ + uFogSize * 0.5) / uFogSize;
       float wv = texture2D(uWearTex, wuv).r;
-      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.12, 1.0, 0.72), uAutumn * 0.3);
+      // Autumn: the turf goes straw-yellow (stronger since DESIGN §42).
+      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.22, 1.06, 0.62), uAutumn * 0.55);
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.34, 0.31, 0.24), uBare * 0.45);
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.37, 0.30, 0.22), smoothstep(0.1, 0.55, wv) * 0.85);
       snowK *= 1.0 - smoothstep(0.3, 1.0, wv) * 0.5;
+      // Fallen leaves (DESIGN §42): speckled leaf-sized flecks where the litter map says they gather,
+      // more as the season goes on; kicked off paths; under the snow in winter.
+      {
+        float lit = texture2D(uLitterTex, wuv).r * uLitter * (1.0 - smoothstep(0.08, 0.4, wv));
+        vec2 cell = floor(vFowXZ * ${PIXEL ? '5.0' : '7.0'});
+        float h1 = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+        float h2 = fract(sin(dot(cell, vec2(39.3468, 11.135))) * 24634.6345);
+        if (h1 < lit * 1.15) {
+          vec3 leafCol = h2 < 0.3 ? vec3(0.62, 0.24, 0.09) : h2 < 0.65 ? vec3(0.78, 0.45, 0.13) : h2 < 0.85 ? vec3(0.8, 0.62, 0.22) : vec3(0.45, 0.3, 0.17);
+          // Older leaves (in winter) go brown.
+          leafCol = mix(leafCol, vec3(0.38, 0.27, 0.17), uBare * 0.6);
+          diffuseColor.rgb = mix(diffuseColor.rgb, leafCol, 0.85);
+        }
+      }
     }`,
   // Tufts take the season only lightly in the pixel look, where a pale tuft on dark turf reads as a speck.
   grass: `
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72, 0.6, 0.25), uAutumn * ${PIXEL ? 0.22 : 0.5});
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.74, 0.62, 0.26), uAutumn * ${PIXEL ? 0.42 : 0.6});
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.54, 0.38), uBare * ${PIXEL ? 0.3 : 0.65});`,
   broadleaf: `
     {
@@ -410,7 +428,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       '#include <common>',
       `#include <common>
       uniform float uTime; uniform float uWind; uniform float uBare; uniform float uFogSize;
-      uniform sampler2D uWearTex;
+      uniform sampler2D uWearTex;${season === 'grass' ? ' uniform sampler2D uFogTex;' : ''}
       varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
       ${thin ? `uniform sampler2D uZoneTex; uniform float uThin; varying float vThin; ${THIN_VERT}` : ''}`,
     );
@@ -429,6 +447,9 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       ${season === 'grass' ? `{
         float wr = texture2D(uWearTex, (ip.xz + uFogSize * 0.5) / uFogSize).r;
         transformed.y *= (1.0 - smoothstep(0.12, 0.5, wr)) * mix(1.0, 0.55, uBare);
+        // No tufts on fields (uFogTex.b = 0.5 there, terrain.ts FogTexture): the crops are the plants.
+        float fb = texture2D(uFogTex, (ip.xz + uFogSize * 0.5) / uFogSize).b;
+        transformed *= step(0.2, abs(fb - 0.5));
       }` : ''}
       ${wind > 0 ? `{
         float h = max(position.y, 0.0);
@@ -460,7 +481,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       `#include <common>
       uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform sampler2D uZoneTex; uniform float uVeil; uniform float uVeilDark;
       uniform float uFogSize; uniform float uTime; uniform float uZone;
-      uniform float uSnow; uniform float uRoofSnow; uniform sampler2D uFootTex; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
+      uniform float uSnow; uniform float uRoofSnow; uniform sampler2D uFootTex; uniform sampler2D uLitterTex; uniform float uLitter; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
       varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
       ${thin ? 'varying float vThin;' : ''}
       ${surfaceKind ? `uniform float uSurface; uniform float uGrassPaint;

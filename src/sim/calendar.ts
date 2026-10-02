@@ -84,6 +84,10 @@ export interface SeasonLook {
   bare: number;
   /** 0..1 spring blossom. */
   blossom: number;
+  /** 0..1 how fast leaves are falling (DESIGN §42): late autumn, as the crowns go bare. */
+  leafFall: number;
+  /** 0..1 fallen leaves on the ground: builds through leaf fall, lies under the snow, gone in early spring. */
+  litter: number;
 }
 
 /**
@@ -108,5 +112,7 @@ export function seasonLook(dayFrac: number, snowing: boolean): SeasonLook {
   // Snow lies from early winter until the thaw at the end of the year.
   let snow = smooth(36, 38.5, d) * (1 - smooth(46, 47.8, d));
   if (snowing) snow = Math.max(snow, 0.6);
-  return { snow, autumn, bare: Math.min(1, bare), blossom };
+  const leafFall = smooth(27, 30, d) * (1 - smooth(35, 38, d));
+  const litter = d >= 20 ? smooth(27.5, 35, d) : d < 8 ? 1 - smooth(1.5, 6, d) : 0;
+  return { snow, autumn, bare: Math.min(1, bare), blossom, leafFall, litter };
 }
