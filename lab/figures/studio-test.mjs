@@ -23,7 +23,7 @@ await page.click('#make');
 const t0 = Date.now();
 let last = '';
 for (;;) {
-  const st = await page.evaluate(() => { const s = window.__studio.state; return s.figures[0]?.status ?? ''; });
+  const st = await page.evaluate(() => { const s = window.__studio.state; const f = [...s.figures].sort((a, b) => b.created - a.created)[0]; return f?.status ?? ''; });
   if (st !== last) { console.log(`${((Date.now() - t0) / 1000).toFixed(0)}s`, st); last = st; }
   if (st === 'ready' || st === 'error') break;
   if (Date.now() - t0 > 30 * 60e3) throw new Error('timed out');

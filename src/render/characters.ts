@@ -75,6 +75,11 @@ function mergeOutfit(scene: THREE.Object3D): THREE.SkinnedMesh | null {
     const s = new Float32Array(n);
     for (let i = 0; i < n; i++) s[i] = slot ? slot.getX(i) : 0;
     g.setAttribute('slot', new THREE.Float32BufferAttribute(s, 1));
+    // Brightness over the slot colour, per vertex (studio figures: the source image's light and dark).
+    const sh = src.attributes._shade;
+    const d = new Float32Array(n).fill(1);
+    if (sh) for (let i = 0; i < n; i++) d[i] = sh.getX(i);
+    g.setAttribute('shade', new THREE.Float32BufferAttribute(d, 1));
     return g;
   });
   const merged = mergeGeometries(geos, false);
@@ -232,9 +237,11 @@ export function makeCharacter(outfit: Outfit, seed: { skin: number; hair: number
     return c;
   });
   const col = new Float32Array(n * 3);
+  const shade = src.attributes.shade;
   for (let i = 0; i < n; i++) {
     const c = pal[Math.round(slot.getX(i))] ?? pal[0];
-    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    const k = shade ? shade.getX(i) : 1;
+    col[i * 3] = c.r * k; col[i * 3 + 1] = c.g * k; col[i * 3 + 2] = c.b * k;
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   mesh.geometry = geo;

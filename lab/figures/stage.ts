@@ -36,6 +36,9 @@ function merge(root: THREE.Object3D): THREE.SkinnedMesh | null {
     g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(idx, 4));
     g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(w, 4));
     g.setAttribute('slot', new THREE.Float32BufferAttribute(s, 1));
+    const sh = src.attributes._shade, d = new Float32Array(n).fill(1);  // as the game's mergeOutfit
+    if (sh) for (let i = 0; i < n; i++) d[i] = sh.getX(i);
+    g.setAttribute('shade', new THREE.Float32BufferAttribute(d, 1));
     return g;
   });
   const merged = mergeGeometries(geos, false);

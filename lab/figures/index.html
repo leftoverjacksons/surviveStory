@@ -81,6 +81,10 @@
       <div><label>Generator</label><select id="backend"><option value="local">This machine</option><option value="space">Hugging Face Space</option></select></div>
       <div><label>Quality</label><select id="preset"><option value="turbo">Turbo (5 steps)</option><option value="full">Full (30 steps)</option></select></div>
     </div>
+    <div class="row">
+      <div><label>Head (face)</label><select id="head"><option value="face" selected>face</option><option value="soft">soft</option><option value="broad">broad</option><option value="long">long</option><option value="elder">elder</option><option value="keep">generated (no face)</option></select></div>
+      <div><label>Hair</label><select id="hair"><option value="curly" selected>curly</option><option value="bun">bun</option><option value="swept">swept</option><option value="none">none</option></select></div>
+    </div>
     <details><summary>More settings</summary>
       <div class="row">
         <div><label>Detail (octree)</label><input id="octree" type="number" value="192" min="96" max="384" step="32" /></div>

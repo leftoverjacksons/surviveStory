@@ -2,7 +2,7 @@
 Lab (not part of the game): rig a generated character mesh onto the game's
 survivor skeleton, so it plays the game's clips (anims.glb) unchanged.
 
-    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 3000] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--build hero|adult|stout]
+    python lab/figures/rig.py <mesh.glb> <image.png> <out.glb> [--back <png>] [--tris 3000] [--k 10] [--merge 7] [--smooth 1] [--patch 8] [--light 0.7] [--build hero|adult|stout] [--head face|soft|broad|long|elder|keep] [--hair curly|bun|swept|none] [--shade 1]
         [--names 0=skin,1=hair,...] [--slots <json>] [--preview <png>]
 
 (with Blender's Python module: `pip install bpy`).
@@ -32,6 +32,7 @@ MESH, IMAGE, OUT = argv[0], argv[1], argv[2]
 TRIS = opt('--tris', 3000)
 K = opt('--k', 10)  # at most this many colour slots (look-alikes merge, see MERGE)
 SMOOTH = opt('--smooth', 1)  # neighbour passes over colours and over cluster labels
+LIGHT = opt('--light', 0.7)  # slot colour: this luminance percentile of the group's samples
 PATCH = opt('--patch', 8)  # colour sample window, per mille of the figure's height in the image
 PREVIEW = opt('--preview', '')
 BACK = opt('--back', '')  # optional back view (cut-out) for the colours
@@ -52,14 +53,17 @@ J = dict(
 # which keep every bone's direction, so the game's clips still fit. Generated figures from chibi
 # concept art need 'hero', or the neck and shoulders land inside the head.
 BUILD = opt('--build', 'hero')
-HEAD_RX = 0.108  # head half-width
-if BUILD != 'adult':
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'workshop'))
-    import kit
-    _J, _HC, _HR = kit.derive(kit.BUILDS[BUILD])
-    _k = TOP / (_HC[2] + _HR[2] * 1.12)  # the mesh's top includes some hair
-    J = {n: tuple(c * _k for c in v) for n, v in _J.items()}
-    HEAD_RX = _HR[0] * _k
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'workshop'))
+import kit  # noqa: E402  (lab/workshop: builds, and the head parts below)
+_J, _HC, _HR = kit.derive(kit.BUILDS[BUILD])
+_k = TOP / (_HC[2] + _HR[2] * 1.12)  # kit units -> this figure (the mesh's top includes some hair)
+J = {n: tuple(c * _k for c in v) for n, v in _J.items()}
+HEAD_RX = _HR[0] * _k  # head half-width
+# --head: replace the generated head with a workshop face (lab/workshop/faces.py: face, soft, broad,
+# long, elder) and --hair (curly, bun, swept, none), coloured from the image. A generated head at a
+# few thousand triangles has no face (eyes and mouth are smaller than a triangle). 'keep' keeps it.
+HEAD = opt('--head', 'face')
+HAIR = opt('--hair', 'curly')
 
 def sym(name, h, t, parent):
     out = []
@@ -207,6 +211,28 @@ if weighted < 0.95 * len(ob.data.vertices):
         tot = sum(w for _, w in ws)
         for n, w in ws: ob.vertex_groups[n].add([v.index], w / tot, 'REPLACE')
 
+# ---------------------------------------------------------------- 4b. head swap: cut the generated head away
+FULL = bbox(ob)  # the whole figure, which the image maps onto (before the head is cut away)
+if HEAD != 'keep':
+    head_joint = Vector(fit('head', J['head']))
+    off = head_joint - Vector(J['head'])  # the fit moves joints in depth only
+    HCm = Vector(_HC) * _k + off  # head centre and radii, in this figure
+    HRm = Vector(_HR) * _k
+    # Fit the new head to the generated one: as wide (hair included) and with the same top, so a
+    # concept's short neck or big head carries over. Its centre sits a head-height below the top.
+    top_z = FULL[1].z
+    gw = width_at(top_z - HRm.z * 1.1, band=0.03, core=HRm.x * 1.8)
+    HS = max(0.85, min(1.35, gw / (HRm.x * 1.15))) if gw else 1.0
+    target = Vector((HCm.x, HCm.y, min(HCm.z, top_z - HRm.z * HS * 1.12)))  # never above the skeleton's
+    shift = target - HCm
+    HCm = target
+    cut = HCm.z - HRm.z * HS * 0.92  # about the chin
+    bm = bmesh.new(); bm.from_mesh(ob.data)
+    gone = [v for v in bm.verts if v.co.z > cut and abs(v.co.x - HCm.x) < HRm.x * HS * 1.7]
+    bmesh.ops.delete(bm, geom=gone, context='VERTS')
+    bm.to_mesh(ob.data); bm.free()
+    print(f'head swap: generated head cut above z {cut:.3f} ({len(gone)} vertices), new head x{HS:.2f}')
+
 # ---------------------------------------------------------------- 5. colour from the image, clustered into slots
 class View:
     """A cut-out image (RGBA) seen from the front (-Y) or the back (+Y)."""
@@ -261,7 +287,7 @@ class View:
                 return Vector((p.x, p.y, lo.z + (y - 12 - self.y0) / (self.y1 - self.y0) * (hi.z - lo.z)))
         return p
 
-lo, hi = bbox(ob)
+lo, hi = FULL
 front = View(IMAGE, False)
 back = View(BACK, True) if BACK else None
 neck_z = J['neck'][2] * (hi.z - lo.z) / TOP
@@ -339,7 +365,15 @@ for _ in range(SMOOTH):
 # averages drift towards neighbouring regions, e.g. a white shirt towards hair).
 for k in range(K):
     m = [raw[i] for i in range(len(raw)) if lab[i] == k]
-    cent[k] = [sorted(c[j] for c in m)[len(m) // 2] for j in range(3)] if m else [0.5, 0.5, 0.5]  # (was CIELAB)
+    # The painting already has shading painted in, and the game lights the figure again: take the lit
+    # side of each group (--light, a luminance percentile) rather than its middle, or it renders dark.
+    if m:
+        m = sorted(m, key=lambda c: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2])
+        lo_i = int(len(m) * max(0.0, LIGHT - 0.1)); hi_i = max(lo_i + 1, int(len(m) * min(1.0, LIGHT + 0.1)))
+        band = m[lo_i:hi_i]
+        cent[k] = [sorted(c[j] for c in band)[len(band) // 2] for j in range(3)]
+    else:
+        cent[k] = [0.5, 0.5, 0.5]  # (was CIELAB)
 
 # Name the clusters by where they sit: skin = the front of the face,
 # hair = the top of the head, boot = the feet; the rest is clothing.
@@ -351,6 +385,9 @@ face = lambda p: neck_z + 0.2 * (TOP - neck_z) < p.z < neck_z + 0.5 * (TOP - nec
 top = lambda p: p.z > TOP * 0.93
 feet = lambda p: p.z < TOP * 0.07
 names = {}
+hands = [Vector(t) for n, h, t, _ in BONES if n.startswith('Wrist')]
+if HEAD != 'keep':  # no generated face left: skin is what is at the hands
+    face = lambda p: min((p - q).length for q in hands) < 0.07
 for tag, pred in (('skin', face), ('hair', top), ('boot', feet)):
     free = [k for k in range(K) if k not in names and zs[k]]
     if not free: break
@@ -389,6 +426,58 @@ for p in ob.data.polygons:
     p.material_index = max(set(votes), key=votes.count)
 print('slots:', {names[k]: sum(1 for x in lab if x == k) for k in range(K)})
 
+# Per-vertex shade: each vertex's own brightness in the image over its slot's colour (stains, patches,
+# folds, painted shadow). The game multiplies the survivor's slot colour by it, so re-colouring still
+# works and the painting's light and dark survive. One smoothing pass; clamped so a speck can't blow out.
+lum = lambda c: 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+shade = [max(0.55, min(1.6, lum(raw[i]) / max(0.02, lum(cent[lab[i]])))) for i in range(len(raw))]
+shade = [(shade[i] * 2 + sum(shade[n] for n in nbr[i])) / (2 + len(nbr[i])) for i in range(len(shade))]
+SHADE = opt('--shade', 1.0)  # 0: flat slot colours (as before); 1: the image's light and dark
+at = ob.data.attributes.new('_shade', 'FLOAT', 'POINT')
+for i, v in enumerate(shade):
+    at.data[i].value = 1 + (v - 1) * SHADE
+
+# ---------------------------------------------------------------- 5b. the new head
+if HEAD != 'keep':
+    import parts as P, faces as F  # noqa: E402
+    hexc = lambda c: '#%02x%02x%02x' % tuple(int(max(0, min(1, x)) * 255) for x in c)
+    mix = lambda a, b, t: [a[j] + (b[j] - a[j]) * t for j in range(3)]
+    # Skin from the middle of the face, below the eyes; hair from the top of the head (image colours).
+    skin = front.sample(Vector((HCm.x, 0, HCm.z - HRm.z * HS * 0.35)))
+    hair = front.sample(Vector((HCm.x, 0, FULL[1].z - 0.03)))
+    pal = {'skin': hexc(skin), 'hair': hexc(hair), 'skin_blush': hexc(mix(skin, (0.78, 0.31, 0.28), 0.3)),
+           'skin_lip': hexc([x * 0.82 for x in mix(skin, (0.78, 0.31, 0.28), 0.35)]), 'skin_shade': hexc([x * 0.72 for x in skin]),
+           'eye': '#20140c', 'eye_white': '#efe6d6', 'hat_band': '#d8c070'}
+    for slot in ('skin', 'hair'):  # a cluster may already be called skin/hair: give it the measured colour too
+        m = bpy.data.materials.get(slot)
+        if m is not None:
+            m.name = slot + '_body'
+    kit.set_build(BUILD)
+    c = P.Ctx(kit, pal)
+    pieces = F.build(c, F.FACES[HEAD])
+    if HAIR != 'none':
+        pieces += P.PARTS['hair.' + HAIR](kit, pal)
+    kj = {n: Vector(v) for n, v in kit.J.items()}
+    pieces.append((kit.tube('neck', [kj['neck'] + Vector((0, -0.005, -0.03)), kj['head'] + Vector((0, -0.005, 0.04))],
+                           0.055 * kit.B['torso'], c.m('skin'), segs=8), 'Neck'))
+    for o, bone in pieces:
+        for v in o.data.vertices:  # kit units -> this figure, then scaled about the head centre
+            p = v.co * _k + off + shift
+            v.co = HCm + (p - HCm) * HS if bone != 'Neck' else p
+        a = o.data.attributes.new('_shade', 'FLOAT', 'POINT')  # authored parts: plain slot colours
+        for d in a.data: d.value = 1.0
+        g = o.vertex_groups.new(name='Head' if bone != 'Neck' else 'Neck')
+        g.add([v.index for v in o.data.vertices], 1.0, 'REPLACE')
+    bpy.ops.object.select_all(action='DESELECT')
+    for o, _ in pieces:
+        o.select_set(True)
+    ob.select_set(True)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.join()
+    for p in ob.data.polygons:
+        p.use_smooth = False
+    print(f'new head: {HEAD} + hair {HAIR}, skin {pal["skin"]}, hair {pal["hair"]}')
+
 # ---------------------------------------------------------------- export
 ob.name = 'figure'
 bpy.ops.object.select_all(action='DESELECT')
@@ -396,7 +485,7 @@ ob.select_set(True); rig.select_set(True)
 os.makedirs(os.path.dirname(os.path.abspath(OUT)), exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=True, export_animations=False,
                           export_apply=False, export_yup=True, export_skins=True, export_morph=False,
-                          export_materials='EXPORT')
+                          export_materials='EXPORT', export_attributes=True)  # _shade -> _SHADE
 print('wrote', OUT, len(ob.data.polygons), 'faces')
 
 # ---------------------------------------------------------------- preview: front, side, and a posed copy

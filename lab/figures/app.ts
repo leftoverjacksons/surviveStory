@@ -6,6 +6,10 @@
 import { Stage, REFS, type StageFigure } from './stage';
 import { Composer } from './compose';
 
+/** rig.py --head / --hair: workshop faces (lab/workshop/faces.py) and hair, or keep the generated head. */
+const HEADS = ['face', 'soft', 'broad', 'long', 'elder', 'keep'];
+const HAIRS = ['curly', 'bun', 'swept', 'none'];
+
 interface Slot { index: number; name: string; label: string; color: [number, number, number]; count: number }
 interface Figure {
   id: string; name: string; body: 'man' | 'woman' | 'child'; status?: string; error?: string | null;
@@ -117,7 +121,7 @@ $('make').addEventListener('click', async () => {
   try {
     const r = await api('figures', {
       name: $<HTMLInputElement>('name').value || 'figure', body: $<HTMLSelectElement>('body').value, front: picked.front, back: picked.back,
-      params: { backend: $<HTMLSelectElement>('backend').value, preset: $<HTMLSelectElement>('preset').value, octree: num('octree'), seed: num('seed'), tris: num('tris'), k: num('k') },
+      params: { backend: $<HTMLSelectElement>('backend').value, preset: $<HTMLSelectElement>('preset').value, octree: num('octree'), seed: num('seed'), tris: num('tris'), k: num('k'), head: $<HTMLSelectElement>('head').value, hair: $<HTMLSelectElement>('hair').value },
     });
     select(r.id);
     for (const id of ['dropFront', 'dropBack']) { $(id).style.backgroundImage = ''; $(id).classList.remove('has'); }
@@ -206,6 +210,10 @@ function renderDetail() {
       <div><label>Triangles</label><input id="dTris" type="number" value="${esc(f.params.tris ?? 3000)}" step="200" /></div>
       <div><label>Colour slots</label><input id="dK" type="number" value="${esc(f.params.k ?? 10)}" min="3" max="14" /></div>
     </div>
+    <div class="row">
+      <div><label>Head (face)</label><select id="dHead">${HEADS.map((h) => `<option value="${h}" ${h === (f.params.head ?? 'face') ? 'selected' : ''}>${h === 'keep' ? 'generated (no face)' : h}</option>`).join('')}</select></div>
+      <div><label>Hair</label><select id="dHair">${HAIRS.map((h) => `<option ${h === (f.params.hair ?? 'curly') ? 'selected' : ''}>${h}</option>`).join('')}</select></div>
+    </div>
     <div class="actions">
       <button id="aGen" ${busy ? 'disabled' : ''}>Generate again</button>
       <button id="aRig" ${busy || !f.done.includes('generate') ? 'disabled' : ''}>Rig again</button>
@@ -222,7 +230,7 @@ function renderDetail() {
 
   const act = async (path: string, body: unknown = {}) => { try { await api(`figures/${f.id}/${path}`, body); } catch (e) { alertBox(String(e)); } void poll(); };
   const num = (id: string) => Number($<HTMLInputElement>(id).value);
-  const params = () => ({ seed: num('dSeed'), preset: $<HTMLSelectElement>('dPreset').value, tris: num('dTris'), k: num('dK') });
+  const params = () => ({ seed: num('dSeed'), preset: $<HTMLSelectElement>('dPreset').value, tris: num('dTris'), k: num('dK'), head: $<HTMLSelectElement>('dHead').value, hair: $<HTMLSelectElement>('dHair').value });
   const edit = () => act('edit', { name: $<HTMLInputElement>('dName').value, body: $<HTMLSelectElement>('dBody').value });
   $('dName').addEventListener('change', edit);
   $('dBody').addEventListener('change', edit);
