@@ -5060,8 +5060,8 @@ default; the graphics panel (key G) has a "Leaf cards (trees)" checkbox.
 - It swaps the geometry and material on the existing instanced blob meshes, so
   instances, colours and draw calls stay the same (`TreeField.setCards`).
 
-**Not yet carded:** pines (cones), the see-through ghost twins in the Wild,
-and falling trees. These stay as solid shapes.
+**Not yet carded:** the see-through ghost twins in the Wild and falling
+trees. These stay as solid shapes. (Pines and grass: §41.1.)
 
 **Cost** (`scripts/shots/cardsperf.mjs`): the densest wooded view near the
 start of seed 3, at midday, rendered both ways.
@@ -5080,3 +5080,54 @@ start of seed 3, at midday, rendered both ways.
   each other. On a real GPU, alpha-tested overdraw usually costs more than
   this, relative to the rest of the frame; it still looks small.
 - `probeRender` now also returns `ms`, with the GPU waited on (`gl.finish`).
+
+### 41.1 Pines, grass, and a shadow fix
+
+The user asked to extend the cards to pines and grass.
+
+**Pines.** A first try spread 30 needle-sprig cards over each tier's cone. The
+tiers lost their shape: the stand read as green noise, and thin needle
+strokes turn to speckle at pixel size. The version kept is a hybrid, one
+geometry and one material per tier (`needleCardGeometry(cone)`):
+- the solid cone, drawn in to 84% of its radius, so the tier keeps its shape.
+  It samples a solid patch in the texture's corner and has no card offset;
+- 16 bough cards hung round the skirt, and 7 smaller ones up the slope;
+- the bough picture is chunky on purpose: a drooping fan with a toothed
+  lower edge, lighter on top.
+
+**Grass.** Each tuft becomes one upright card of five blades (darker at the
+root) instead of a one-blade wedge (`grassCardGeometry`, `setGrassCards` in
+`terrain.ts`). The card turns only about the vertical: its height stays in the
+geometry, so the wind, the wear on paths and winter flattening work as before,
+and only its width faces the camera. It has its own checkbox, "Grass cards".
+Grass casts no shadows, as before.
+
+**Shadow fix (also affects the v49 leaf cards).** By default three.js draws a
+material's shadow from its back faces. A camera-facing card has only a front,
+so the cards cast almost no shadow; the v49 leaf cards had this fault. Fixed
+with `shadowSide = DoubleSide`. With real shadows, the outer cards then
+darkened the inner ones and the crowns went mottled. So in the shadow pass
+only, cards are pushed back from the sun: 0.55 of a clump's radius for leaves,
+0.3 for pine boughs (`PUSH`). The ground and what's below still get the shade.
+
+**Outlines.** The outline pass finds edges from depth; with cards it finds
+more edges, not fewer (checked with `?pixeldebug`). They fall along the
+cut-out fringes, so they read as texture rather than as one clean outline
+round each tree.
+
+**Cost** (`scripts/shots/cardsperf.mjs`, same wooded view as above, pixel size 3):
+
+| Trees | Grass | Draw calls | Tree triangles | Grass triangles |
+|---|---|---|---|---|
+| solid | blades | 414 | 2.78 M | 7.8 k |
+| cards | blades | 415 | 2.59 M | 7.8 k |
+| cards | cards | 415 | 2.59 M | 5.2 k |
+
+- Grass is cheap either way. A card is 2 triangles against the blade's 3, and
+  it shows five blades.
+- Frame times in this run ranged from 5.6 to 8.7 ms across all six cases, with
+  no consistent order. On software GL, `gl.finish` evidently does not wait
+  for the pixels, so these times cannot separate the options. A real GPU, or
+  the browser's frame timer, is needed for that.
+- New script: `scripts/shots/cardlook.mjs` (`KIND=pine|oak|birch|grass`, `ZOOM`)
+  takes close shots of the densest stand of one kind, both ways.

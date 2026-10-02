@@ -24,6 +24,8 @@ export interface GfxSettings {
   outlinePx: number;
   /** Broadleaf canopies as clouds of cut-out leaf cards instead of solid blobs (DESIGN §41). */
   leafCards: boolean;
+  /** Grass tufts as upright cut-out cards of a few blades (DESIGN §41). */
+  grassCards?: boolean;
   steps: number;
   surface: number;
   bloom: number;
@@ -125,7 +127,8 @@ export class GfxPanel {
       ${range('bloom', 'Glow (bloom)', 0, 2, 0.05)}
       ${range('exposure', 'Exposure', 0.7, 1.7, 0.02)}
       ${check('shadows', 'Shadows')}
-      ${check('leafCards', 'Leaf cards (trees)', 'Prototype: broadleaf crowns drawn as clouds of small cut-out leaf cards instead of solid blobs')}
+      ${check('leafCards', 'Leaf cards (trees)', 'Prototype: broadleaf crowns and pine boughs drawn as clouds of small cut-out cards instead of solid shapes')}
+      ${check('grassCards', 'Grass cards', 'Prototype: grass tufts drawn as upright cut-out cards of a few blades instead of single geometric blades')}
       ${check('tufts', 'Grass tufts (geometry)', 'The small triangles in the grass')}
       ${range('grassPaint', 'Grass painted in the turf', 0, 1, 0.05, 'Clumps drawn into the ground itself: no geometry')}
       <div class="row"><button type="button" id="gfx-reset">Reset</button></div>`;

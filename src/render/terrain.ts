@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { cardMaterial, grassCardGeometry } from './leafcards';
 import { fbm } from '../sim/noise';
 import { Ground, LANE_WEAR, Zone, heightAt, idx, type World } from '../sim/world';
 import { PIXEL, SOFT, enhance, makeRand, soften } from './util';
@@ -288,7 +289,14 @@ function buildGrass(w: World): THREE.Group {
   group.name = 'tufts'; // the graphics panel can hide them (ui/gfx.ts)
   const rand = makeRand(21);
   const geo = bladeGeometry();
-  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, vertexColors: SOFT }), { wind: 0.35, season: 'grass', upLit: SOFT });
+  const grassOpts = { wind: 0.35, season: 'grass', upLit: SOFT } as const;
+  const mat = enhance(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide, vertexColors: SOFT }), grassOpts);
+  // Grass cards (DESIGN §41): an upright cut-out of a few blades in place of the one-blade geometry.
+  group.userData.cards = {
+    on: false, geo, mat,
+    cardGeo: grassCardGeometry(PIXEL ? 0.48 : 0.6, PIXEL ? 0.26 : 0.2),
+    cardMat: cardMaterial(grassOpts, 'grass'),
+  };
   const CH = 32;
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
   const e = new THREE.Euler(), col = new THREE.Color();
@@ -332,6 +340,17 @@ function buildGrass(w: World): THREE.Group {
     group.add(mesh);
   }
   return group;
+}
+
+/** Grass cards on or off for the tufts group (graphics panel). Same instances, same draw calls. */
+export function setGrassCards(tufts: THREE.Object3D, on: boolean) {
+  const c = tufts.userData.cards;
+  if (!c || c.on === on) return;
+  c.on = on;
+  for (const m of tufts.children as THREE.InstancedMesh[]) {
+    m.geometry = on ? c.cardGeo : c.geo;
+    m.material = on ? c.cardMat : c.mat;
+  }
 }
 
 function buildRocks(w: World): THREE.InstancedMesh {

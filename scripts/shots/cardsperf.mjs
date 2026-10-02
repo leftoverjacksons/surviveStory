@@ -1,7 +1,8 @@
 /**
- * Leaf cards vs solid canopies (DESIGN §41): draw calls, triangles and frame
- * time (the GPU waited on) for the same wooded view, both ways, at pixel
- * size 3 and 1. Software GL, so times are only comparable with each other.
+ * Cards vs solid shapes (DESIGN §41): draw calls, triangles and frame time
+ * (the GPU waited on) for the same wooded view: solid trees and blade grass,
+ * tree cards, tree and grass cards;
+ * at pixel size 3 and 1. Software GL, so times only compare with each other.
  *   Q='?seed=3&new' node scripts/shots/cardsperf.mjs <outdir>
  */
 import { open, noHud } from './pw.mjs';
@@ -29,23 +30,30 @@ await page.evaluate(() => {
 await noHud(page);
 await page.waitForTimeout(4000);
 const rows = [];
-for (const px of [3, 1]) for (const cards of [false, true]) {
-  const r = await page.evaluate(([px, cards]) => {
+const configs = [[false, false], [true, false], [true, true]];
+for (const px of [3, 1]) for (const [cards, grass] of configs) {
+  const r = await page.evaluate(([px, cards, grass]) => {
     const g = window.__game;
-    g.gfx.s.px = px; g.gfx.s.leafCards = cards; g.gfx.refresh();
+    g.gfx.s.px = px; g.gfx.s.leafCards = cards; g.gfx.s.grassCards = grass; g.gfx.refresh();
     g.probeRender(); g.probeRender(); // warm up (shader compiles)
     const runs = [];
     for (let i = 0; i < 5; i++) runs.push(g.probeRender());
     runs.sort((a, b) => a.ms - b.ms);
-    const trees = g.scene.getObjectByName('trees');
-    trees.visible = false;
-    const without = g.probeRender();
-    trees.visible = true;
-    return { px, cards, calls: runs[2].calls, triangles: runs[2].triangles, ms: runs[2].ms, treeCalls: runs[2].calls - without.calls, treeTris: runs[2].triangles - without.triangles };
-  }, [px, cards]);
+    const without = (name) => {
+      const o = g.scene.getObjectByName(name);
+      o.visible = false;
+      const w = g.probeRender();
+      o.visible = true;
+      return w;
+    };
+    const t = without('trees'), u = without('tufts');
+    const m = runs[2];
+    return { px, trees: cards ? 'cards' : 'solid', grass: grass ? 'cards' : 'blades', calls: m.calls, triangles: m.triangles, ms: m.ms,
+      treeCalls: m.calls - t.calls, treeTris: m.triangles - t.triangles, grassCalls: m.calls - u.calls, grassTris: m.triangles - u.triangles };
+  }, [px, cards, grass]);
   rows.push(r);
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: `${out}/px${px}-${cards ? 'cards' : 'blobs'}.png`, timeout: 120000 });
+  await page.screenshot({ path: `${out}/px${px}-${cards ? 'cards' : 'solid'}-${grass ? 'grass' : 'blades'}.png`, timeout: 120000 });
 }
 console.table(rows);
 console.log('errors', errors);

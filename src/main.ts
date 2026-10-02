@@ -7,7 +7,7 @@ import { Zone, heightAt, idx, paintZone, reveal, tileX, tileZ, toTileX, toTileZ 
 import { createField, deleteField, fieldAtPoint } from './sim/fields';
 import { daylightHours, seasonLook, snowCold } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
-import { FogTexture, WearTexture, ZoneTexture, buildTerrain } from './render/terrain';
+import { FogTexture, WearTexture, ZoneTexture, buildTerrain, setGrassCards } from './render/terrain';
 import { FieldsView, Precipitation } from './render/land';
 import { buildVines } from './render/station';
 import { buildSite } from './render/sites';
@@ -145,7 +145,7 @@ function sizeComposer() {
 let pixelScale = PIXEL || 1;
 const gfx = new GfxPanel({
   pixel: !!PIXEL,
-  defaults: { px: PIXEL || 1, outline: true, outlineOff: [], outlinePx: 0, leafCards: false, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
+  defaults: { px: PIXEL || 1, outline: true, outlineOff: [], outlinePx: 0, leafCards: false, grassCards: false, steps: PIXEL ? 20 : 0, surface: 1, bloom: 1, exposure: renderer.toneMappingExposure, shadows: true, tufts: true, grassPaint: 0 },
   apply(s, changed) {
     if (PIXEL && (changed === null || changed === 'px')) {
       pixelScale = s.px;
@@ -172,7 +172,7 @@ const gfx = new GfxPanel({
       }
     }
     const tufts = scene.getObjectByName('tufts');
-    if (tufts) tufts.visible = s.tufts;
+    if (tufts) { tufts.visible = s.tufts; setGrassCards(tufts, !!s.grassCards); }
     // Leaf cards in place of solid canopies (DESIGN §41), once the trees exist.
     (scene.getObjectByName('trees')?.userData.field as TreeField | undefined)?.setCards(!!s.leafCards);
   },
