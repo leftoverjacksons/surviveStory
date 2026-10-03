@@ -304,6 +304,9 @@ reference: Tiny Glade.
     cards, grass placement, autumn piles/raking/roads). BUILT §42.2 (published v52, temporary merge with character branch b3a7cbf): leaf cards DEFAULT (`GfxSettings.v`
     migration), NO GRASS ON FIELDS (fog tex B = 128 on field tiles, grass vertex collapses), stronger autumn yellow, FALLING
     LEAVES (`render/leaffall.ts`, `seasonLook().leafFall`), LEAF LITTER (`LitterTexture`, `uLitter`, `seasonLook().litter`).
+    §42.3 CROPS AS CARDS (not published): `render/land.ts` shoot/stalk/ear upright cards (kinds in `leafcards.ts`), 6/tile.
+    §42.4 WINDMILL ENLARGED (user: tallest in town, 2–3 storeys, big sails): tower 7.2, arms 4.3, reefing stage.
+    `__game.finishProjects()`; `cardlook.mjs` KIND=field SIM=days.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

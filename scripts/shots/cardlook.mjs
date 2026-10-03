@@ -1,7 +1,7 @@
 /**
  * Close look at cards (DESIGN §41): the densest stand of one kind of tree,
  * zoomed in, with solid shapes and with cards (and grass cards).
- * KIND=grass looks at open ground beside the start instead.
+ * KIND=grass looks at open ground beside the start instead; KIND=field at the thickest crops (use SIM=days).
  * DAY=22 jumps the calendar (late autumn: leaf fall and litter).
  * WOODS=1 presses O once before the first shot (Wild ghosted → all ghosted).
  *   KIND=pine ZOOM=3 node scripts/shots/cardlook.mjs <outdir>
@@ -13,6 +13,10 @@ const out = process.argv[2];
 mkdirSync(out, { recursive: true });
 const kind = process.env.KIND ?? 'pine', zoom = Number(process.env.ZOOM ?? 3);
 const { browser, page, errors } = await open(process.env.Q ?? '?seed=3&new');
+// SIM=days: let the village grow first (sim only; councils dismissed), e.g. with Q='?seed=1&site=farm&auto'.
+for (let d = 0, days = Number(process.env.SIM ?? 0); d < days; d += 8) {
+  await page.evaluate((n) => { const g = window.__game; g.setSpeed(0); for (let i = 0; i < n; i++) { g.tick(1440); if (g.colony.council.active) g.colony.council.active = null; } }, Math.min(8, days - d));
+}
 await page.evaluate(([kind, zoom, day]) => {
   const g = window.__game, c = g.colony;
   g.setSpeed(0);
@@ -21,9 +25,19 @@ await page.evaluate(([kind, zoom, day]) => {
   if (day) c.minute = Math.floor(day - 1) * 1440 + 11 * 60;
   c.weather = 'clear';
   const w = c.world; let best = kind === 'grass' ? { x: 12, z: 12 } : null, bestN = kind === 'grass' ? 1e9 : -1;
+  // KIND=field: the thickest growing crops.
+  if (kind === 'field') {
+    for (let i = 0; i < w.zone.length; i++) {
+      if (w.cropState[i] < 2) continue;
+      const x = (i % w.w) - w.w / 2, z = Math.floor(i / w.w) - w.h / 2;
+      let k = 0;
+      for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) if (w.cropState[i + dz * w.w + dx] >= 2) k++;
+      if (k > bestN) { bestN = k; best = { x, z }; }
+    }
+  }
   for (let z = -90; z <= 90; z += 4) for (let x = -90; x <= 90; x += 4) {
     let k = 0;
-    for (const t of w.trees) if (!t.felled && t.kind === kind && Math.abs(t.tx - w.w / 2 - x) < 6 && Math.abs(t.tz - w.h / 2 - z) < 6) k++;
+    if (kind !== 'field' && kind !== 'grass') for (const t of w.trees) if (!t.felled && t.kind === kind && Math.abs(t.tx - w.w / 2 - x) < 6 && Math.abs(t.tz - w.h / 2 - z) < 6) k++;
     if (k > bestN) { bestN = k; best = { x, z }; }
   }
   g.reveal(best.x, best.z, 30);

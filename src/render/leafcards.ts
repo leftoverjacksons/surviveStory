@@ -146,14 +146,16 @@ export function grassCardGeometry(height: number, halfWidth: number): THREE.Buff
   return g;
 }
 
-export type CardKind = 'leaf' | 'needle' | 'grass';
+export type CardKind = 'leaf' | 'needle' | 'grass' | 'shoot' | 'stalk' | 'ear';
+/** Upright kinds: rooted at the ground, turning only about the vertical (grass and crops). */
+const UPRIGHT_KINDS = new Set<CardKind>(['grass', 'shoot', 'stalk', 'ear']);
 
 const texCache = new Map<CardKind, THREE.Texture>();
 /** The card's picture, light grey on transparent, drawn once in code (the instance colour tints it). */
 export function cardTexture(kind: CardKind): THREE.Texture {
   const hit = texCache.get(kind);
   if (hit) return hit;
-  const S = kind === 'grass' ? 32 : 48;
+  const S = kind === 'leaf' || kind === 'needle' ? 48 : 32;
   const cv = document.createElement('canvas');
   cv.width = cv.height = S;
   const x = cv.getContext('2d')!;
@@ -200,6 +202,60 @@ export function cardTexture(kind: CardKind): THREE.Texture {
     }
     x.quadraticCurveTo(S * 0.14, S * 0.3, S * 0.5, S * 0.18);
     x.fill();
+  } else if (kind === 'shoot' || kind === 'stalk' || kind === 'ear') {
+    // Crops (DESIGN §42.3), canvas bottom = the ground, drawn chunky for the pixel look.
+    const rand = makeRand(kind === 'shoot' ? 61 : kind === 'stalk' ? 62 : 63);
+    const blade = (rootX: number, tipX: number, tipY: number, w: number, lo: number, hi: number) => {
+      const gr = x.createLinearGradient(0, S, 0, tipY);
+      gr.addColorStop(0, grey(lo));
+      gr.addColorStop(1, grey(hi));
+      x.fillStyle = gr;
+      x.beginPath();
+      x.moveTo(rootX - w, S);
+      x.quadraticCurveTo(rootX - w * 0.4, (S + tipY) / 2, tipX, tipY);
+      x.quadraticCurveTo(rootX + w * 0.4, (S + tipY) / 2, rootX + w, S);
+      x.closePath();
+      x.fill();
+    };
+    if (kind === 'shoot') {
+      // Two or three little plants: short leaves splayed from a point.
+      for (const cx of [S * 0.25, S * 0.55, S * 0.82]) for (let k = 0; k < 4; k++) {
+        const a = (k / 3 - 0.5) * 1.6 + (rand() - 0.5) * 0.3;
+        blade(cx, cx + Math.sin(a) * S * 0.2, S * (0.45 + rand() * 0.2) + Math.abs(Math.sin(a)) * S * 0.15, 1.8, 180, 245);
+      }
+    } else {
+      // Stalks with long arching leaves; ripe ones carry an ear at the top.
+      const stalks = 5;
+      for (let b = 0; b < stalks; b++) {
+        const rx = S * (0.14 + (b / (stalks - 1)) * 0.72) + (rand() - 0.5) * 2;
+        const top = S * (0.12 + rand() * 0.14);
+        const lean = (rand() - 0.5) * 4;
+        x.strokeStyle = grey(kind === 'ear' ? 225 : 222);
+        x.lineWidth = 2.2;
+        x.beginPath(); x.moveTo(rx, S); x.lineTo(rx + lean, top); x.stroke();
+        // Leaves off the stalk, alternating sides.
+        for (let l = 0; l < 2; l++) {
+          const ly = S * (0.55 + l * 0.18), side = (b + l) % 2 ? 1 : -1;
+          x.fillStyle = grey(kind === 'ear' ? 212 : 232 + l * 10);
+          x.beginPath();
+          x.moveTo(rx + lean * (1 - ly / S), ly);
+          x.quadraticCurveTo(rx + side * S * 0.16, ly - S * 0.12, rx + side * S * 0.2, ly + S * 0.02);
+          x.quadraticCurveTo(rx + side * S * 0.08, ly - S * 0.02, rx + lean * (1 - ly / S), ly + 2);
+          x.fill();
+        }
+        if (kind === 'ear') {
+          // The ear: a fat grain head, nodding a little.
+          x.fillStyle = grey(250);
+          x.save();
+          x.translate(rx + lean, top + 3);
+          x.rotate(lean * 0.06 + (rand() - 0.5) * 0.3);
+          x.beginPath();
+          x.ellipse(0, 0, 2.2, 5, 0, 0, Math.PI * 2);
+          x.fill();
+          x.restore();
+        }
+      }
+    }
   } else {
     const rand = makeRand(4242);
     // A few blades fanning up from the root (canvas bottom), darker at the root.
@@ -263,14 +319,14 @@ const UPRIGHT = `
   gl_Position = projectionMatrix * mvPosition;
 `;
 const ATTRS = 'attribute vec2 aCorner; attribute float aSize; attribute float aRot;';
-const BARE: Record<CardKind, string> = { leaf: 'mix(1.0, 0.25, uBare)', needle: '1.0', grass: '1.0' };
+const BARE: Record<CardKind, string> = { leaf: 'mix(1.0, 0.25, uBare)', needle: '1.0', grass: '1.0', shoot: '1.0', stalk: '1.0', ear: '1.0' };
 /** Card size follows the clump's mean scale; a pine tier's follows its radius (its height is stretched separately). */
 const SCALE: Record<CardKind, string> = {
   leaf: '(length(instanceMatrix[0].xyz) + length(instanceMatrix[1].xyz) + length(instanceMatrix[2].xyz)) / 3.0',
   needle: '(length(instanceMatrix[0].xyz) + length(instanceMatrix[2].xyz)) * 0.5',
-  grass: '1.0',
+  grass: '1.0', shoot: '1.0', stalk: '1.0', ear: '1.0',
 };
-const vertexFor = (kind: CardKind) => (kind === 'grass' ? UPRIGHT : BILLBOARD).replace('CARD_BARE', BARE[kind]).replace('CARD_SCALE', SCALE[kind]);
+const vertexFor = (kind: CardKind) => (UPRIGHT_KINDS.has(kind) ? UPRIGHT : BILLBOARD).replace('CARD_BARE', BARE[kind]).replace('CARD_SCALE', SCALE[kind]);
 
 /** The material for one kind of card: the same look as the solid shape (via enhance), cut out by the picture. */
 export function cardMaterial(opts: EnhanceOptions, kind: CardKind): THREE.MeshLambertMaterial {
@@ -300,15 +356,15 @@ export const leafCardMaterial = (opts: EnhanceOptions) => cardMaterial(opts, 'le
  * sun: the clump still shades the ground and what is below it, but its outer
  * cards don't blacken its inner ones (which made crowns mottled and dark).
  */
-const PUSH: Record<CardKind, number> = { leaf: 0.55, needle: 0.3, grass: 0 };
+const PUSH: Record<CardKind, number> = { leaf: 0.55, needle: 0.3, grass: 0, shoot: 0, stalk: 0, ear: 0 };
 const depthCache = new Map<CardKind, THREE.MeshDepthMaterial>();
 /** Shadows from the cards, cut out the same way. */
 export function cardDepth(kind: CardKind): THREE.MeshDepthMaterial {
   const hit = depthCache.get(kind);
   if (hit) return hit;
   const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: cardTexture(kind), alphaTest: 0.5 });
-  // Trees ghosted on the Wild cast no shadow (as with thinDepth in util.ts); grass is never ghosted.
-  const ghostable = kind !== 'grass';
+  // Trees ghosted on the Wild cast no shadow (as with thinDepth in util.ts); grass and crops are never ghosted.
+  const ghostable = kind === 'leaf' || kind === 'needle';
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, { uBare: worldUniforms.uBare, uZoneTex: worldUniforms.uZoneTex, uThin: worldUniforms.uThin, uFogSize: worldUniforms.uFogSize });
     shader.vertexShader = shader.vertexShader

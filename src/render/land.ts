@@ -4,6 +4,7 @@ import { Crop, Zone, heightAt, type World } from '../sim/world';
 import { fieldOfTile, perimeter, pointInPolygon, type FieldPlot } from '../sim/fields';
 import { box, cyl, mat } from './kit';
 import { PIXEL, enhance, makeRand } from './util';
+import { cardDepth, cardMaterial, grassCardGeometry, type CardKind } from './leafcards';
 import { mergeStatic } from './merge';
 import { gateNear } from '../sim/hedges';
 import { gateMesh, gatesOn } from './plots';
@@ -42,10 +43,15 @@ export class FieldsView {
   group = new THREE.Group();
   private soil: THREE.Group | null = null;
   private fences: THREE.Group | null = null;
-  private crops: THREE.InstancedMesh | null = null;
+  private crops: THREE.Group | null = null;
   private soilMat = enhance(new THREE.MeshLambertMaterial({ map: furrowTexture(), transparent: true, vertexColors: true }), { season: 'solid', zone: true, surface: 'soil' });
-  private cropMat = tagOutline(enhance(new THREE.MeshLambertMaterial({ flatShading: true }), { wind: 0.25, season: 'solid', surface: 'none' }), 'plants');
-  private cropGeo = new THREE.ConeGeometry(0.17, 0.7, 5).translate(0, 0.35, 0);
+  /**
+   * Crops as upright cut-out cards (DESIGN §42.3), one kind per stage: shoots, leafy stalks, ripe ears.
+   * One unit tall and wide in the card; each instance's scale sets its height and width.
+   */
+  private cropGeo = grassCardGeometry(1, 1);
+  private cropMats = Object.fromEntries((['shoot', 'stalk', 'ear'] as const).map((k) =>
+    [k, tagOutline(cardMaterial({ wind: 0.25, season: 'solid' }, k), 'plants')])) as Record<'shoot' | 'stalk' | 'ear', THREE.MeshLambertMaterial>;
   private key = '';
   private tiles: number[] = [];
   private tilesVersion = -1;
@@ -61,7 +67,7 @@ export class FieldsView {
     if (now - this.lastBuild < 1 && w.zoneVersion === this.tilesVersion) return;
     this.lastBuild = now;
     this.key = key;
-    for (const o of [this.soil, this.crops, this.fences]) if (o) { this.group.remove(o); o.traverse((x) => (x as THREE.Mesh).geometry?.dispose()); }
+    for (const o of [this.soil, this.crops, this.fences]) if (o) { this.group.remove(o); o.traverse((x) => { const g = (x as THREE.Mesh).geometry; if (g && g !== this.cropGeo) g.dispose(); }); }
     this.soil = this.crops = this.fences = null;
     if (this.tilesVersion !== w.zoneVersion) {
       this.tilesVersion = w.zoneVersion;
@@ -79,27 +85,46 @@ export class FieldsView {
     for (const f of w.fields) soil.add(this.fieldMesh(f));
     this.soil = soil;
     const growing = tiles.filter((i) => w.cropState[i] >= Crop.Growing);
-    this.crops = new THREE.InstancedMesh(this.cropGeo, this.cropMat, Math.max(1, growing.length * 4));
-    let c = 0;
+    // Six cards a tile, in two rows of three with a little jitter, each card a few plants.
+    const PER = 6;
+    const stageOf = (i: number): 'shoot' | 'stalk' | 'ear' => w.cropState[i] === Crop.Ripe ? 'ear' : w.cropGrowth[i] < 0.35 ? 'shoot' : 'stalk';
+    const counts = { shoot: 0, stalk: 0, ear: 0 };
+    for (const i of growing) counts[stageOf(i)] += PER;
+    const meshes = {} as Record<'shoot' | 'stalk' | 'ear', THREE.InstancedMesh>;
+    for (const k of ['shoot', 'stalk', 'ear'] as const) {
+      const mesh = new THREE.InstancedMesh(this.cropGeo, this.cropMats[k], Math.max(1, counts[k]));
+      mesh.count = 0;
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.customDepthMaterial = cardDepth(k as CardKind);
+      meshes[k] = mesh;
+    }
+    const rand = makeRand(w.cropVersion * 7 + 3);
+    const green = new THREE.Color('#5f8a3a'), turning = new THREE.Color('#a8a24a');
     for (const i of growing) {
       const x = (i % w.w) - w.w / 2 + 0.5, z = Math.floor(i / w.w) - w.h / 2 + 0.5;
       const g = w.cropGrowth[i];
-      const ripe = w.cropState[i] === Crop.Ripe;
+      const k = stageOf(i);
+      const mesh = meshes[k];
       const f = fieldOfTile(w, i);
-      for (let j = 0; j < 4; j++) {
-        const ox = ((j % 2) - 0.5) * 0.45, oz = (Math.floor(j / 2) - 0.5) * 0.45;
+      for (let j = 0; j < PER; j++) {
+        const ox = ((j % 3) - 1) * 0.31 + (rand() - 0.5) * 0.12, oz = (Math.floor(j / 3) - 0.5) * 0.48 + (rand() - 0.5) * 0.12;
         if (f && !pointInPolygon({ x: x + ox, z: z + oz }, f.pts)) continue; // keep inside the outline
-        const h = ripe ? 1.15 : 0.2 + g * 0.95;
-        m.compose(p.set(x + ox, heightAt(w, x + ox, z + oz) + 0.04, z + oz), q.identity(), s.set(0.6 + g * 0.7, h, 0.6 + g * 0.7));
-        this.crops.setMatrixAt(c, m);
-        col.set(ripe ? '#d2ae45' : '#5f8a3a').lerp(new THREE.Color('#a8a24a'), ripe ? 0 : Math.max(0, g - 0.6));
-        this.crops.setColorAt(c, col);
-        c++;
+        const h = k === 'ear' ? 1.05 + rand() * 0.15 : k === 'stalk' ? 0.55 + g * 0.55 : 0.28 + g * 0.5;
+        const wdt = k === 'shoot' ? 0.24 : 0.3;
+        m.compose(p.set(x + ox, heightAt(w, x + ox, z + oz) + 0.03, z + oz), q.identity(), s.set(wdt, h, wdt));
+        mesh.setMatrixAt(mesh.count, m);
+        if (k === 'ear') col.set('#d2ae45').offsetHSL((rand() - 0.5) * 0.02, 0, (rand() - 0.5) * 0.05);
+        else col.copy(green).lerp(turning, Math.max(0, g - 0.6) * 1.6).offsetHSL(0, 0, (rand() - 0.5) * 0.05);
+        mesh.setColorAt(mesh.count, col);
+        mesh.count++;
       }
     }
-    this.crops.count = c;
-    this.crops.receiveShadow = this.crops.castShadow = true;
-    this.crops.computeBoundingSphere();
+    this.crops = new THREE.Group();
+    for (const mesh of Object.values(meshes)) {
+      if (!mesh.count) continue;
+      mesh.computeBoundingSphere();
+      this.crops.add(mesh);
+    }
     this.fences = new THREE.Group();
     for (const f of w.fields) if (f.fence > 0) this.fences.add(fieldFence(w, f));
     // Posts and rails by the hundred: one draw per material, not one per piece.

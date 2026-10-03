@@ -5225,3 +5225,49 @@ fewer under dense woods. Grass cards as the default once these are right.
     paths, and are gone by early spring.
 - `cardlook.mjs` gains `DAY=` (jump the calendar) and prints how many leaves
   are falling.
+
+### 42.3 Crops as cards (built, not published)
+
+The first item of §42.1 B, at the user's go-ahead. The cone per quarter tile
+in `render/land.ts` is replaced by upright cut-out cards, drawn like grass
+cards: rooted, turning only about the vertical, swaying in the wind, with
+cut-out shadows (`cardDepth`).
+- **Three stages, three card kinds** (`leafcards.ts`): `shoot` (little plants
+  of splayed leaves), `stalk` (five stalks with arching leaves) and `ear`
+  (stalks with a nodding grain head). One draw per stage.
+- **Stage from the sim:** growth < 0.35 is shoots; then stalks, green turning
+  gold after growth 0.6; ripe is ears.
+- **Six cards per tile**, in two jittered rows of three, still kept inside
+  the field's outline.
+- **Always cards.** Not tied to the leaf-cards checkbox.
+- Checked on seed 1 (farm, autopilot) at days 14, 16, 17 and 19. Shoots and
+  stalks read clearly. Ripe ears are short-lived before harvest, so few
+  showed in stills.
+- `cardlook.mjs` gains `KIND=field` (the thickest crops) and `SIM=days`
+  (grow the village first).
+
+### 42.4 The windmill is far too small (user's note; fixed, not published)
+
+The user: the windmill is far too small. The sails need to be much bigger in
+proportion, and the whole thing should be the tallest thing in town, two or
+three storeys.
+
+Before, the tower was 3.4 high with 2.2 sail arms, lower than the farm site's
+silo (about 8.5).
+
+Now (`render/power.ts#windmillMesh`):
+- the tower is 7.2 high, tapering from radius 1.4 to 0.85 (it still stands on
+  its 3×3 footprint);
+- a reefing stage (gallery with railings) runs round it at 2.7;
+- there is a bigger cap;
+- the sail arms are 4.3 long (about 0.6 of the tower, as on real smock
+  mills), so the tips reach about 12, above everything else in a village;
+- the sails turn more slowly (0.6, was 0.9), as big sails do.
+
+Possible issue: the sails sweep 4.3 round the hub, beyond the footprint, so a
+tall neighbour within about 4 tiles could be clipped by the lowest tip (about
+3.7 above the ground). Not seen in the check shot. If it shows up, placement
+could keep a clear radius.
+
+New debug hook: `__game.finishProjects()` completes every open building
+project at once.

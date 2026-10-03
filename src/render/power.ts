@@ -10,32 +10,53 @@ import { box, cyl, mat } from './kit';
 
 const WOOD = '#6b5236', DARK = '#4a3a2c', CLOTH = '#e8e0cc', STEEL = '#8a8e90', PANEL = '#243a5a', FRAME = '#9a9a92';
 
-/** A smock mill: an eight-sided tapered timber tower, a cap, four sails facing the front (+z). */
+/**
+ * A smock mill: an eight-sided tapered timber tower two to three storeys high, a reefing
+ * stage round it, a cap, and four big sails facing the front (+z). The tallest thing in
+ * a village (DESIGN §42.4: the user found the first one far too small): the tower is
+ * about 7 units, the sail tips sweep up to about 12, and each arm is ~0.6 of the tower.
+ */
 export function windmillMesh(p: number, seed: number): THREE.Group {
   const g = new THREE.Group();
-  const h = 3.4 * Math.max(0.25, p);
-  const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.15, h, 8), mat(seed % 2 ? '#8a7258' : '#7a6448'));
+  const H = 7.2, h = H * Math.max(0.25, p);
+  const rTop = 0.85, rBot = 1.4;
+  const rAt = (y: number) => rBot + (rTop - rBot) * (y / H);
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(rAt(h), rBot, h, 8), mat(seed % 2 ? '#8a7258' : '#7a6448'));
   tower.position.y = h / 2; tower.castShadow = true; tower.receiveShadow = true;
   g.add(tower);
-  // Weatherboard bands.
-  for (let y = 0.5; y < h; y += 0.7) g.add(cyl(1.15 - (y / 3.4) * 0.4 + 0.02, 0.05, mat(DARK), 0, y, 0, 8));
-  g.add(box(0.5, 0.8, 0.1, mat(DARK), 0, 0.4, 1.12)); // the door
+  // Weatherboard bands, a door and small windows up the front.
+  for (let y = 0.6; y < h; y += 0.8) g.add(cyl(rAt(y) + 0.02, 0.06, mat(DARK), 0, y, 0, 8));
+  g.add(box(0.6, 1.0, 0.1, mat(DARK), 0, 0.5, rBot - 0.04));
+  for (const y of [3.6, 5.6]) if (y < h - 0.4) g.add(box(0.3, 0.42, 0.08, mat(DARK), 0, y, rAt(y) - 0.02));
+  // The reefing stage: a timber gallery round the tower, where the sails are set.
+  const stageY = 2.7;
+  if (h > stageY + 0.3) {
+    g.add(cyl(rAt(stageY) + 0.65, 0.1, mat(WOOD), 0, stageY, 0, 8));
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + Math.PI / 8, r = rAt(stageY) + 0.6;
+      g.add(box(0.06, 0.55, 0.06, mat(DARK), Math.cos(a) * r, stageY + 0.3, Math.sin(a) * r));
+    }
+    g.add(cyl(rAt(stageY) + 0.62, 0.05, mat(DARK), 0, stageY + 0.55, 0, 8));
+  }
   if (p < 1) return g;
-  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.95, 0.8, 8), mat('#5a4a3a'));
-  cap.position.y = h + 0.35; cap.castShadow = true;
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(1.15, 1.1, 8), mat('#5a4a3a'));
+  cap.position.y = H + 0.5; cap.castShadow = true;
   g.add(cap);
-  // The sails: a hub on the front of the cap, four arms with cloth.
+  // The sails: a hub on the front of the cap, four long arms with cloth on a lattice.
+  const L = 4.3;
   const sails = new THREE.Group();
-  sails.position.set(0, h + 0.2, 0.95);
+  sails.position.set(0, H + 0.35, 1.15);
   sails.userData.keep = true;
-  sails.userData.spin = 0.9;
-  sails.add(cyl(0.12, 0.25, mat(DARK), 0, 0, 0, 8).rotateX(Math.PI / 2));
+  sails.userData.spin = 0.6;
+  sails.add(cyl(0.22, 0.4, mat(DARK), 0, 0, 0, 8).rotateX(Math.PI / 2));
   for (let k = 0; k < 4; k++) {
     const arm = new THREE.Group();
     arm.rotation.z = (k / 4) * Math.PI * 2;
-    arm.add(box(0.07, 2.2, 0.06, mat(WOOD), 0, 1.15, 0));
-    arm.add(box(0.36, 1.5, 0.02, mat(CLOTH), 0.2, 1.35, -0.02));
-    for (let y = 0.7; y < 2.2; y += 0.35) arm.add(box(0.42, 0.03, 0.04, mat(WOOD), 0.2, y, 0));
+    arm.add(box(0.12, L, 0.1, mat(WOOD), 0, L / 2, 0));
+    arm.add(box(0.72, L * 0.74, 0.02, mat(CLOTH), 0.4, L * 0.6, -0.04));
+    for (let y = L * 0.24; y <= L; y += 0.42) arm.add(box(0.82, 0.04, 0.05, mat(WOOD), 0.4, y, 0));
+    arm.add(box(0.04, L * 0.76, 0.05, mat(WOOD), 0.8, L * 0.6, 0));
+    arm.traverse((o) => { o.castShadow = true; });
     sails.add(arm);
   }
   g.add(sails);
