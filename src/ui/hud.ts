@@ -60,7 +60,7 @@ const BUILDING_INFO: Record<string, string> = {
   boat: 'A rowing boat. Out in the middle is where the big ones are: a third more catch, except in winter.',
 };
 
-export type ZoneTool = 'home' | 'field' | 'woodlot' | 'sacred' | 'fishing' | 'wild' | 'depave' | 'erase';
+export type ZoneTool = 'home' | 'field' | 'woodlot' | 'clear' | 'sacred' | 'fishing' | 'wild' | 'depave' | 'erase';
 
 export interface HudActions {
   onKill(id: number): void;

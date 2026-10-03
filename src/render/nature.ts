@@ -10,6 +10,9 @@ import { makeAnimal, playAnimal, type AnimalBody, type AnimalKind } from './char
 export class Bushes {
   group = new THREE.Group();
   private berries: THREE.InstancedMesh;
+  private body: THREE.InstancedMesh;
+  private bodyMats: THREE.Matrix4[] = [];
+  private bodyShown: boolean[];
   private shown: boolean[];
   private berryMats: THREE.Matrix4[][] = [];
   private timer = 0;
@@ -36,6 +39,7 @@ export class Bushes {
       q.setFromEuler(new THREE.Euler(0, rand() * 6, 0));
       m.compose(p.set(x, y + r * 0.3, z), q, s.set(r, r * 0.75, r));
       body.setMatrixAt(i, m);
+      this.bodyMats.push(m.clone());
       col.setHSL(0.26 + rand() * 0.06, 0.45, 0.2 + rand() * 0.08);
       body.setColorAt(i, col);
       const mats: THREE.Matrix4[] = [];
@@ -48,6 +52,8 @@ export class Bushes {
     body.count = world.bushes.length;
     body.castShadow = body.receiveShadow = true;
     this.shown = world.bushes.map(() => false);
+    this.body = body;
+    this.bodyShown = world.bushes.map(() => true);
     this.berries.count = world.bushes.length * 5;
     this.berries.frustumCulled = false;
     this.group.add(body, this.berries);
@@ -57,7 +63,11 @@ export class Bushes {
   sync(force = false) {
     const zero = new THREE.Matrix4().makeScale(0, 0, 0);
     let dirty = false;
+    let bodyDirty = false;
     this.world.bushes.forEach((b, i) => {
+      // Grubbed up (a field drawn over it, DESIGN §42.5) or never there: no bush at all.
+      const alive = b.max > 0;
+      if (alive !== this.bodyShown[i]) { this.bodyShown[i] = alive; this.body.setMatrixAt(i, alive ? this.bodyMats[i] : zero); bodyDirty = true; }
       const show = b.berries > 0;
       if (!force && show === this.shown[i]) return;
       this.shown[i] = show;
@@ -65,6 +75,7 @@ export class Bushes {
       for (let k = 0; k < 5; k++) this.berries.setMatrixAt(i * 5 + k, show ? this.berryMats[i][k] : zero);
     });
     if (dirty) this.berries.instanceMatrix.needsUpdate = true;
+    if (bodyDirty) this.body.instanceMatrix.needsUpdate = true;
   }
 
   update(dt: number) {

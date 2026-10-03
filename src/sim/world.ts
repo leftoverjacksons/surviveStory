@@ -23,7 +23,8 @@ export type TreeKind = 'oak' | 'pine' | 'birch';
 
 /** Zones the player paints. One per tile. */
 /** Wild is the Folk's land (see folk.ts): no building, no felling. */
-export const Zone = { None: 0, Home: 1, Woodlot: 2, Field: 3, Sacred: 4, Fishing: 5, Wild: 6 } as const;
+/** Clear (DESIGN §42.6): ground the player wants kept free of trees; builders fell whatever stands there. */
+export const Zone = { None: 0, Home: 1, Woodlot: 2, Field: 3, Sacred: 4, Fishing: 5, Wild: 6, Clear: 7 } as const;
 export type ZoneKind = (typeof Zone)[keyof typeof Zone];
 
 /** Field crop states. */
@@ -253,6 +254,8 @@ export function zoneAllowed(w: World, tx: number, tz: number, kind: ZoneKind): b
   // Fishing grounds: the shore and the shallows of a pond, anywhere explored.
   if (kind === Zone.Fishing) return w.pondAt[i] >= 0 ? nearLand(w, tx, tz, 3) : w.ground[i] !== Ground.Water && nearWater(w, tx, tz, 3);
   if (w.ground[i] === Ground.Water) return false;
+  // Clear: anywhere on land, trees and all (that is the point), but not the Folk's Wild or their paths.
+  if (kind === Zone.Clear) return w.zone[i] !== Zone.Wild && !w.folk?.path[i];
   if (kind === Zone.Field || kind === Zone.Woodlot || kind === Zone.Wild) {
     const g = w.ground[i];
     if (g === Ground.Asphalt || g === Ground.Concrete || w.blocked[i]) return false;

@@ -511,6 +511,33 @@ function pickTree(col: Colony, a: Agent): Task | null {
   return { kind: 'chop', tree: tree.id, stage: 'go' };
 }
 
+/**
+ * Ground marked Clear (DESIGN §42.6): fell every tree and sapling on it, whether or not the
+ * woodpile wants the wood. Never on Sacred ground or the Wild (a Clear mark can't be painted there
+ * over those; this guards against old marks).
+ */
+function pickClearGround(col: Colony, a: Agent): Task | null {
+  const w = col.world;
+  if (quiet(col, 'clearzone')) return null;
+  const home = { tx: toTileX(w, w.home.x), tz: toTileZ(w, w.home.z) };
+  const found = findNearest(w, home.tx, home.tz, 90, (tx, tz) => {
+    const i = idx(w, tx, tz);
+    if (w.zone[i] !== Zone.Clear) return false;
+    const id = w.treeAt[i];
+    if (id < 0) return false;
+    const t = w.trees[id];
+    return !t.felled && !t.protected && t.reserved === 0 && isExplored(w, tx, tz) && !col.unreachable.has(`t${id}`);
+  });
+  if (!found) { hush(col, 'clearzone', 30); return null; }
+  const tree = w.trees[w.treeAt[idx(w, found.tx, found.tz)]];
+  if (!setDest(col, a, tileX(w, tree.tx), tileZ(w, tree.tz), true)) {
+    col.unreachable.add(`t${tree.id}`);
+    return null;
+  }
+  tree.reserved = a.id;
+  return { kind: 'chop', tree: tree.id, stage: 'go' };
+}
+
 function pickHaul(col: Colony, a: Agent): Task | null {
   let best: Item | null = null, bestD = Infinity;
   for (const it of col.items) {
@@ -1266,7 +1293,7 @@ function chooseTask(col: Colony, a: Agent, s: Survivor): Task | null {
       // A wreck the player asked to be pushed comes before new building: it is a short, explicit order (DESIGN §30).
       t = pickHaul(col, a) ?? pickSplit(col, a) ?? pickClearing(col, a) ?? pickSupply(col, a)
         ?? (col.replant.length >= 3 ? pickPlant(col, a) : null) ?? pickTow(col, a) ?? pickBuild(col, a)
-        ?? pickDismantle(col, a) ?? pickRaze(col, a) ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
+        ?? pickClearGround(col, a) ?? pickDismantle(col, a) ?? pickRaze(col, a) ?? pickDepave(col, a) ?? pickSalvage(col, a) ?? pickStrip(col, a) ?? pickTree(col, a) ?? pickPlant(col, a);
       break;
     case 'farmer':
       t = pickFarm(col, a) ?? pickGarden(col, a) ?? pickFence(col, a) ?? pickForage(col, a) ?? pickDepave(col, a) ?? pickHaul(col, a);

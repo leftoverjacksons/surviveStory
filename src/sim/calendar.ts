@@ -88,6 +88,8 @@ export interface SeasonLook {
   leafFall: number;
   /** 0..1 fallen leaves on the ground: builds through leaf fall, lies under the snow, gone in early spring. */
   litter: number;
+  /** 0..1 how old the fallen leaves are: fresh colour in autumn, brown and matted by winter and the thaw. */
+  litterAge: number;
 }
 
 /**
@@ -113,6 +115,8 @@ export function seasonLook(dayFrac: number, snowing: boolean): SeasonLook {
   let snow = smooth(36, 38.5, d) * (1 - smooth(46, 47.8, d));
   if (snowing) snow = Math.max(snow, 0.6);
   const leafFall = smooth(27, 30, d) * (1 - smooth(35, 38, d));
-  const litter = d >= 20 ? smooth(27.5, 35, d) : d < 8 ? 1 - smooth(1.5, 6, d) : 0;
-  return { snow, autumn, bare: Math.min(1, bare), blossom, leafFall, litter };
+  // Last autumn's leaves show again at the thaw, brown, and are gone in the first couple of days of spring.
+  const litter = d >= 20 ? smooth(27.5, 35, d) : d < 8 ? 1 - smooth(0.3, 3, d) : 0;
+  const litterAge = d >= 20 ? smooth(31, 40, d) : 1;
+  return { snow, autumn, bare: Math.min(1, bare), blossom, leafFall, litter, litterAge };
 }

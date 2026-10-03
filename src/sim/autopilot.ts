@@ -8,7 +8,7 @@ import type { Colony } from './colony';
 import { log } from './community';
 import { seasonOf } from './calendar';
 import { roundField } from './fields';
-import { STORE_PER_HEAD, canPlace, footAt, placeProject } from './buildings';
+import { STORE_PER_HEAD, canPlace, fieldKeepOut, footAt, placeProject } from './buildings';
 import { HAMLET_APART, fires, whyNotHamletFire } from './hearth';
 import { NEAR, fulfilled, grantWork, requestsOf } from './requests';
 import { Zone, idx, paintZone, tileX, tileZ, toTileX, toTileZ, zoneAllowed, type World } from './world';
@@ -20,7 +20,7 @@ import { playTurn } from './clearbot';
 import { WILD_RADIUS, folkNeeds, orderFolkWork, whyNotFolkWork, type FolkWorkKind } from './folk';
 
 /** Best spot on a ring around home for a zone disc, by count of allowed tiles (and trees for woodlots). */
-export function bestSpot(w: World, r0: number, r1: number, radius: number, kind: number, wantTrees: boolean, avoid: { x: number; z: number }[]) {
+export function bestSpot(w: World, r0: number, r1: number, radius: number, kind: number, wantTrees: boolean, avoid: { x: number; z: number }[], plots?: Int32Array) {
   const c = w.campfire;
   let best = { x: 0, z: 0, score: -1 };
   for (let r = r0; r <= r1; r += 3) for (let a = 0; a < Math.PI * 2; a += Math.PI / 12) {
@@ -32,7 +32,7 @@ export function bestSpot(w: World, r0: number, r1: number, radius: number, kind:
       const tx = toTileX(w, x + dx), tz = toTileZ(w, z + dz);
       if (!zoneAllowed(w, tx, tz, kind as never)) continue;
       const i = idx(w, tx, tz);
-      if (w.zone[i] === Zone.Home || w.fieldAt[i] > 0 || w.blocked[i]) continue;
+      if (w.zone[i] === Zone.Home || w.fieldAt[i] > 0 || w.blocked[i] || plots?.[i]) continue;
       score += wantTrees ? (w.treeAt[i] >= 0 ? 1 : 0.1) : (w.treeAt[i] >= 0 || w.bushAt[i] >= 0 ? 0 : 1);
     }
     if (score > best.score) best = { x, z, score };
@@ -52,8 +52,8 @@ export function autopilotDaily(col: Colony) {
   // …and only while the stores are short of two seasons' eating (STORE_PER_HEAD a head).
   const perHead = (c.resources.food + c.resources.preserves) / Math.max(1, pop);
   if ((season === 'spring' || !w.fields.length) && tiles < pop * 8 && w.fields.length < 8 && (perHead < STORE_PER_HEAD || !w.fields.length)) {
-    const s = bestSpot(w, 16, 30, 3.5, Zone.Field, false, fields);
-    if (s.score > 20 && roundField(w, s.x, s.z, 4, w.campfire)) log(c, 'Autopilot marked out a new field.', 'info');
+    const s = bestSpot(w, 16, 30, 3.5, Zone.Field, false, fields, col.village.plotAt);
+    if (s.score > 20 && roundField(w, s.x, s.z, 4, w.campfire, fieldKeepOut(w, col.village))) log(c, 'Autopilot marked out a new field.', 'info');
   }
   // A woodlot, and another once the first is thinning.
   let lot = 0;

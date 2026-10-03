@@ -642,6 +642,17 @@ export function footAt(kind: SiteKind, tx: number, tz: number, turn: number): { 
 }
 
 /** Can the player put this building here? Returns trees to clear, or why not. */
+/**
+ * Tiles a field may not be drawn over (DESIGN §42.5): someone's plot, a building, a planned
+ * building. (Buildings and plots already refuse fields; this is the other direction.)
+ */
+export function fieldKeepOut(w: World, v: Village): (i: number) => string | null {
+  const built = new Set<number>();
+  const feet = [...v.buildings.filter((b) => !b.gone).map((b) => b.foot), ...v.projects.filter((p) => !p.done).map((p) => p.foot)];
+  for (const f of feet) for (const [tx, tz] of footTiles(f)) built.add(idx(w, tx, tz));
+  return (i) => v.plotAt[i] ? 'That runs over someone\'s plot.' : built.has(i) ? 'That runs over a building.' : null;
+}
+
 export function canPlace(w: World, v: Village, kind: SiteKind, foot: Footprint): { ok: boolean; trees: number[]; why?: string } {
   return footprintFree(w, v, foot, kind === 'lantern' ? 0 : 1, false);
 }

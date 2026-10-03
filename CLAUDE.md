@@ -307,6 +307,9 @@ reference: Tiny Glade.
     §42.3 CROPS AS CARDS (not published): `render/land.ts` shoot/stalk/ear upright cards (kinds in `leafcards.ts`), 6/tile.
     §42.4 WINDMILL ENLARGED (user: tallest in town, 2–3 storeys, big sails): tower 7.2, arms 4.3, reefing stage.
     `__game.finishProjects()`; `cardlook.mjs` KIND=field SIM=days.
+    §42.5 FIXES (not published): litter brown at the thaw (`litterAge`/`uLitterAge`), gone in ~2 spring days; fields refuse plots/
+    buildings (`fieldBlock`, `fieldKeepOut`), soil only on field tiles, bushes grubbed up by fields. §42.6 CLEAR ZONE (`Zone.Clear`=7,
+    brush "Clear"; `pickClearGround` fells unprotected trees there regardless of wood need; not on the Wild). `tests/ground.test.ts`.
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,
     fewer/closer-toned tufts, evergreen chunkier ivy) and string lights as a power network
     (spanning tree + poles, `plots.ts#planLights`). Published in v22.

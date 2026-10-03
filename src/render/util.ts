@@ -136,6 +136,7 @@ export const worldUniforms = {
   /** Fallen leaves (DESIGN §42): per-tile cover where they gather (terrain.ts LitterTexture), and how much has fallen (0..1). */
   uLitterTex: { value: null as THREE.Texture | null },
   uLitter: { value: 0 },
+  uLitterAge: { value: 0 },
   uAutumn: { value: 0 },
   uBare: { value: 0 },
   uBlossom: { value: 0 },
@@ -384,8 +385,8 @@ const SEASON_GLSL: Record<SeasonStyle, string> = {
         float h2 = fract(sin(dot(cell, vec2(39.3468, 11.135))) * 24634.6345);
         if (h1 < lit * 1.15) {
           vec3 leafCol = h2 < 0.3 ? vec3(0.62, 0.24, 0.09) : h2 < 0.65 ? vec3(0.78, 0.45, 0.13) : h2 < 0.85 ? vec3(0.8, 0.62, 0.22) : vec3(0.45, 0.3, 0.17);
-          // Older leaves (in winter) go brown.
-          leafCol = mix(leafCol, vec3(0.38, 0.27, 0.17), uBare * 0.6);
+          // Older leaves go brown and dull: by winter, and still at the thaw (seasonLook().litterAge).
+          leafCol = mix(leafCol, vec3(0.34, 0.25, 0.16), uLitterAge * 0.8);
           diffuseColor.rgb = mix(diffuseColor.rgb, leafCol, 0.85);
         }
       }
@@ -481,7 +482,7 @@ export function enhance<T extends THREE.Material>(mat: T, opts: EnhanceOptions =
       `#include <common>
       uniform sampler2D uFogTex; uniform sampler2D uWearTex; uniform sampler2D uResTex; uniform sampler2D uZoneTex; uniform float uVeil; uniform float uVeilDark;
       uniform float uFogSize; uniform float uTime; uniform float uZone;
-      uniform float uSnow; uniform float uRoofSnow; uniform sampler2D uFootTex; uniform sampler2D uLitterTex; uniform float uLitter; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
+      uniform float uSnow; uniform float uRoofSnow; uniform sampler2D uFootTex; uniform sampler2D uLitterTex; uniform float uLitter; uniform float uLitterAge; uniform float uAutumn; uniform float uBare; uniform float uBlossom;
       varying vec2 vFowXZ; varying float vUp; varying float vHash; varying float vShade; varying vec3 vWP; varying vec3 vWN;
       ${thin ? 'varying float vThin;' : ''}
       ${surfaceKind ? `uniform float uSurface; uniform float uGrassPaint;

@@ -156,6 +156,13 @@ export class FieldsView {
       tris = next;
       if (!split) break;
     }
+    // Soil only on the field's own tiles (DESIGN §42.5): rocks, trees, paving and anything else
+    // the outline crosses but the field doesn't hold keep their own ground.
+    const own = new Set(f.tiles);
+    tris = tris.filter((t) => {
+      const cx = (t[0] + t[2] + t[4]) / 3, cz = (t[1] + t[3] + t[5]) / 3;
+      return own.has(Math.floor(cz + w.h / 2) * w.w + Math.floor(cx + w.w / 2));
+    });
     // Furrows along the contour: stripes vary with the downhill direction.
     let gx = 0, gz = 0;
     for (const i of f.tiles) {

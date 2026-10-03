@@ -53,18 +53,50 @@ export function fieldAtPoint(w: World, x: number, z: number): FieldPlot | undefi
  * (explored, not road or water or built on, not already another field)
  * are taken. Returns null if too little of it is usable.
  */
-export function createField(w: World, pts: Point[], campfire: Point): FieldPlot | null {
-  if (pts.length < 3) return null;
+/** Every tile whose centre lies inside an outline. */
+function tilesInside(w: World, pts: Point[]): number[] {
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
-  const tiles: number[] = [];
+  const out: number[] = [];
   for (let tz = toTileZ(w, z0); tz <= toTileZ(w, z1); tz++) for (let tx = toTileX(w, x0); tx <= toTileX(w, x1); tx++) {
-    if (!inBounds(w, tx, tz)) continue;
-    const i = idx(w, tx, tz);
-    if (w.fieldAt[i] > 0 || !zoneAllowed(w, tx, tz, Zone.Field)) continue;
-    if (pointInPolygon({ x: tileX(w, tx), z: tileZ(w, tz) }, pts)) tiles.push(i);
+    if (inBounds(w, tx, tz) && pointInPolygon({ x: tileX(w, tx), z: tileZ(w, tz) }, pts)) out.push(idx(w, tx, tz));
+  }
+  return out;
+}
+
+/**
+ * Why a field can't be drawn here, or null. `keepOut` names tiles a field may not take at all
+ * (someone's plot, a building, a planned building: buildings.ts `fieldKeepOut`); other unworkable
+ * tiles (roads, water, rocks, trees) are simply left out of the field.
+ */
+export function fieldBlock(w: World, pts: Point[], keepOut?: (i: number) => string | null): string | null {
+  if (pts.length < 3) return 'A field needs at least three corners.';
+  if (keepOut) for (const i of tilesInside(w, pts)) { const why = keepOut(i); if (why) return why; }
+  return null;
+}
+
+/**
+ * Mark out a field. Refused (null) if it runs over anything in `keepOut` or would hold almost no
+ * workable ground. Wild bushes on its ground are grubbed up (`out.bushes` counts them).
+ */
+export function createField(w: World, pts: Point[], campfire: Point, keepOut?: (i: number) => string | null, out?: { bushes: number }): FieldPlot | null {
+  if (fieldBlock(w, pts, keepOut)) return null;
+  const tiles: number[] = [];
+  for (const i of tilesInside(w, pts)) {
+    if (w.fieldAt[i] > 0 || !zoneAllowed(w, i % w.w, (i / w.w) | 0, Zone.Field)) continue;
+    tiles.push(i);
   }
   if (tiles.length < 4) return null;
+  // Bushes in the way are grubbed up (DESIGN §42.5): a field is worked ground, not forage.
+  let bushes = 0;
+  for (const i of tiles) {
+    const b = w.bushAt[i];
+    if (b < 0) continue;
+    w.bushes[b].berries = 0; w.bushes[b].max = 0;
+    w.bushAt[i] = -1;
+    bushes++;
+  }
+  if (out) out.bushes = bushes;
   // The gate goes on the edge whose middle is nearest the fire.
   let gate = 0, best = Infinity;
   for (let i = 0; i < pts.length; i++) {
@@ -124,8 +156,8 @@ export function alongPerimeter(pts: Point[], t: number): { p: Point; edge: numbe
 export const FENCE_WORK_PER_UNIT = 22;
 
 /** An eight-sided field of radius r around a point (for probes and tests). */
-export function roundField(w: World, cx: number, cz: number, r: number, campfire: Point): FieldPlot | null {
+export function roundField(w: World, cx: number, cz: number, r: number, campfire: Point, keepOut?: (i: number) => string | null): FieldPlot | null {
   const pts: Point[] = [];
   for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2 + Math.PI / 8; pts.push({ x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r }); }
-  return createField(w, pts, campfire);
+  return createField(w, pts, campfire, keepOut);
 }

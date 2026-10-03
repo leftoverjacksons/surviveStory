@@ -4,7 +4,7 @@ import { alive, createCommunity, killSurvivor, log, recruit, setRole } from './s
 import { SITE_KINDS, seatSpot, type SiteKind } from './sim/sites';
 import { generateWorld, siteKindFor } from './sim/worldgen';
 import { Zone, heightAt, idx, paintZone, reveal, tileX, tileZ, toTileX, toTileZ } from './sim/world';
-import { createField, deleteField, fieldAtPoint } from './sim/fields';
+import { createField, deleteField, fieldAtPoint, fieldBlock } from './sim/fields';
 import { daylightHours, seasonLook, snowCold } from './sim/calendar';
 import { IsoCamera, Sky, createComposer, createRenderer, lightPeopleLayer } from './render/stage';
 import { FogTexture, LitterTexture, WearTexture, ZoneTexture, buildTerrain, setGrassCards } from './render/terrain';
@@ -24,7 +24,7 @@ import { ClearingView } from './render/clearing';
 import { ClearingMenu, ClearingPanel, spiritLabel } from './ui/clearing';
 import { BuildPanel, type BuildTool } from './ui/build';
 import { PlacementView } from './render/placement';
-import { DEFS, canPlace, completeProject, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
+import { DEFS, canPlace, completeProject, fieldKeepOut, footAt, placeProject, tierFor, type SiteKind as PlaceKind } from './sim/buildings';
 import { FOLK_WORKS, addFae, orderFolkWork, whyNotFolkWork } from './sim/folk';
 import { backyardSite, isBackyard, placeBackyard, plotAtPoint, whyNotBackyard } from './sim/backyard';
 import { claimPlot, homeForAsker, outlinePlot, plotFailAt } from './sim/homes';
@@ -500,7 +500,7 @@ function setOmen(on: boolean) {
 }
 
 let zoneTool: ZoneTool | null = null;
-const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, sacred: Zone.Sacred, fishing: Zone.Fishing, wild: Zone.Wild, depave: Zone.None, erase: Zone.None };
+const ZONE_OF: Record<ZoneTool, number> = { home: Zone.Home, field: Zone.Field, woodlot: Zone.Woodlot, clear: Zone.Clear, sacred: Zone.Sacred, fishing: Zone.Fishing, wild: Zone.Wild, depave: Zone.None, erase: Zone.None };
 function setZoneTool(mode: ZoneTool | null) {
   zoneTool = mode;
   if (mode && build) setBuild(null);
@@ -557,9 +557,14 @@ function closeDraft() {
     return;
   }
   if (draft.length >= 3) {
-    const f = createField(world, draft.slice(), world.campfire);
-    if (f) {
-      log(community, `A field is marked out: ${f.tiles.length} plots of ground, staked at the corners. The farmers will fence it once it's worked.`, 'good');
+    const keepOut = fieldKeepOut(world, colony.village);
+    const why = fieldBlock(world, draft, keepOut);
+    const out = { bushes: 0 };
+    const f = why ? null : createField(world, draft.slice(), world.campfire, keepOut, out);
+    if (why) log(community, `${why} Draw the field clear of it.`, 'info');
+    else if (f) {
+      const grubbed = out.bushes ? ` ${out.bushes === 1 ? 'A bush' : `${out.bushes} bushes`} in the way ${out.bushes === 1 ? 'is' : 'are'} grubbed up.` : '';
+      log(community, `A field is marked out: ${f.tiles.length} plots of ground, staked at the corners. The farmers will fence it once it's worked.${grubbed}`, 'good');
       replan(colony);
     } else {
       log(community, 'That field would take almost no workable ground (roads, water, buildings or unexplored land). Try again.', 'info');
@@ -1385,6 +1390,7 @@ function frame() {
   worldUniforms.uBare.value = look.bare;
   worldUniforms.uBlossom.value = look.blossom;
   worldUniforms.uLitter.value = look.litter;
+  worldUniforms.uLitterAge.value = look.litterAge;
   if (Math.floor(dayFrac) !== litterDay) { litterDay = Math.floor(dayFrac); if (look.litter > 0) litter.sync(); }
   leafFall.update(dt, t, iso.target, veil ? 0 : look.leafFall, worldUniforms.uWind.value);
   const gloom = weather === 'rain' ? 1 : weather === 'snow' ? 0.7 : weather === 'overcast' ? 0.6 : weather === 'fog' ? 0.4 : 0;
@@ -1801,7 +1807,7 @@ Object.assign(window, { __game: { ...veilDebug, gfx,
     m.on = keep;
     return out;
   },
-  stats, addModel, setWoods, flicker, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean; camp?: 'fire' | 'stockpile' }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
+  stats, addModel, setWoods, flicker, clearance: () => trees.overlaps(obstaclesFor(world, colony.village)), scene, probeRender, colony, iso, setSpeed, select, setZoneTool, paint: (x: number, z: number, r: number, k: number) => paintZone(world, x, z, r, k as never), reveal: (x: number, z: number, r: number) => reveal(world, x, z, r), field: (pts: { x: number; z: number }[]) => createField(world, pts, world.campfire, fieldKeepOut(world, colony.village)), tick: (m: number) => tick(colony, m), inspect: (t: { building?: number; project?: number; folk?: boolean; camp?: 'fire' | 'stockpile' }) => hud.inspect(t), refresh: () => { syncScene(); hud.render(); }, build: (t: BuildTool | null) => setBuild(t), buildPanel, hover: placeHover,
   place: (k: PlaceKind, x: number, z: number, turn = 0) => { const { foot, facing } = footAt(k, toTileX(world, x), toTileZ(world, z), turn); return placeProject(world, colony.village, community, k, foot, facing); },
   /** Finish every open building project at once (screenshots and tests). */
   finishProjects: () => { for (const p of colony.village.projects.filter((q) => !q.done)) { p.clearTrees = []; completeProject(world, colony.village, community, p); } syncScene(); },

@@ -5271,3 +5271,57 @@ could keep a clear radius.
 
 New debug hook: `__game.finishProjects()` completes every open building
 project at once.
+
+### 42.5 Fixes from the user's v52 notes (built, not published)
+
+The user asked why there were brown leaves on the ground in spring, noticed a
+field overlapping a home's yard, and saw forage bushes standing in fields.
+
+- **Spring litter.** It was intended to be last autumn's leaves, showing at
+  the thaw and fading in early spring. But it went bright orange again,
+  because "turn brown" was tied to `uBare`, which drops to 0 at the start of
+  spring. Fixed:
+  - the litter has its own age, `seasonLook().litterAge` (fresh in autumn,
+    brown by winter, still brown at the thaw), and the shader mixes to brown
+    by it (`uLitterAge`);
+  - the spring tail is shorter: full on the first day, gone after about two
+    days (was about four).
+- **Fields vs plots and buildings.** Buildings and plots refused fields, but
+  fields didn't refuse them.
+  - `fieldBlock`/`fieldKeepOut` (`fields.ts`, `buildings.ts`) now refuse a
+    field drawn over someone's plot, a building or a planned building, and the
+    reason is logged.
+  - The autopilot's field search skips plot tiles and passes the same
+    keep-out.
+  - Fields drawn before this fix stay as they are.
+- **Soil only on the field's tiles.** The soil mesh used to fill the whole
+  outline, over rocks, trees and paving the field never held. Its triangles
+  are now kept only where their centre lies on one of the field's tiles, so
+  a rock in a field sits in a little patch of its own ground.
+- **Bushes in fields.** Making a field grubs up the wild bushes on its tiles
+  (`max = 0`, `bushAt = -1`), and the log says how many. The bush renderer now
+  hides a bush body whose `max` is 0. The starting farm field on seed 1 had
+  two; they are gone.
+
+### 42.6 Clear ground (user's request; built, not published)
+
+"An area to paint that is cleared and kept clear of trees."
+- **A new zone, `Zone.Clear` (7).** Its brush ("Clear", sand colour) sits
+  next to Woodlot. It can be painted on any explored land except water, the
+  Folk's Wild and their paths (so it can't quietly take their land), trees
+  and all.
+- **Builders fell every unprotected tree and sapling on it** (`pickClearGround`
+  in `colony.ts`), whether or not the woodpile wants wood.
+  - It comes after construction in a builder's order of work, before taking
+    things down, salvage and ordinary felling.
+  - The logs go to the woodyard as usual.
+  - Protected trees are kept.
+- **Kept clear.** Nothing in the sim seeds trees outside woodlots and the
+  Wild, so anything that ever stands there is felled.
+- Tests: `tests/ground.test.ts` (fields refused over buildings and plots,
+  bushes grubbed up, Clear felled with a full woodpile, Clear refused on the
+  Wild, litter brown and short-lived at the thaw).
+
+Test note: in one full run, 8 tests in 5 files failed while a stray test
+process was using the machine. Those files pass alone (43/43), and the full
+suite then passed 217/217.

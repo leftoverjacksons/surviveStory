@@ -157,7 +157,7 @@
   .zone button { display: inline-flex; align-items: center; gap: 5px; }
   .zone button[aria-pressed="true"] { background: var(--ink); color: #0b1210; border-color: var(--ink); font-weight: 700; }
   .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-  .sw.home { background: #ffe88c; } .sw.field { background: #f09632; } .sw.woodlot { background: #6ed75a; } .sw.sacred { background: #c382ff; } .sw.fishing { background: #5abee6; } .sw.wild { background: #50c8aa; }
+  .sw.home { background: #ffe88c; } .sw.field { background: #f09632; } .sw.woodlot { background: #6ed75a; } .sw.clear { background: #d8c08c; } .sw.sacred { background: #c382ff; } .sw.fishing { background: #5abee6; } .sw.wild { background: #50c8aa; }
   .sw.depave { background: repeating-linear-gradient(45deg, #c8783c 0 3px, #5a5750 3px 6px); }
   /* winter readiness */
   #winter { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
@@ -466,6 +466,7 @@
     <label>Zones</label>
     <button data-zone="field" type="button" title="Fields: click the corners to mark one out (click the first corner or press Enter to close; Esc cancels). Click inside a field to remove it. Sown in spring, harvested in autumn; fenced once worked." aria-pressed="false"><i class="sw field"></i>Field</button>
     <button data-zone="woodlot" type="button" title="Woodlot: cut here and replant" aria-pressed="false"><i class="sw woodlot"></i>Woodlot</button>
+    <button data-zone="clear" type="button" title="Clear ground: builders fell every tree and sapling here, whether or not the woodpile needs it, and keep it clear. For views, sunlight, open ground to build on." aria-pressed="false"><i class="sw clear"></i>Clear</button>
     <button data-zone="sacred" type="button" title="Sacred ground: never cut, never built on" aria-pressed="false"><i class="sw sacred"></i>Sacred</button>
     <button data-zone="fishing" type="button" title="Fishing grounds: mark a pond's shore for a jetty, hut and fishers" aria-pressed="false"><i class="sw fishing"></i>Fishing</button>
     <button data-zone="wild" type="button" title="The Wild: land given to the Folk. Nobody cuts or builds there. Their hill grows only while they have room; taking land back sours them." aria-pressed="false"><i class="sw wild"></i>Wild</button>
