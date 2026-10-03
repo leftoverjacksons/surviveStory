@@ -4,7 +4,7 @@ import type { Agent } from '../sim/colony';
 import type { Survivor } from '../sim/community';
 import { WATER_Y, heightAt, standHeight, type World } from '../sim/world';
 import { SOFT, enhance, lambert } from './util';
-import { composeOutfit, makeCharacter, type Character, type CharacterKit, type PartsKit } from './characters';
+import { composeOutfit, fitClip, makeCharacter, type Character, type CharacterKit, type PartsKit } from './characters';
 import { dress } from './dress';
 
 /** `?classic`: the earlier premade figures instead of survivors dressed from parts. */
@@ -154,7 +154,7 @@ export class People {
     pick.userData.survivorId = s.id;
     r.root.add(pick);
     const actions = new Map<string, THREE.AnimationAction>();
-    for (const [name, clip] of kit.clips) actions.set(name, ch.mixer.clipAction(clip));
+    for (const [name, clip] of kit.clips) actions.set(name, ch.mixer.clipAction(fitClip(clip, ch, kit.clips)));
     r.root.updateMatrixWorld(true);
     const base = ch.root.getWorldPosition(new THREE.Vector3()).y;
     const hip = (ch.bone('UpperLeg.L')?.getWorldPosition(new THREE.Vector3()).y ?? base + 0.82) - base;

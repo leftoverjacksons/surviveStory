@@ -303,7 +303,7 @@ reference: Tiny Glade.
     equipment) and re-composes on change. Builds: hero, stout (the builder). Recipes: folk_scout, gardener, builder.
     IN THE GAME (this branch; `?classic` = old figures): `src/render/dress.ts` (role → parts, presentation from name
     hints else id parity, age → grey), `characters.ts#loadParts/composeOutfit` (cached by dress key),
-    `people.ts` (grown + teens composed, children old child build, `sitDrop` from hip height), assets in
+    `people.ts` (grown + teens composed, children old child build, `sitDrop` from hip height), CLIPS FITTED PER SKELETON (`characters.ts#fitClip`: anims.glb keys adult joint offsets on every bone; dropped, hips motion scaled, so non-adult builds no longer stretch while animating), assets in
     `src/assets/people/parts/` (`build.py --parts --build <b> --game`). Main merged in (8d85e19). FACES: `lab/workshop/faces.py` (head.face/soft/broad/long/elder; dress.ts picks by presentation + age; skin_blush/lip/shade derived in characters.ts; `heads.mjs` close-ups). PUBLISHED v47 from this branch
     (includes main's §38.18). Not yet merged into main (user to open a PR from claude/lucid-ride-z7pvg6).
   - VISUALS §22.5: grain fix (per-pattern sub-pixel fade `lodk`, luminance-only 20-step grade,

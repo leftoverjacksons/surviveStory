@@ -10,7 +10,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { makeCharacter, type Character, type Outfit } from '../../src/render/characters';
+import { fitClip, makeCharacter, type Character, type Outfit } from '../../src/render/characters';
 
 const GAME = import.meta.glob('../../src/assets/people/*.glb', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 const gameUrl = (n: string) => Object.entries(GAME).find(([p]) => p.endsWith(`/${n}.glb`))?.[1];
@@ -198,7 +198,7 @@ export class Stage {
   play() {
     if (this.holdStill) return;
     const clip = this.clips.get(this.opts.clip);
-    for (const c of this.chars) { c.mixer.stopAllAction(); if (clip) c.mixer.clipAction(clip).play(); }
+    for (const c of this.chars) { c.mixer.stopAllAction(); if (clip) c.mixer.clipAction(fitClip(clip, c, this.clips)).play(); }
   }
 
   resize() {

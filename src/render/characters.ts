@@ -209,6 +209,49 @@ export interface Character {
   scale: number;
 }
 
+/**
+ * The clips (anims.glb) key every joint's offset (and a scale) as on the adult build they were made on.
+ * Played as they are, they pull any other build's bones to adult lengths: the hero build's legs grow by
+ * about half while walking. So each skeleton gets its own copy of a clip: joint offsets and scales are
+ * dropped (every bone keeps its own length), and the hips' motion (bob, sway) is kept, scaled to this
+ * body's hip height. The reference is the Idle clip's first hip position (standing at rest).
+ */
+const fittedClips = new Map<string, THREE.AnimationClip>();
+let clipHipRef: THREE.Vector3 | null = null;
+export function fitClip(clip: THREE.AnimationClip, ch: Character, all?: Map<string, THREE.AnimationClip>): THREE.AnimationClip {
+  const sk = ch.mesh.skeleton;
+  const hipB = sk.bones.find((b) => b.name === 'Hips');
+  if (!hipB) return clip;
+  // Rest offsets, recorded the first time (before any clip has moved the bones; templates are never animated).
+  const rest = (b: THREE.Bone) => (b.userData.rest ??= b.position.clone()) as THREE.Vector3;
+  const hip = rest(hipB);
+  const key = clip.uuid + '|' + sk.bones.map((b) => rest(b).toArray().map((v) => v.toFixed(3)).join(',')).join(';');
+  const done = fittedClips.get(key);
+  if (done) return done;
+  const hipTrack = (c: THREE.AnimationClip | undefined) => c?.tracks.find((t) => t.name === 'Hips.position');
+  if (!clipHipRef) {
+    const t = hipTrack(all?.get('Idle')) ?? hipTrack(clip);
+    clipHipRef = t ? new THREE.Vector3().fromArray(t.values, 0) : hip.clone();
+  }
+  const k = hip.length() / Math.max(1e-6, clipHipRef.length());
+  const tracks: THREE.KeyframeTrack[] = [];
+  for (const t of clip.tracks) {
+    if (t.name.endsWith('.scale')) continue;
+    if (t.name.endsWith('.position')) {
+      if (t.name !== 'Hips.position') continue;
+      const v = t.values.slice();
+      for (let j = 0; j < v.length; j += 3)
+        for (let a = 0; a < 3; a++) v[j + a] = hip.getComponent(a) + (v[j + a] - clipHipRef.getComponent(a)) * k;
+      tracks.push(new THREE.VectorKeyframeTrack(t.name, Array.from(t.times), Array.from(v)));
+      continue;
+    }
+    tracks.push(t);
+  }
+  const out = new THREE.AnimationClip(clip.name, clip.duration, tracks);
+  fittedClips.set(key, out);
+  return out;
+}
+
 /** A survivor's own copy of an outfit: own skeleton, own colours. */
 export function makeCharacter(outfit: Outfit, seed: { skin: number; hair: number; hue: number; tall: number }, material: THREE.Material): Character {
   const root = cloneSkinned(outfit.template);
